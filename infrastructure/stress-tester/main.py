@@ -2,6 +2,7 @@ import requests
 import jwt
 import sys
 import time
+import pathlib
 import re
 from simuser import sim_user
 import os
@@ -25,6 +26,9 @@ spawn_interval = 1
 # Number of users to simulate
 sim_num = 1
 
+# Directory to write log files (optional)
+log_dir = None
+
 # Parse arguments
 for arg_val in sys.argv:
     arg = ""
@@ -42,6 +46,10 @@ for arg_val in sys.argv:
         spawn_interval = int(val)
     if re.match("sim_num", arg):
         sim_num = int(val)
+    if re.match("log_dir", arg):
+        log_dir = val
+
+
 
 # Print arguments
 print("""Using arguments:
@@ -49,13 +57,18 @@ print("""Using arguments:
         sim_duration: {}
         spawn_interval: {}
         sim_num: {}
-    """.format(timeout, sim_duration, spawn_interval, sim_num)
+        log_dir: {}
+    """.format(timeout, sim_duration, spawn_interval, sim_num, log_dir)
     )
 
 # Will change this later
 refresh_token = "1156c434-1a82-4ef8-a8ed-a16c85ae4d4d"
 
 ########## END OF PARAMETERS ##########
+
+if log_dir is not None:
+    if not os.path.exists(log_dir):
+        pathlib.Path(log_dir).mkdir(exist_ok=True)
 
 access_token = ''
 
@@ -70,7 +83,7 @@ try:
     # Create and start all simulated users
     p = []
     for i in range(0, sim_num):
-        p.append(Process(target=sim_user, args=[sim_duration, access_token]))
+        p.append(Process(target=sim_user, args=[sim_duration, access_token, log_dir]))
         p[i].start()
         p[i].join(spawn_interval)
 
