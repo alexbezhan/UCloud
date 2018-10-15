@@ -89,7 +89,9 @@ def renew_access_token(atoken, rtoken):
         )
 
         atoken = res.json()["accessToken"]
-    return {'access_token': atoken, 'status': res.status_code, 'reason': res.reason, 'ms':res.elapsed, 'job_id': res.headers['Job-Id']}
+        return {'access_token': atoken, 'status': res.status_code, 'reason': res.reason, 'ms':res.elapsed, 'job_id': res.headers['Job-Id']}
+    else:
+        return {'access_token': atoken, 'status': 200, 'reason': '', 'ms': 0, 'job_id': ''}
 
 
 def create_user(name, atoken):

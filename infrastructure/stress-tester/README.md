@@ -38,5 +38,14 @@ Note: Only tested with Python 3.7
  - `log_dir` (str) (default = None)
    Name of a directory (does not have to exist). A log file for each simulated user will be written to `log_dir` before terminating. The name of the file will be the name of the simulated user, and if the file already exists it will be overwritten.
 
+ - `sim_file` (str) (default = None)
+   A csv file (output to users.csv when not using this parameter) with a list of created users. The users can be re-used in subsequent runs using this parameter, pointing to the file with the users.
+
+   The file has the following format:
+
+   ```csv
+   user_name,refresh_token,access_token,csrf_token
+   ...
+   ```
 
 

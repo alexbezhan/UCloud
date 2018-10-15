@@ -13,37 +13,23 @@ UPLOAD = 3
 
 fmt_str = "{:06.3f} {:50} {:10} {:3} {:} {:32}"
 
-def sim_user(timeout, access_token, log_dir):
+def sim_user(user_name, timeout, atoken, log_dir):
     # Create user
     start_time = time.time()
-    user_name = "stresstester-" + str(uuid.uuid4())
     first_ok_time = 0
     ok_resp_num = 0
     resp_num = 0
-    resp = create_user(user_name, access_token)
     sim_log = []
-
-    elapsed_str = "{}.{}".format(resp['ms'].seconds, resp['ms'].microseconds)
-    delta = time.time() - start_time
-    if resp['status'] == 200:
-        atoken = resp['access_token']
-        rtoken = resp['refresh_token']
-
-        log_str = fmt_str.format(delta, user_name, "create_usr", resp['status'], elapsed_str, resp['job_id'])
-        sim_log.append(log_str)
-        print(log_str)
-    else:
-        log_str = fmt_str.format("--", "create_usr", resp['status'],  elapsed_str, resp['job_id'])
-        sim_log.append(log_str)
-        print(log_str)
-        sys.exit(0);
-
-    time.sleep(5)
+    resp = {}
+    resp['status'] = 0
+    resp['ms'] = datetime.timedelta()
+    resp['job_id'] = ''
 
     created_dirs = []
     deleted_dirs = 0
     interval = random.random()+1
     running = True
+    ignore = False
 
     while running:
         delta = time.time() - start_time
@@ -64,6 +50,9 @@ def sim_user(timeout, access_token, log_dir):
                 if resp['status'] == 200:
                     created_dirs.pop(0)
                     deleted_dirs += 1
+            else:
+                ignore = True
+
 
         elif do == LIST_DIR:
             req_type = "list_dir"
@@ -73,18 +62,19 @@ def sim_user(timeout, access_token, log_dir):
             req_type = "upload"
             resp = upload_random(atoken)
 
-    
         if resp['status'] == 200:
             if ok_resp_num == 0:
                 first_ok_time = time.time()
             ok_resp_num += 1
         resp_num += 1
 
-        elapsed_str = "{}.{}".format(resp['ms'].seconds, resp['ms'].microseconds)
-        log_str = fmt_str.format(delta, user_name, req_type, resp['status'], elapsed_str, resp['job_id'])
-        sim_log.append(log_str)
-        print(log_str)
-        time.sleep(interval)
+        if not ignore: 
+            elapsed_str = "{}.{}".format(resp['ms'].seconds, resp['ms'].microseconds)
+            log_str = fmt_str.format(delta, user_name, req_type, resp['status'], elapsed_str, resp['job_id'])
+            sim_log.append(log_str)
+            print(log_str)
+            time.sleep(interval)
+            ignore = False
 
         if time.time() - start_time >= timeout:
             running = False
