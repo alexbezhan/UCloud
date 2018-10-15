@@ -4,7 +4,6 @@ import sys
 import time
 import pathlib
 import re
-import base64
 from simuser import sim_user
 import os
 from sducloud import *
@@ -125,6 +124,8 @@ for i in range(0, len(access_tokens)):
 try:
     start_time = time.time()
 
+    fmt_str = "{:7}  {:50}  {:10}  {:6}  {:7} {:32}"
+    print(fmt_str.format("Time", "Username", "Action", "Status", "RespTime", "Job ID"))
     # Create and start all simulated users
     p = []
     for i in range(0, sim_num):
