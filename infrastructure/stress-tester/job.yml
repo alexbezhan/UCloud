@@ -1,0 +1,41 @@
+---
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: stress-test
+
+spec:
+  template:
+    metadata:
+      name: stress-test
+
+    spec:
+      containers:
+      - args:
+        - python3
+        - main.py
+        - timeout=40
+        - sim_duration=30
+        - spawn_interval=1
+        - sim_num=20
+        - log_dir=/var/log/stress
+        - sim_file=/etc/stress/users.csv
+        image: registry.cloud.sdu.dk/sdu-cloud/stress-test:0.2.0
+        name: stress-test
+
+        volumeMounts:
+        - mountPath: /etc/stress
+          name: vol1
+
+      imagePullSecrets:
+        - name: esci-docker
+
+      restartPolicy: Never
+
+      volumes:
+      - name: vol1
+        secret:
+          optional: false
+          secretName: stress-users
+
