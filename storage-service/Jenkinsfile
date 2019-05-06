@@ -17,9 +17,10 @@ def initialize() {
     stage('test storage-service') {
       container('docker') {
         sh '''
-          apk add --no-cache openjdk11
+          apk add --no-cache openjdk8
           apk add --no-cache gradle
-          apk add --no-cache nss'''
+          apk add --no-cache nss
+          java -version'''
         sh '''cd storage-service
         ./gradlew test'''
       }
