@@ -15,15 +15,9 @@ def initialize() {
 
   try {
     stage('test storage-service') {
-      container('docker') {
-        sh '''
-          apk add --no-cache openjdk8
-          apk add --no-cache gradle
-          apk add --no-cache nss
-          java -version'''
-        sh '''cd storage-service
-        ./gradlew test'''
-      }
+      sh '''cd storage-service
+      java -version
+      ./gradlew test'''
     } 
   } catch (e) {
     echo "Test FAILED"
