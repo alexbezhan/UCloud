@@ -32,16 +32,17 @@ volumes: [
             def needToBuild = []
 
             def serviceList = [
-                "frontend-web",
-                "service-common"
+                //"frontend-web",
+                //"service-common"
+                "storage-service"
             ]
 
             def list = sh(script: 'ls', returnStdout: true).split("\n")
-            for (String item : list) {
+            /*for (String item : list) {
                 if (item.endsWith("-service")) {
                     serviceList.add(item)
                 }
-            }
+            }*/
             for (String item : serviceList) {
                 needToBuild.add(item + "/Jenkinsfile")
             }          
@@ -55,7 +56,7 @@ volumes: [
             int i = 0
 
             def resultList = [""] * size
-
+            /*
             while (true) {
                 stage("building and testing ${serviceList[i]}, ${serviceList[i+1]}, ${serviceList[i+2]}, ${serviceList[i+3]}") {
                     parallel (
@@ -81,7 +82,7 @@ volumes: [
                 if (i >= size-jumpsize) {
                     break
                 }
-            }
+            }*/
 
             for (i; i < needToBuild.size(); i++) {
                 stage("building and testing ${serviceList[i]}"){
@@ -90,7 +91,7 @@ volumes: [
                 }
             }
 
-            if (resultList.contains("FAILURE") || resultList.contains("UNSTABLE")) {
+            /*if (resultList.contains("FAILURE") || resultList.contains("UNSTABLE")) {
                 String message = "Following services are marked UNSTABLE due to failing tests:\n"
                 for (int k = 0; k < resultList.size(); k++) {
                     if (resultList[k] == "UNSTABLE") {
@@ -105,13 +106,13 @@ volumes: [
                 }
                 sendAlert(message)
                 error('Job failed - message have been sent. JobInfo: $resultList \n Message: $message')
-            }
-            junit '**/build/test-results/**/*.xml'      
-            jacoco(
-                execPattern: '**/**.exec',
-                exclusionPattern: '**/src/test/**/*.class,**/AuthMockingKt.class,**/DatabaseSetupKt.class',
-                sourcePattern: '**/src/main/kotlin/**'
-            )
+            }*/
+            //junit '**/build/test-results/**/*.xml'      
+            //jacoco(
+            //    execPattern: '**/**.exec',
+            //    exclusionPattern: '**/src/test/**/*.class,**/AuthMockingKt.class,**/DatabaseSetupKt.class',
+            //    sourcePattern: '**/src/main/kotlin/**'
+            //)
         }
     }
 }
