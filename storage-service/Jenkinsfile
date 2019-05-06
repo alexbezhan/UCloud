@@ -15,10 +15,29 @@ def initialize() {
 
   try {
     stage('test storage-service') {
-      sh '''cd storage-service
-      echo $JAVA_HOME
-      ./gradlew test'''
-    } 
+      container('docker'){
+        sh '''
+        apk add --no-cache openjdk8
+        apk add --no-cache gradle=4.8.1-r0        
+        apk add --no-cache gcc
+        apk add --no-cache g++
+        apk add --no-cache musl-dev
+        apk add --no-cache linux-headers
+        apk add --no-cache fts-dev
+        apk add --no-cache fts
+        apk add --no-cache acl-dev
+        apk add --no-cache libacl
+        apk add --no-cache sudo
+        apk add --no-cache bash
+        apk add --no-cache acl
+        apk add --no-cache nss
+        cd storage-service/native
+        ./cmakeclean.sh
+        g++ -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" -shared -o ../src/main/resources/libthreading.so threading.cpp
+        cd ..
+        ./gradlew test'''
+      } 
+    }
   } catch (e) {
     echo "Test FAILED"
     return 'UNSTABLE'
