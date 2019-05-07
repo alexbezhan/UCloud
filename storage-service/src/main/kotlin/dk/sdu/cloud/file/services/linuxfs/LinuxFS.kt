@@ -1,5 +1,6 @@
 package dk.sdu.cloud.file.services.linuxfs
 
+import dk.sdu.cloud.calls.RPCException
 import dk.sdu.cloud.file.api.*
 import dk.sdu.cloud.file.services.*
 import dk.sdu.cloud.file.services.linuxfs.LinuxFS.Companion.PATH_MAX
@@ -161,7 +162,11 @@ class LinuxFS(
         var sensitivityLevel: SensitivityLevel? = null
         var linkInode: String? = null
 
-        val systemPath = systemFile.toPath()
+        val systemPath =  try {
+            systemFile.toPath()
+        } catch (ex: InvalidPathException) {
+            throw FSException.BadRequest()
+        }
 
         val linkOpts = if (!followLink) arrayOf(LinkOption.NOFOLLOW_LINKS) else emptyArray()
 
