@@ -2,7 +2,8 @@ def label = "worker-${UUID.randomUUID().toString()}"
 
 podTemplate(label: label, containers: [
 containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true),
-containerTemplate(name: 'node', image: 'node:11-alpine', command: 'cat', ttyEnabled: true)
+containerTemplate(name: 'node', image: 'node:11-alpine', command: 'cat', ttyEnabled: true),
+containerTemplate(name: 'centos', image: 'ubuntu', command: 'cat', ttyEnabled: true)
 ],
 volumes: [
   hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')
@@ -107,12 +108,12 @@ volumes: [
                 sendAlert(message)
                 error('Job failed - message have been sent. JobInfo: $resultList \n Message: $message')
             }*/
-            //junit '**/build/test-results/**/*.xml'      
-            //jacoco(
-            //    execPattern: '**/**.exec',
-            //    exclusionPattern: '**/src/test/**/*.class,**/AuthMockingKt.class,**/DatabaseSetupKt.class',
-            //    sourcePattern: '**/src/main/kotlin/**'
-            //)
+            junit '**/build/test-results/**/*.xml'      
+            jacoco(
+                execPattern: '**/**.exec',
+                exclusionPattern: '**/src/test/**/*.class,**/AuthMockingKt.class,**/DatabaseSetupKt.class',
+                sourcePattern: '**/src/main/kotlin/**'
+            )
         }
     }
 }
