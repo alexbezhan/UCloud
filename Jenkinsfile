@@ -33,8 +33,6 @@ volumes: [
             def needToBuild = []
 
             def serviceList = [
-                //"frontend-web",
-                //"service-common"
                 "storage-service"
             ]
 
@@ -57,7 +55,7 @@ volumes: [
             int i = 0
 
             def resultList = [""] * size
-            while (true) {
+            /*while (true) {
                 stage("building and testing ${serviceList[i]}, ${serviceList[i+1]}, ${serviceList[i+2]}, ${serviceList[i+3]}") {
                     parallel (
                         (serviceList[i]): {
@@ -82,7 +80,7 @@ volumes: [
                 if (i >= size-jumpsize) {
                     break
                 }
-            }
+            }*/
 
             for (i; i < needToBuild.size(); i++) {
                 stage("building and testing ${serviceList[i]}"){
@@ -104,7 +102,7 @@ volumes: [
                         message = message + "${serviceList[k]}\n"
                     }
                 }
-                sendAlert(message)
+                //sendAlert(message)
                 error('Job failed - message have been sent. JobInfo: $resultList \n Message: $message')
             }
 
