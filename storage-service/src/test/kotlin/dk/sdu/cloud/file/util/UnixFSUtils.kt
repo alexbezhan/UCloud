@@ -4,6 +4,7 @@ import dk.sdu.cloud.Role
 import dk.sdu.cloud.auth.api.LookupUsersResponse
 import dk.sdu.cloud.auth.api.UserDescriptions
 import dk.sdu.cloud.auth.api.UserLookup
+import dk.sdu.cloud.file.api.AccessRight
 import dk.sdu.cloud.file.api.Timestamps
 import dk.sdu.cloud.file.api.normalize
 import dk.sdu.cloud.file.services.HomeFolderService
@@ -18,6 +19,7 @@ import dk.sdu.cloud.micro.install
 import dk.sdu.cloud.service.test.ClientMock
 import dk.sdu.cloud.service.test.TestCallResult
 import dk.sdu.cloud.service.test.initializeMicro
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.BasicFileAttributes
@@ -42,6 +44,7 @@ fun linuxFSWithRelaxedMocks(
         )
     }
     val aclService = AclService(db, AclHibernateDao(), homeFolderService, { it.normalize() })
+    runBlocking { aclService.updatePermissions(fsRoot, "user", setOf(AccessRight.WRITE, AccessRight.READ)) }
     return LinuxTestFS(
         commandRunner,
         LinuxFS(
@@ -87,7 +90,7 @@ fun File.timestamps(): Timestamps {
 }
 
 fun createDummyFS(): File {
-    val fsRoot = Files.createTempDirectory("share-service-test").toFile().also { it.setExecutable(true) and it.setReadable(true) and it.setWritable(true)}
+    val fsRoot = Files.createTempDirectory("share-service-test").toFile()
     fsRoot.apply { createDummyFSInRoot() }
     return fsRoot
 }
