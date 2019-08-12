@@ -44,7 +44,8 @@ fun linuxFSWithRelaxedMocks(
         )
     }
     val aclService = AclService(db, AclHibernateDao(), homeFolderService, { it.normalize() })
-    runBlocking { aclService.updatePermissions(fsRoot, "user", setOf(AccessRight.WRITE, AccessRight.READ)) }
+    runBlocking { aclService.updatePermissions("$fsRoot/user1", "user1", setOf(AccessRight.WRITE, AccessRight.READ)) }
+    runBlocking { aclService.updatePermissions("$fsRoot/user", "user", setOf(AccessRight.WRITE, AccessRight.READ)) }
     return LinuxTestFS(
         commandRunner,
         LinuxFS(

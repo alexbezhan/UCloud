@@ -6,6 +6,7 @@ import dk.sdu.cloud.SecurityPrincipal
 import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.calls.client.OutgoingHttpCall
 import dk.sdu.cloud.calls.client.RpcClient
+import dk.sdu.cloud.file.api.AccessRight
 import dk.sdu.cloud.file.api.FileSortBy
 import dk.sdu.cloud.file.api.ListDirectoryRequest
 import dk.sdu.cloud.file.api.LookupFileInDirectoryRequest
