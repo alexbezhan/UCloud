@@ -39,6 +39,10 @@ interface TokenValidation<TokenType> {
             null
         }
     }
+
+    companion object : Loggable {
+        override val log = logger()
+    }
 }
 
 fun <T> TokenValidation<T>.validateAndDecodeOrNull(token: String): SecurityPrincipalToken? {

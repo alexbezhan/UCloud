@@ -1,7 +1,4 @@
-import PromiseKeeper from "PromiseKeeper"
- 
 export interface UserCreationState {
-    promiseKeeper: PromiseKeeper
     submitted: boolean
     username: string
     password: string
@@ -9,5 +6,3 @@ export interface UserCreationState {
     usernameError: boolean
     passwordError: boolean
 }
-
-export type UserCreationField = keyof UserCreationState;

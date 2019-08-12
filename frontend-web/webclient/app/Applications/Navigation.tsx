@@ -1,9 +1,9 @@
 import * as React from "react";
-import { Card } from "ui-components/Card";
-import { Flex, ToggleBadge } from "ui-components";
-import { Link } from "react-router-dom";
+import {Card} from "ui-components/Card";
+import {Flex, ToggleBadge} from "ui-components";
+import {Link} from "react-router-dom";
 
-export const Tabs: React.StatelessComponent<{}> = (props) => (
+export const Tabs: React.FunctionComponent<{}> = (props) => (
     <Card>
         <Flex>
             {props.children}
@@ -16,7 +16,7 @@ interface TabProps {
     linkTo: string
 }
 
-export const Tab: React.StatelessComponent<TabProps> = (props): JSX.Element => (
+export const Tab: React.FunctionComponent<TabProps> = (props): JSX.Element => (
     <Link to={props.linkTo}>
         <ToggleBadge
             bg="lightGray"

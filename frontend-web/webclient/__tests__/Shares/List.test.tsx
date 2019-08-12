@@ -1,39 +1,35 @@
 import * as React from "react";
-import List from "Shares/List";
-import { create } from "react-test-renderer";
-import { Provider } from "react-redux";
-import { configureStore } from "Utilities/ReduxUtilities";
-import { initFiles } from "DefaultObjects";
-import files from "Files/Redux/FilesReducer";
-import { MemoryRouter } from "react-router";
-import { configure, shallow, mount } from "enzyme"
+import List from "../../app/Shares/List";
+import {create} from "react-test-renderer";
+import {MemoryRouter} from "react-router";
+import {configure} from "enzyme"
 import * as Adapter from "enzyme-adapter-react-16";
-import { shares } from "../mock/Shares";
+import theme, {responsiveBP} from "../../app/ui-components/theme";
+import {ThemeProvider} from "styled-components";
+import "jest-styled-components";
+import {configureStore} from "../../app/Utilities/ReduxUtilities";
+import {initResponsive} from "../../app/DefaultObjects";
+import {createResponsiveStateReducer} from "redux-responsive";
+import {Provider} from "react-redux";
 
-configure({ adapter: new Adapter() });
+configure({adapter: new Adapter()});
+
+const store = configureStore({responsive: initResponsive()}, {
+    responsive: createResponsiveStateReducer(
+        responsiveBP,
+        {infinity: "xxl"}
+    )
+});
 
 describe("Shares List", () => {
-    test.skip("Shares component", () => {
+    test("Shares component", () => {
         expect(create(
-            <Provider store={configureStore({ files: initFiles("/home/user@test.abc/") }, { files })}>
-                <MemoryRouter>
-                    <List />
-                </MemoryRouter>
-            </Provider >)).toMatchSnapshot();
-    });
-
-    test.skip("Shares component with shares", () => {
-        let sharesListWrapper = shallow(
-            <Provider store={configureStore({ files: initFiles("/home/user@test.abc/") }, { files })}>
-                <MemoryRouter>
-                    <List byPath={""} />
-                </MemoryRouter>
-            </Provider >);
-        console.warn(shares.items);
-        sharesListWrapper = sharesListWrapper.update();
-        console.error(sharesListWrapper.find(List).dive().state());
-        sharesListWrapper.find(List).dive().setState(() => ({ shares: shares.items }));
-        console.error(sharesListWrapper.find(List).dive().state());
-        expect(sharesListWrapper.html()).toMatchSnapshot();
+            <Provider store={store}>
+                <ThemeProvider theme={theme}>
+                    <MemoryRouter>
+                        <List/>
+                    </MemoryRouter>
+                </ThemeProvider>
+            </Provider>)).toMatchSnapshot();
     });
 });

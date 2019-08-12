@@ -29,9 +29,9 @@ export const regular = (props: { regular?: boolean, theme: Theme }) =>
 export const bold = (props: { bold?: boolean, theme: Theme }) =>
   props.bold ? { fontWeight: props.theme.bold } : null;
 
-export const italic = (props: { italic?: boolean }) => (props.italic ? { fontStyle: "italic" } : null)
+export const italic = (props: { italic?: boolean }) => (props.italic ? { fontStyle: "italic" } : null);
 
-export interface TextProps extends SpaceProps, TextAlignProps, FontSizeProps, ColorProps {
+export interface TextProps extends SpaceProps, TextAlignProps, FontSizeProps, ColorProps, WidthProps {
   align?: "left" | "right"
   caps?: boolean
   regular?: boolean
@@ -42,6 +42,7 @@ export interface TextProps extends SpaceProps, TextAlignProps, FontSizeProps, Co
 
 const Text = styled.div<TextProps>`
   cursor: ${props => props.cursor};
+  ${width}
   ${textStyle}
   ${fontSize}
   ${fontWeight}
@@ -56,9 +57,9 @@ const Text = styled.div<TextProps>`
 `;
 
 export const TextDiv = Text;
-export const TextSpan = (props) => <Text as="span" {...props} />;
-export const TextP = (props) => <Text as="p" {...props} />;
-export const TextS = (props) => <Text as="s" {...props} />;
+export const TextSpan = (props: any) => <Text as="span" {...props} />;
+export const TextP = (props: any) => <Text as="p" {...props} />;
+export const TextS = (props: any) => <Text as="s" {...props} />;
 
 interface EllipsedTextProps extends TextProps, WidthProps, MaxWidthProps { }
 export const EllipsedText = styled(Text) <EllipsedTextProps>`
@@ -71,8 +72,12 @@ export const EllipsedText = styled(Text) <EllipsedTextProps>`
   vertical-align: bottom;
 `;
 
+EllipsedText.displayName = "EllipsedText";
+
 Text.defaultProps = {
   cursor: "inherit"
 };
+
+Text.displayName = "Text";
 
 export default Text;

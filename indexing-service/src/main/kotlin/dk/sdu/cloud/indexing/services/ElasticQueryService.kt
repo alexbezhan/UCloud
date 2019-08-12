@@ -7,7 +7,9 @@ import dk.sdu.cloud.file.api.SensitivityLevel
 import dk.sdu.cloud.file.api.StorageFile
 import dk.sdu.cloud.file.api.components
 import dk.sdu.cloud.file.api.normalize
+import dk.sdu.cloud.file.api.ownSensitivityLevel
 import dk.sdu.cloud.file.api.parents
+import dk.sdu.cloud.file.api.path
 import dk.sdu.cloud.indexing.api.AnyOf
 import dk.sdu.cloud.indexing.api.Comparison
 import dk.sdu.cloud.indexing.api.ComparisonOperator
@@ -96,7 +98,6 @@ class ElasticQueryService(
                 val field = when (sorting.field) {
                     SortableField.FILE_NAME -> ElasticIndexedFile.FILE_NAME_KEYWORD
                     SortableField.FILE_TYPE -> ElasticIndexedFile.FILE_TYPE_FIELD
-                    SortableField.IS_LINK -> ElasticIndexedFile.FILE_IS_LINK_FIELD
                     SortableField.SIZE -> ElasticIndexedFile.SIZE_FIELD
                     SortableField.CREATED_AT -> ElasticIndexedFile.TIMESTAMP_CREATED_FIELD
                     SortableField.MODIFIED_AT -> ElasticIndexedFile.TIMESTAMP_MODIFIED_FIELD
@@ -182,12 +183,7 @@ class ElasticQueryService(
                     createdAt.addClausesIfExists(list, ElasticIndexedFile.TIMESTAMP_CREATED_FIELD)
                     modifiedAt.addClausesIfExists(list, ElasticIndexedFile.TIMESTAMP_MODIFIED_FIELD)
                     sensitivity.addClausesIfExists(list, ElasticIndexedFile.SENSITIVITY_FIELD)
-                    annotations.addClausesIfExists(list, ElasticIndexedFile.ANNOTATIONS_FIELD)
                     size.addClausesIfExists(list, ElasticIndexedFile.SIZE_FIELD)
-
-                    if (fileIsLink != null) {
-                        list.add(terms { ElasticIndexedFile.FILE_IS_LINK_FIELD to listOf(fileIsLink) })
-                    }
                 }
             }.also {
                 if (it.should().isNotEmpty()) {

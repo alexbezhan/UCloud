@@ -1,10 +1,17 @@
 package dk.sdu.cloud.indexing.services
 
-import dk.sdu.cloud.file.api.FileChecksum
 import dk.sdu.cloud.file.api.FileType
 import dk.sdu.cloud.file.api.SensitivityLevel
 import dk.sdu.cloud.file.api.StorageFile
 import dk.sdu.cloud.file.api.Timestamps
+import dk.sdu.cloud.file.api.createdAt
+import dk.sdu.cloud.file.api.fileId
+import dk.sdu.cloud.file.api.fileType
+import dk.sdu.cloud.file.api.modifiedAt
+import dk.sdu.cloud.file.api.ownSensitivityLevel
+import dk.sdu.cloud.file.api.ownerName
+import dk.sdu.cloud.file.api.path
+import dk.sdu.cloud.file.api.size
 
 /**
  * An [StorageFile] as it is represented in elasticsearch
@@ -29,13 +36,8 @@ data class ElasticIndexedFile(
 
     val size: Long,
     val fileTimestamps: Timestamps,
-    val checksum: FileChecksum,
 
-    val fileIsLink: Boolean,
-
-    val sensitivity: SensitivityLevel?,
-
-    val annotations: Set<String>
+    val sensitivity: SensitivityLevel?
 ) {
     fun toMaterializedFile(): StorageFile = StorageFile(
         fileId = id,
@@ -45,8 +47,6 @@ data class ElasticIndexedFile(
         createdAt = fileTimestamps.created,
         modifiedAt = fileTimestamps.modified,
         size = size,
-        link = fileIsLink,
-        annotations = annotations,
         ownSensitivityLevel = sensitivity
     )
 
@@ -69,11 +69,7 @@ data class ElasticIndexedFile(
         val TIMESTAMP_MODIFIED_FIELD = FILE_TIMESTAMPS_FIELD + "." + Timestamps::modified.name
         val TIMESTAMP_ACCESSED_FIELD = FILE_TIMESTAMPS_FIELD + "." + Timestamps::accessed.name
 
-        val CHECKSUM_FIELD = ElasticIndexedFile::checksum.name
-        val FILE_IS_LINK_FIELD = ElasticIndexedFile::fileIsLink.name
-
         val SENSITIVITY_FIELD = ElasticIndexedFile::sensitivity.name
-        val ANNOTATIONS_FIELD = ElasticIndexedFile::annotations.name
 
     }
 }
@@ -86,8 +82,6 @@ fun StorageFile.withSensitivity(level: SensitivityLevel): StorageFile = StorageF
     createdAt = createdAt,
     modifiedAt = modifiedAt,
     size = size,
-    link = link,
-    annotations = annotations,
     ownSensitivityLevel = ownSensitivityLevel,
     sensitivityLevel = level
 )

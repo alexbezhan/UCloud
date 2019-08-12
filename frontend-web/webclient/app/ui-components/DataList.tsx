@@ -1,62 +1,7 @@
 import * as React from "react";
 import { Box, Input, FormField, Icon } from "ui-components";
 import ClickableDropdown from "./ClickableDropdown";
-import { allLicenses } from "Project/licenses";
 import * as Fuse from "fuse.js";
-
-const identifierTypes = [
-    {
-        text: "Cited by",
-        value: "isCitedBy"
-    },
-    {
-        text: "Cites",
-        value: "cites"
-    },
-    {
-        text: "Supplement to",
-        value: "isSupplementTo"
-    },
-    {
-        text: "Supplemented by",
-        value: "“isSupplementedBy”"
-    },
-    {
-        text: "New version of",
-        value: "isNewVersionOf"
-    },
-    {
-        text: "Previous version of",
-        value: "isPreviousVersionOf"
-    },
-    {
-        text: "Part of",
-        value: "“isPartOf”"
-    },
-    {
-        text: "Has part",
-        value: "“hasPart”"
-    },
-    {
-        text: "Compiles",
-        value: "compiles"
-    },
-    {
-        text: "Is compiled by",
-        value: "isCompiledBy"
-    },
-    {
-        text: "Identical to",
-        value: "isIdenticalTo"
-    },
-    {
-        text: "Alternative identifier",
-        value: "IsAlternateIdentifier"
-    }
-];
-
-export const contentValuePairLicenses = allLicenses.map(it => ({ content: it.name, value: it.identifier }))
-export const contentValuePairIdentifierTypes = identifierTypes.map(it => ({ content: it.text, value: it.value }))
 
 type ContentValuePair = { content: string, value: string };
 
@@ -72,7 +17,7 @@ export class DataList extends React.PureComponent<DataListProps, { text: string,
         super(props);
         this.state = {
             text: "",
-            fuse: new Fuse(this.props.options, this.options)
+            fuse: new Fuse(this.props.options, DataList.options)
         }
     }
 
@@ -84,7 +29,7 @@ export class DataList extends React.PureComponent<DataListProps, { text: string,
         else this.setState(() => ({ text: content }))
     }
 
-    get options(): Fuse.FuseOptions<ContentValuePair> {
+    static get options(): Fuse.FuseOptions<ContentValuePair> {
         return {
             shouldSort: true,
             threshold: 0.2,

@@ -1,12 +1,11 @@
 package dk.sdu.cloud.file.services.linuxfs
 
 import com.sun.jna.LastErrorException
-import dk.sdu.cloud.calls.RPCException
+import dk.sdu.cloud.file.SERVICE_USER
 import dk.sdu.cloud.file.services.CommandRunner
-import dk.sdu.cloud.file.services.StorageUserDao
 import dk.sdu.cloud.file.util.FSException
 import dk.sdu.cloud.file.util.throwExceptionBasedOnStatus
-import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.OutputStream
@@ -21,15 +20,16 @@ import java.nio.file.NotLinkException
 import java.util.*
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 class LinuxFSRunner(
-    private val userDao: StorageUserDao<Long>,
+    private val uid: Int,
     override val user: String
 ) : CommandRunner {
-    private val queue = ArrayBlockingQueue<() -> Any?>(64)
+    private val queue = ArrayBlockingQueue<Pair<Continuation<*>, () -> Any?>>(64)
     private var thread: NativeThread? = null
     private var isRunning: Boolean = false
 
@@ -39,23 +39,25 @@ class LinuxFSRunner(
     internal var outputStream: OutputStream? = null
     internal var outputSystemFile: File? = null
 
-    internal var uid: Long = Long.MAX_VALUE
+    var lastJobNotSafe: Any? = null
 
     private fun init() {
         synchronized(this) {
             if (thread == null) {
                 isRunning = true
                 thread = NativeThread(THREAD_PREFIX + user + "-" + UUID.randomUUID().toString()) {
-                    val cloudUser = runBlocking { userDao.findStorageUser(user) }
-                        ?: throw RPCException.fromStatusCode(HttpStatusCode.Forbidden)
-                    uid = cloudUser
-
-                    StandardCLib.setfsgid(cloudUser)
-                    StandardCLib.setfsuid(cloudUser)
+                    if (user != SERVICE_USER) {
+                        StandardCLib.setfsgid(uid)
+                        StandardCLib.setfsuid(uid)
+                    }
 
                     while (isRunning) {
-                        val nextJob = queue.poll(1, TimeUnit.SECONDS) ?: continue
+                        val (_, nextJob) = queue.poll(1, TimeUnit.SECONDS) ?: continue
                         nextJob()
+                    }
+
+                    queue.forEach { (cont, _) ->
+                        cont.resumeWithException(CancellationException())
                     }
                 }.also {
                     it.start()
@@ -64,8 +66,9 @@ class LinuxFSRunner(
         }
     }
 
-    suspend fun <T> submit(job: () -> T): T = suspendCoroutine { cont ->
+    suspend fun <T> submit(job: suspend () -> T): T = suspendCoroutine { cont ->
         init()
+        if (!isRunning) throw IllegalStateException("Runner has already been closed")
 
         val futureTask: () -> Unit = {
             runBlocking {
@@ -79,12 +82,12 @@ class LinuxFSRunner(
             }
         }
 
-        queue.put(futureTask)
+        lastJobNotSafe = job
+        queue.put(Pair(cont, futureTask))
     }
 
     fun requireContext() {
         if (!Thread.currentThread().name.startsWith("$THREAD_PREFIX$user-")) {
-            println(Thread.currentThread().name)
             throw IllegalStateException("Code is running in an invalid context!")
         }
     }
@@ -116,6 +119,10 @@ inline fun <T> runAndRethrowNIOExceptions(block: () -> T): T {
             ex is AccessDeniedException -> throw FSException.PermissionException(cause = ex)
 
             ex.reason.contains("File name too long") -> throw FSException.BadRequest("File name too long")
+
+            ex.message?.contains("Not a directory") == true -> {
+                throw FSException.BadRequest("Not a directory")
+            }
 
             else -> throw FSException.CriticalException(ex.message ?: "Internal error", cause = ex)
         }

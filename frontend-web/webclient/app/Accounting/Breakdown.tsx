@@ -26,7 +26,7 @@ const BreakdownItem: React.FunctionComponent<{ item: API.AccountingEvent }> = pr
             {props.item.description}
         </TableCell>
     </VARow>;
-}
+};
 
 const VARow = styled(TableRow)`
     vertical-align: top;
@@ -36,22 +36,20 @@ interface BreakdownProps {
     events?: API.AccountingEvent[]
 }
 
-class Breakdown extends React.Component<BreakdownProps> {
-    render() {
-        const events: API.AccountingEvent[] = this.props.events || MockEvents.items;
-        return <Table>
-            <LeftAlignedTableHeader>
-                <TableRow>
-                    <TableHeaderCell>Time</TableHeaderCell>
-                    <TableHeaderCell>Type</TableHeaderCell>
-                    <TableHeaderCell>Description</TableHeaderCell>
-                </TableRow>
-            </LeftAlignedTableHeader>
-            <TableBody>
-                {events.map((e, idx) => <BreakdownItem item={e} key={idx} />)}
-            </TableBody>
-        </Table>;
-    }
+function Breakdown(props: BreakdownProps) {
+    const events: API.AccountingEvent[] = props.events || MockEvents.items;
+    return <Table>
+        <LeftAlignedTableHeader>
+            <TableRow>
+                <TableHeaderCell>Time</TableHeaderCell>
+                <TableHeaderCell>Type</TableHeaderCell>
+                <TableHeaderCell>Description</TableHeaderCell>
+            </TableRow>
+        </LeftAlignedTableHeader>
+        <TableBody>
+            {events.map((e, idx) => <BreakdownItem item={e} key={idx} />)}
+        </TableBody>
+    </Table>;
 }
 
 const LeftAlignedTableHeader = styled(TableHeader)`

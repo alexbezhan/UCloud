@@ -1,16 +1,16 @@
 import * as React from "react";
-import { Cloud } from "Authentication/SDUCloudObject";
-import { TwoFactorSetupState } from ".";
+import {Cloud} from "Authentication/SDUCloudObject";
+import {TwoFactorSetupState} from ".";
 import * as Heading from "ui-components/Heading";
-import { Image, Flex, Divider, Input, Button, ExternalLink } from "ui-components";
-import { AddSnackOperation, SnackType } from "Snackbar/Snackbars";
-import { SetStatusLoading } from "Navigation/Redux/StatusActions";
+import {Image, Flex, Divider, Input, Button, ExternalLink} from "ui-components";
+import {SnackType} from "Snackbar/Snackbars";
+import {SetStatusLoading} from "Navigation/Redux/StatusActions";
+import {snackbarStore} from "Snackbar/SnackbarStore";
 
 const googlePlay = require("Assets/Images/google-play-badge.png");
 const appStore = require("Assets/Images/app-store-badge.png");
 
-export class TwoFactorSetup extends React.Component<AddSnackOperation & SetStatusLoading & { loading: boolean }, TwoFactorSetupState> {
-
+export class TwoFactorSetup extends React.Component<SetStatusLoading & { loading: boolean }, TwoFactorSetupState> {
     public state = this.initialState();
 
     public componentDidMount() {
@@ -20,11 +20,11 @@ export class TwoFactorSetup extends React.Component<AddSnackOperation & SetStatu
     private async loadStatus() {
         this.props.setLoading(true);
         try {
-            const res = await Cloud.get("2fa/status", "/auth");
-            this.setState(() => ({ isConnectedToAccount: res.response.connected }));
+            const res = await Cloud.get("2fa/status", "/auth", true);
+            this.setState(() => ({isConnectedToAccount: res.response.connected}));
         } catch (res) {
             const why = res.response.why ? res.response.why as string : "";
-            this.props.addSnack({ message: `Could not fetch 2FA status. ${why}`, type: SnackType.Failure });
+            snackbarStore.addSnack({message: `Could not fetch 2FA status. ${why}`, type: SnackType.Failure});
         } finally {
             this.props.setLoading(false);
         }
@@ -42,7 +42,7 @@ export class TwoFactorSetup extends React.Component<AddSnackOperation & SetStatu
             <React.StrictMode>
                 <Heading.h1>Two Factor Authentication</Heading.h1>
                 <b>{this.displayConnectedStatus()}</b>
-                <Divider />
+                <Divider/>
                 {!this.state.isConnectedToAccount ? this.setupPage() : undefined}
             </React.StrictMode>
         );
@@ -70,12 +70,13 @@ export class TwoFactorSetup extends React.Component<AddSnackOperation & SetStatu
                 </p>
 
                 <Flex>
-                    <ExternalLink href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&hl=en_us">
-                        <Image width="150px" src={googlePlay} />
+                    <ExternalLink
+                        href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&hl=en_us">
+                        <Image width="150px" src={googlePlay}/>
                     </ExternalLink>
 
                     <ExternalLink href="https://itunes.apple.com/us/app/google-authenticator/id388497605">
-                        <Image width="150px" src={appStore} />
+                        <Image width="150px" src={appStore}/>
                     </ExternalLink>
                 </Flex>
 
@@ -104,33 +105,36 @@ export class TwoFactorSetup extends React.Component<AddSnackOperation & SetStatu
 
         return (
             <div>
-                <Divider />
+                <Divider/>
                 <h4>Step One</h4>
                 <p>Open the 'Google Authenticator' app on your phone</p>
-                <Divider />
+                <Divider/>
 
                 <h4>Step Two</h4>
                 <p>Add a new authenticator by tapping the '+' icon.</p>
-                <Divider />
+                <Divider/>
 
                 <h4>Step Three</h4>
                 <p>Use the 'Scan a barcode option'</p>
-                <Divider />
+                <Divider/>
 
                 <h4>Step Four</h4>
                 <p>Scan the barcode below using your phone's camera</p>
-                <img src={this.state.qrCode} />
-                <Divider />
+                <img src={this.state.qrCode} alt="QRCode"/>
+                <Divider/>
 
                 <h4>Step Five</h4>
                 <p>Enter the verification code from your app in the field below.</p>
 
-                <form onSubmit={e => (e.preventDefault(), this.onVerificationSubmit())}>
+                <form onSubmit={e => {
+                    e.preventDefault();
+                    this.onVerificationSubmit()
+                }}>
                     <Input
                         placeholder="6-digit verification code"
                         value={this.state.verificationCode}
                         type="text"
-                        onChange={({ target }) => {
+                        onChange={({target}) => {
                             this.setState(() => ({
                                 verificationCode: target.value
                             }))
@@ -149,7 +153,7 @@ export class TwoFactorSetup extends React.Component<AddSnackOperation & SetStatu
 
     private onSetupStart() {
         this.props.setLoading(true);
-        Cloud.post("2fa", undefined, "/auth").then(res => {
+        Cloud.post("2fa", undefined, "/auth", true).then(res => {
             this.setState(() => ({
                 challengeId: res.response.challengeId,
                 qrCode: res.response.qrCodeB64Data
@@ -167,16 +171,16 @@ export class TwoFactorSetup extends React.Component<AddSnackOperation & SetStatu
             await Cloud.post("2fa/challenge", {
                 challengeId: this.state.challengeId,
                 verificationCode: this.state.verificationCode
-            }, "/auth");
+            }, "/auth", true);
 
-            this.setState(() => ({ isConnectedToAccount: true }));
+            this.setState(() => ({isConnectedToAccount: true}));
         } catch (res) {
             let response = res.response;
             let why: string = "Could not submit verification code. Try again later";
             if (response !== undefined && response.why !== undefined) {
                 why = response.why;
             }
-            this.props.addSnack({ message: why, type: SnackType.Failure });
+            snackbarStore.addSnack({message: why, type: SnackType.Failure});
         } finally {
             this.props.setLoading(false);
         }

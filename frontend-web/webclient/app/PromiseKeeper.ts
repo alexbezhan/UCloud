@@ -1,5 +1,6 @@
 export default class PromiseKeeper {
-    private promises: Array<CancelablePromise<any>>
+    private promises: Array<CancelablePromise<any>>;
+
     constructor() {
         this.promises = [];
     }
@@ -16,12 +17,12 @@ export default class PromiseKeeper {
                 val => {
                     cancelablePromise.isComplete = true;
                     this.cleanup();
-                    cancelablePromise.hasCanceled_ ? reject({ isCanceled: true }) : resolve(val);
+                    cancelablePromise.hasCanceled_ ? reject({isCanceled: true}) : resolve(val);
                 },
                 error => {
                     cancelablePromise.isComplete = true;
                     this.cleanup();
-                    cancelablePromise.hasCanceled_ ? reject({ isCanceled: true }) : reject(error)
+                    cancelablePromise.hasCanceled_ ? reject({isCanceled: true}) : reject(error)
                 }
             );
         });
@@ -41,9 +42,11 @@ export default class PromiseKeeper {
 }
 
 class CancelablePromise<T> {
-    isComplete: boolean
-    promise: Promise<T>
-    cancel: VoidFunction
-    hasCanceled_: boolean
-    constructor() { }
+    isComplete: boolean;
+    promise: Promise<T>;
+    cancel: VoidFunction;
+    hasCanceled_: boolean;
+
+    constructor() {
+    }
 }

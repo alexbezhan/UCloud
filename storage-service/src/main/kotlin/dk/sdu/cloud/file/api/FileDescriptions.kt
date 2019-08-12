@@ -2,10 +2,20 @@ package dk.sdu.cloud.file.api
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import com.fasterxml.jackson.core.JsonGenerator
+import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.databind.DeserializationContext
+import com.fasterxml.jackson.databind.SerializerProvider
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer
+import com.fasterxml.jackson.databind.ser.std.StdSerializer
 import dk.sdu.cloud.AccessRight
 import dk.sdu.cloud.CommonErrorMessage
+import dk.sdu.cloud.FindByStringId
 import dk.sdu.cloud.Roles
 import dk.sdu.cloud.calls.CallDescriptionContainer
+import dk.sdu.cloud.calls.RPCException
 import dk.sdu.cloud.calls.audit
 import dk.sdu.cloud.calls.auth
 import dk.sdu.cloud.calls.bindEntireRequestFromBody
@@ -18,6 +28,7 @@ import dk.sdu.cloud.service.Page
 import dk.sdu.cloud.service.TYPE_PROPERTY
 import dk.sdu.cloud.service.WithPaginationRequest
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import dk.sdu.cloud.file.api.AccessRight as FileAccessRight
 
 data class CreateLinkRequest(
@@ -27,8 +38,8 @@ data class CreateLinkRequest(
 
 data class UpdateAclRequest(
     val path: String,
-    val recurse: Boolean,
-    val changes: List<ACLEntryRequest>
+    val changes: List<ACLEntryRequest>,
+    val automaticRollback: Boolean? = null
 ) {
     init {
         if (changes.isEmpty()) throw IllegalArgumentException("changes cannot be empty")
@@ -39,8 +50,7 @@ data class UpdateAclRequest(
 data class ACLEntryRequest(
     val entity: String,
     val rights: Set<FileAccessRight>,
-    val revoke: Boolean = false,
-    val isUser: Boolean = true
+    val revoke: Boolean = false
 )
 
 data class ChmodRequest(
@@ -69,14 +79,46 @@ data class ExtractRequest(
     val removeOriginalArchive: Boolean?
 )
 
+@JsonDeserialize(using = FileSortByDeserializer::class)
+@JsonSerialize(using = FileSortBySerializer::class)
 enum class FileSortBy {
     TYPE,
     PATH,
     CREATED_AT,
     MODIFIED_AT,
     SIZE,
-    ACL,
     SENSITIVITY
+}
+
+class FileSortByDeserializer : StdDeserializer<FileSortBy>(FileSortBy::class.java) {
+    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): FileSortBy {
+        return when (p.valueAsString) {
+            "TYPE", "fileType" -> FileSortBy.TYPE
+            "PATH", "path" -> FileSortBy.PATH
+            "CREATED_AT", "createdAt" -> FileSortBy.CREATED_AT
+            "MODIFIED_AT", "modifiedAt" -> FileSortBy.MODIFIED_AT
+            "SIZE", "size" -> FileSortBy.SIZE
+            "ACL", "acl" -> FileSortBy.PATH // ACL sorting has been disabled
+            "SENSITIVITY", "sensitivityLevel" -> FileSortBy.SENSITIVITY
+            else -> throw RPCException.fromStatusCode(HttpStatusCode.BadRequest)
+        }
+    }
+}
+
+class FileSortBySerializer : StdSerializer<FileSortBy>(FileSortBy::class.java) {
+    override fun serialize(value: FileSortBy, gen: JsonGenerator, provider: SerializerProvider) {
+        val textValue = when (value) {
+            FileSortBy.TYPE -> "fileType"
+            FileSortBy.PATH -> "path"
+            FileSortBy.CREATED_AT -> "createdAt"
+            FileSortBy.MODIFIED_AT -> "modifiedAt"
+            FileSortBy.SIZE -> "size"
+//            FileSortBy.ACL -> "acl"
+            FileSortBy.SENSITIVITY -> "sensitivityLevel"
+        }
+
+        gen.writeString(textValue)
+    }
 }
 
 enum class SortOrder {
@@ -125,9 +167,9 @@ enum class StorageFileAttribute {
     acl,
     sensitivityLevel,
     ownSensitivityLevel,
-    link,
     fileId,
-    creator
+    creator,
+    canonicalPath
 }
 
 data class ListDirectoryRequest(
@@ -155,32 +197,8 @@ data class CopyRequest(val path: String, val newPath: String, val policy: WriteC
 
 data class BulkDownloadRequest(val prefix: String, val files: List<String>)
 
-data class SyncFileListRequest(val path: String, val modifiedSince: Long? = null)
-
-data class AnnotateFileRequest(val path: String, val annotatedWith: String, val proxyUser: String) {
-    init {
-        validateAnnotation(annotatedWith)
-        if (proxyUser.isBlank()) throw IllegalArgumentException("proxyUser cannot be blank")
-    }
-}
-
 data class FindHomeFolderRequest(val username: String)
 data class FindHomeFolderResponse(val path: String)
-
-fun validateAnnotation(annotation: String) {
-    if (annotation.contains(Regex("[0-9]"))) {
-        throw IllegalArgumentException("Annotation reserved for future use")
-    }
-
-    if (annotation.contains(',') || annotation.contains('\n')) {
-        throw IllegalArgumentException("Illegal annotation")
-    }
-
-    if (annotation.isEmpty()) throw IllegalArgumentException("Annotation cannot be empty")
-    if (annotation.length > 1) {
-        throw IllegalArgumentException("Annotation type reserved for future use")
-    }
-}
 
 val DOWNLOAD_FILE_SCOPE = FileDescriptions.download.requiredAuthScope
 
@@ -205,7 +223,30 @@ sealed class LongRunningResponse<T> {
     ) : LongRunningResponse<T>()
 }
 
-data class VerifyFileKnowledgeRequest(val user: String, val files: List<String>)
+@JsonTypeInfo(
+    use = JsonTypeInfo.Id.NAME,
+    include = JsonTypeInfo.As.PROPERTY,
+    property = TYPE_PROPERTY
+)
+@JsonSubTypes(
+    JsonSubTypes.Type(value = KnowledgeMode.List::class, name = "list"),
+    JsonSubTypes.Type(value = KnowledgeMode.Permission::class, name = "permission")
+)
+sealed class KnowledgeMode {
+    /**
+     * Ensures that the user can list the file. Concretely this means that we must be able to list the file in the
+     * parent directory.
+     */
+    class List : KnowledgeMode()
+
+    /**
+     * Ensures that the user has specific permissions on the file. If [requireWrite] is true read+write permissions
+     * are required otherwise only read permissions are required. No permissions on the parent directory is required.
+     */
+    class Permission(val requireWrite: Boolean) : KnowledgeMode()
+}
+
+data class VerifyFileKnowledgeRequest(val user: String, val files: List<String>, val mode: KnowledgeMode? = null)
 data class VerifyFileKnowledgeResponse(val responses: List<Boolean>)
 
 data class DeliverMaterializedFileSystemAudit(val roots: List<String>)
@@ -440,31 +481,6 @@ object FileDescriptions : CallDescriptionContainer("files") {
         }
     }
 
-    /**
-     * Annotates a file with metadata. Privileged API.
-     */
-    @Deprecated("No longer in use")
-    val annotate = call<AnnotateFileRequest, Unit, CommonErrorMessage>("annotate") {
-        audit<SingleFileAudit<AnnotateFileRequest>>()
-
-        auth {
-            roles = Roles.PRIVILEDGED
-            access = AccessRight.READ_WRITE
-        }
-
-        websocket(wsBaseContext)
-
-        http {
-            method = HttpMethod.Post
-            path {
-                using(baseContext)
-                +"annotate"
-            }
-
-            body { bindEntireRequestFromBody() }
-        }
-    }
-
     val verifyFileKnowledge = call<
             VerifyFileKnowledgeRequest,
             VerifyFileKnowledgeResponse,
@@ -509,6 +525,7 @@ object FileDescriptions : CallDescriptionContainer("files") {
         }
     }
 
+    @Deprecated("No longer in use")
     val chmod = call<ChmodRequest, Unit, CommonErrorMessage>("chmod") {
         audit<BulkFileAudit<ChmodRequest>>()
 
@@ -543,30 +560,6 @@ object FileDescriptions : CallDescriptionContainer("files") {
             path {
                 using(baseContext)
                 +"update-acl"
-            }
-
-            body { bindEntireRequestFromBody() }
-        }
-    }
-
-    val createLink = call<
-            CreateLinkRequest,
-            StorageFile,
-            CommonErrorMessage>("createLink") {
-        audit<SingleFileAudit<CreateLinkRequest>>()
-
-        auth {
-            access = AccessRight.READ_WRITE
-        }
-
-        websocket(wsBaseContext)
-
-        http {
-            method = HttpMethod.Post
-
-            path {
-                using(baseContext)
-                +"create-link"
             }
 
             body { bindEntireRequestFromBody() }

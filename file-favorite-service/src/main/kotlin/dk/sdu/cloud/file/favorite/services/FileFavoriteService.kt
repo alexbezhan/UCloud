@@ -1,12 +1,15 @@
 package dk.sdu.cloud.file.favorite.services
 
+import dk.sdu.cloud.SecurityPrincipalToken
 import dk.sdu.cloud.calls.RPCException
 import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.calls.client.call
 import dk.sdu.cloud.calls.client.orThrow
 import dk.sdu.cloud.file.api.FileDescriptions
-import dk.sdu.cloud.file.api.FindByPath
+import dk.sdu.cloud.file.api.StatRequest
 import dk.sdu.cloud.file.api.StorageFile
+import dk.sdu.cloud.file.api.StorageFileAttribute
+import dk.sdu.cloud.file.api.fileId
 import dk.sdu.cloud.file.favorite.api.ToggleFavoriteAudit
 import dk.sdu.cloud.indexing.api.LookupDescriptions
 import dk.sdu.cloud.indexing.api.ReverseLookupFilesRequest
@@ -23,7 +26,7 @@ class FileFavoriteService<DBSession>(
 ) {
     suspend fun toggleFavorite(
         files: List<String>,
-        user: String,
+        user: SecurityPrincipalToken,
         userCloud: AuthenticatedClient,
         audit: ToggleFavoriteAudit? = null
     ): List<String> {
@@ -32,7 +35,11 @@ class FileFavoriteService<DBSession>(
         db.withTransaction { session ->
             files.forEachIndexed { index, path ->
                 try {
-                    val fileId = FileDescriptions.stat.call(FindByPath(path), userCloud).orThrow().fileId
+                    val fileId =
+                        FileDescriptions.stat.call(
+                            StatRequest(path, attributes = "${StorageFileAttribute.fileId}"),
+                            userCloud
+                        ).orThrow().fileId
                     val favorite = dao.isFavorite(session, user, fileId)
 
                     val fileAudit = audit?.files?.get(index)
@@ -54,12 +61,12 @@ class FileFavoriteService<DBSession>(
         return failures
     }
 
-    fun getFavoriteStatus(files: List<StorageFile>, user: String): Map<String, Boolean> =
+    fun getFavoriteStatus(files: List<StorageFile>, user: SecurityPrincipalToken): Map<String, Boolean> =
         db.withTransaction { dao.bulkIsFavorite(it, files, user) }
 
     suspend fun listAll(
         pagination: NormalizedPaginationRequest,
-        user: String
+        user: SecurityPrincipalToken
     ): Page<StorageFile> {
         val fileIds = db.withTransaction {
             dao.listAll(it, pagination, user)

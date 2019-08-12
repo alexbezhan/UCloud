@@ -114,20 +114,6 @@ test("Upper 5xx range", () =>
     expect(UF.is5xxStatusCode(599)).toBe(true)
 );
 
-// Get sorting icon
-
-test("Arrow up", () =>
-    expect(UF.getSortingIcon(SortBy.PATH, SortOrder.ASCENDING, SortBy.PATH)).toBe("arrowUp")
-);
-
-test("Arrow down", () =>
-    expect(UF.getSortingIcon(SortBy.PATH, SortOrder.DESCENDING, SortBy.PATH)).toBe("arrowDown")
-);
-
-test("Undefined", () =>
-    expect(UF.getSortingIcon(SortBy.PATH, SortOrder.ASCENDING, SortBy.MODIFIED_AT)).toBeUndefined()
-);
-
 // Get owner from ACL
 
 const mockAcls: Acl[] = [
@@ -141,11 +127,11 @@ const mockAcls: Acl[] = [
 ]
 
 test("Get multiple owners from Acls", () =>
-    expect(UF.getOwnerFromAcls(mockAcls)).toBe("1 members")
+    expect(UF.getMembersString(mockAcls)).toBe("2 members")
 );
 
 test("Get single owner from Acls", () =>
-    expect(UF.getOwnerFromAcls([])).toBe("Only You")
+    expect(UF.getMembersString([])).toBe("Only You")
 );
 
 // Get extension from path
@@ -239,42 +225,12 @@ test("Download disallowed", () =>
     expect(UF.downloadAllowed(mockFiles_SensitivityConfidential.items.concat([highSensitivityFile]))).toBe(false)
 );
 
-test("shareSwal", () => {
-    const swal: any = UF.shareSwal();
-    expect(JSON.parse(JSON.stringify(swal.params))).toEqual(JSON.parse(JSON.stringify({
-        title: "Share",
-        input: "text",
-        html: `<div>
-                <input name="access" type="radio" value="read" id="read"/>
-                <label for="read">Can View</label>
-                <span style="margin-left:20px" />
-                <input name="access" type="radio" value="read_edit" id="read_edit"/>
-                <label for="read_edit">Can View and Edit</label>
-            </div>`,
-        showCloseButton: true,
-        showCancelButton: true,
-        inputPlaceholder: "Enter username...",
-        focusConfirm: false,
-        inputValidator: () => undefined
-    })));
-});
-
-describe("Get sorting icon", () => {
-    test("Matching sortBy, up", () =>
-        expect(UF.getSortingIcon(SortBy.ACL, SortOrder.ASCENDING, SortBy.ACL)).toBe("arrowUp")
-    )
-
-    test("Matching sortBy, down", () =>
-        expect(UF.getSortingIcon(SortBy.ACL, SortOrder.DESCENDING, SortBy.ACL)).toBe("arrowDown")
-    )
-});
-
 describe("sortingColumnToValue", () => {
     const file = mockFiles_SensitivityConfidential.items[0];
     const favoritedFile = mockFiles_SensitivityConfidential.items[1];
 
     test("TYPE", () => {
-        expect(UF.sortingColumnToValue(SortBy.TYPE, file)).toBe(UF.capitalized(file.fileType))
+        expect(UF.sortingColumnToValue(SortBy.FILE_TYPE, file)).toBe(UF.capitalized(file.fileType))
     })
     test("PATH", () => {
         expect(UF.sortingColumnToValue(SortBy.PATH, file)).toBe(getFilenameFromPath(file.path))
@@ -289,10 +245,10 @@ describe("sortingColumnToValue", () => {
         expect(UF.sortingColumnToValue(SortBy.SIZE, file)).toBe(sizeToString(file.size as number))
     })
     test("ACL", () => {
-        expect(UF.sortingColumnToValue(SortBy.ACL, file)).toBe(UF.getOwnerFromAcls(file.acl as Acl[]))
+        expect(UF.sortingColumnToValue(SortBy.ACL, file)).toBe(UF.getMembersString(file.acl as Acl[]))
     })
     test("SENSITIVITY", () => {
-        expect(UF.sortingColumnToValue(SortBy.SENSITIVITY, file)).toBe(SensitivityLevel[file.sensitivityLevel as SensitivityLevelMap])
+        expect(UF.sortingColumnToValue(SortBy.SENSITIVITY_LEVEL, file)).toBe(SensitivityLevel[file.sensitivityLevel as SensitivityLevelMap])
     })
 });
 
@@ -312,7 +268,7 @@ describe("If Present", () => {
 
 describe("defaultErrorHandler", () => {
     test.skip("Todo", () =>
-        expect(UF.defaultErrorHandler({ request: new XMLHttpRequest(), response: undefined }, () => undefined)).toBe(0)
+        expect(UF.defaultErrorHandler({ request: new XMLHttpRequest(), response: undefined })).toBe(0)
     );
 });
 

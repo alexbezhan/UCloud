@@ -1,54 +1,74 @@
 import styled from "styled-components";
-import { textAlign, TextAlignProps, WidthProps, width, MinWidthProps, minWidth } from "styled-system";
-import theme from "./theme";
-import { Cursor } from "./Types";
+import {
+    textAlign,
+    TextAlignProps,
+    WidthProps,
+    width,
+    MinWidthProps,
+    minWidth,
+    ColorProps,
+    color
+} from "styled-system";
+import {Theme} from "./theme";
+import {Cursor} from "./Types";
 
-export const Table = styled.table< WidthProps & MinWidthProps >`
+export const Table = styled.table<WidthProps & MinWidthProps & ColorProps>`
+    ${color}
     border: 0px;
     border-spacing: 0;
     table-layout: fixed;
-    ${width} ${minWidth}
+    ${width} ${minWidth} ${color}
 `;
 
+Table.displayName = "Table";
+
 Table.defaultProps = {
+    backgroundColor: "white",
     width: "100%",
     minWidth: "15em"
-}
+};
 
 export const TableBody = styled.tbody``;
+
+TableBody.displayName = "TableBody";
 
 export const TableCell = styled.td<TextAlignProps>`
     border: 0px;
     border-spacing: 0;
-    ${textAlign};
+    ${textAlign}
 `;
 
-const highlighted = ({ highlighted }: { highlighted?: boolean }) => highlighted ? { backgroundColor: theme.colors.tableRowHighlight } : null;
+TableCell.displayName = "TableCell";
 
-const contentAlign = props => props.aligned ? { verticalAlign: props.aligned } : null;
+const highlighted = ({highlighted, theme}: {highlighted?: boolean, theme: Theme}) =>
+    highlighted ? {backgroundColor: theme.colors.tableRowHighlight} : null;
 
-
-export const TableRow = styled.tr<{ highlighted?: boolean, contentAlign?: string, cursor?: Cursor }>`
+export const TableRow = styled.tr<{highlighted?: boolean, contentAlign?: string, cursor?: Cursor} & ColorProps>`
     ${highlighted};
-    ${contentAlign};
     cursor: ${props => props.cursor};
 
     & > ${TableCell} {
         border-spacing: 0;
         border-top: 1px solid rgba(34,36,38,.1);
-        padding-top: 11px;
-        padding-bottom: 11px;
+        padding-top: 8px;
+        padding-bottom: 8px;
     }
 `;
 
 TableRow.defaultProps = {
+    backgroundColor: "white",
     cursor: "auto"
-}
+};
+
+TableRow.displayName = "TableRow";
 
 export const TableHeader = styled.thead`
+    background-color: ${({theme}) => theme.colors.white};
     padding-top: 11px;
     padding-bottom: 11px;
 `;
+
+TableHeader.displayName = "TableHeader";
 
 export const TableHeaderCell = styled.th<TextAlignProps & WidthProps>`
     border-spacing: 0;
@@ -56,5 +76,7 @@ export const TableHeaderCell = styled.th<TextAlignProps & WidthProps>`
     ${textAlign};
     ${width} ${minWidth}
 `;
+
+TableHeaderCell.displayName = "TableHeaderCell";
 
 export default Table;

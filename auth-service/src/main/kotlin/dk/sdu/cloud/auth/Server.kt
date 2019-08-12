@@ -41,6 +41,7 @@ import dk.sdu.cloud.micro.tokenValidation
 import dk.sdu.cloud.service.CommonServer
 import dk.sdu.cloud.service.TokenValidationJWT
 import dk.sdu.cloud.service.configureControllers
+import dk.sdu.cloud.service.db.HibernateSession
 import dk.sdu.cloud.service.db.withTransaction
 import dk.sdu.cloud.service.startServices
 import io.ktor.application.install
@@ -49,6 +50,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.routing.route
 import io.ktor.routing.routing
 import org.slf4j.Logger
+import java.io.File
 import java.security.SecureRandom
 import java.util.*
 
@@ -133,35 +135,8 @@ class Server(
             log.info("In development mode. Checking if we need to create a dummy account.")
             val existingDevAdmin = db.withTransaction { userDao.findByIdOrNull(it, "admin@dev") }
             if (existingDevAdmin == null) {
-                log.info("Creating a dummy admin")
-                val random = SecureRandom()
-                val passwordBytes = ByteArray(PASSWORD_BYTES)
-                random.nextBytes(passwordBytes)
-                val password = Base64.getEncoder().encodeToString(passwordBytes)
-
-                val user = personService.createUserByPassword(
-                    "Admin",
-                    "Dev",
-                    "admin@dev",
-                    Role.ADMIN,
-                    password
-                )
-
-                userCreationService.blockingCreateUser(user)
-                val token = tokenService.createAndRegisterTokenFor(
-                    user, AccessTokenContents(
-                        user,
-                        listOf(SecurityScope.ALL_WRITE),
-                        createdAt = System.currentTimeMillis(),
-                        expiresAt = System.currentTimeMillis() + ONE_YEAR_IN_MILLS
-                    )
-                )
-
-                log.info("Username: admin@dev")
-                log.info("accessToken = ${token.accessToken}")
-                log.info("refreshToken = ${token.refreshToken}")
-                log.info("Access token expires in one year.")
-                log.info("Password is: '$password'")
+                createTestAccount(personService, userCreationService, tokenService, "admin@dev", Role.ADMIN)
+                createTestAccount(personService, userCreationService, tokenService, "user@dev", Role.USER)
             }
         }
 
@@ -235,6 +210,59 @@ class Server(
         }
 
         startServices()
+    }
+
+    private fun createTestAccount(
+        personService: PersonService,
+        userCreationService: UserCreationService<HibernateSession>,
+        tokenService: TokenService<HibernateSession>,
+
+        username: String,
+        role: Role
+    ) {
+        log.info("Creating a dummy admin")
+        val random = SecureRandom()
+        val passwordBytes = ByteArray(PASSWORD_BYTES)
+        random.nextBytes(passwordBytes)
+        val password = Base64.getEncoder().encodeToString(passwordBytes)
+
+        val user = personService.createUserByPassword(
+            "Admin",
+            "Dev",
+            username,
+            role,
+            password
+        )
+
+        userCreationService.blockingCreateUser(user)
+        val token = tokenService.createAndRegisterTokenFor(
+            user, AccessTokenContents(
+                user,
+                listOf(SecurityScope.ALL_WRITE),
+                createdAt = System.currentTimeMillis(),
+                expiresAt = System.currentTimeMillis() + ONE_YEAR_IN_MILLS
+            )
+        )
+
+        log.info("Username: $username")
+        log.info("accessToken = ${token.accessToken}")
+        log.info("refreshToken = ${token.refreshToken}")
+        log.info("Access token expires in one year.")
+        log.info("Password is: '$password'")
+        log.info("---------------")
+
+        if (role == Role.ADMIN) {
+            val idx = micro.commandLineArguments.indexOf("--save-config")
+            if (idx != -1) {
+                val configLocation = micro.commandLineArguments.getOrNull(idx + 1) ?: return
+                File(configLocation).writeText(
+                    """
+                        ---
+                        refreshToken: "${token.refreshToken}"
+                    """.trimIndent()
+                )
+            }
+        }
     }
 
     override fun stop() {

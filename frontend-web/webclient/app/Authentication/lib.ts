@@ -4,8 +4,10 @@ import {
     is5xxStatusCode,
     inSuccessRange
 } from "UtilityFunctions";
-import { GLOBAL_addSnack } from "App";
-import { SnackType } from "Snackbar/Snackbars";
+import {SnackType} from "Snackbar/Snackbars";
+import {snackbarStore} from "Snackbar/SnackbarStore";
+import {Store} from "redux";
+import {ReduxObject} from "DefaultObjects";
 
 export interface Override {
     path: string,
@@ -16,16 +18,19 @@ export interface Override {
     }
 }
 
+interface CallParameters {
+    method: string;
+    path: string;
+    body?: object;
+    context?: string;
+    maxRetries?: number;
+    disallowProjects?: boolean;
+}
+
 /**
  * Represents an instance of the SDUCloud object used for contacting the backend, implicitly using JWTs.
  */
 export default class SDUCloud {
-    /**
-     * @constructor
-     * @param {string} - context 
-     * @param {string} - serviceName 
-     */
-
     private readonly context: string;
     private readonly serviceName: string;
     private readonly authContext: string;
@@ -36,6 +41,12 @@ export default class SDUCloud {
     private csrfToken: string;
     private decodedToken: any;
     private forceRefresh: boolean = false;
+
+
+    // private projectId: string | undefined = "9aa73f48-7cec-4a25-9a52-f2a784ff9ad2";
+    private projectId: string | undefined = undefined;
+    private projectAccessToken: string | undefined = undefined;
+    private projectDecodedToken: any | undefined = undefined;
 
     overrides: Override[] = [];
 
@@ -71,6 +82,18 @@ export default class SDUCloud {
         }
     }
 
+    initializeStore(store: Store<ReduxObject>) {
+        store.subscribe(() => {
+            const project = store.getState().project.project;
+            if (project !== this.projectId) {
+                console.log("Something");
+                this.projectId = project;
+                this.projectDecodedToken = undefined;
+                this.projectAccessToken = undefined;
+            }
+        });
+    }
+
     /**
      * Makes an AJAX call to the API. This will automatically add relevant authorization headers.
      * If the user's JWT has expired this will automatically attempt to refresh it.
@@ -85,11 +108,22 @@ export default class SDUCloud {
      * @param {string} path - the path, should not contain context or /api/
      * @param {object} body - the request body, assumed to be a JS object to be encoded as JSON.
      * @param {string} context - the base of the request (e.g. "/api")
+     * @param {number} maxRetries - the amount of times the call should be retried on failure (Default: 5).
+     * @param {disallowProjects} disallowProjects - true if this call should not use the project token (Default: false).
      * @return {Promise} promise
      */
-    async call(method: string, path: string, body?: object, context: string = this.apiContext, maxRetries: number = 5): Promise<any> {
+    async call(
+        {
+            method,
+            path,
+            body,
+            context = this.apiContext,
+            maxRetries = 5,
+            disallowProjects = false
+        }: CallParameters
+    ): Promise<any> {
         if (path.indexOf("/") !== 0) path = "/" + path;
-        return this.receiveAccessTokenOrRefreshIt().then(token => {
+        return this.receiveAccessTokenOrRefreshIt(disallowProjects).then(token => {
             return new Promise((resolve, reject) => {
                 let req = new XMLHttpRequest();
                 req.open(method, this.computeURL(context, path));
@@ -103,12 +137,18 @@ export default class SDUCloud {
                     }
 
                     if (maxRetries >= 1 && is5xxStatusCode(req.status)) {
-                        this.call(method, path, body, context, maxRetries - 1)
+                        this.call({
+                            method: method,
+                            path: path,
+                            body: body,
+                            context: context,
+                            maxRetries: maxRetries - 1
+                        })
                             .catch(e => reject(e)).then(e => resolve(e));
                     } else {
-                        reject({ request: req, response: parsedResponse });
+                        reject({request: req, response: parsedResponse});
                     }
-                }
+                };
 
                 req.onload = async () => {
                     try {
@@ -145,7 +185,7 @@ export default class SDUCloud {
         });
     }
 
-    computeURL(context: string, path: string): string {
+    public computeURL(context: string, path: string): string {
         let absolutePath = context + path;
         for (let i = 0; i < this.overrides.length; i++) {
             let override = this.overrides[i];
@@ -166,62 +206,69 @@ export default class SDUCloud {
     /**
      * Calls with the GET HTTP method. See call(method, path, body)
      */
-    async get<T = any>(path: string, context = this.apiContext): Promise<{ request: XMLHttpRequest, response: T }> {
-        return this.call("GET", path, undefined, context);
+    public async get<T = any>(path: string, context = this.apiContext,
+                       disallowProjects: boolean = false): Promise<{ request: XMLHttpRequest, response: T }> {
+        return this.call({method: "GET", path, body: undefined, context, disallowProjects});
     }
 
     /**
      * Calls with the POST HTTP method. See call(method, path, body)
      */
-    async post<T = any>(path: string, body?: object, context = this.apiContext): Promise<{ request: XMLHttpRequest, response: T }> {
-        return this.call("POST", path, body, context);
+    public async post<T = any>(path: string, body?: object, context = this.apiContext,
+                        disallowProjects: boolean = false): Promise<{ request: XMLHttpRequest, response: T }> {
+        return this.call({method: "POST", path, body, context, disallowProjects});
     }
 
     /**
      * Calls with the PUT HTTP method. See call(method, path, body)
      */
-    async put<T = any>(path: string, body: object, context = this.apiContext): Promise<{ request: XMLHttpRequest, response: T }> {
-        return this.call("PUT", path, body, context);
+    public async put<T = any>(path: string, body: object, context = this.apiContext,
+                       disallowProjects: boolean = false): Promise<{ request: XMLHttpRequest, response: T }> {
+        return this.call({method: "PUT", path, body, context, disallowProjects});
     }
 
     /**
      * Calls with the DELETE HTTP method. See call(method, path, body)
      */
-    async delete<T = any>(path: string, body: object, context = this.apiContext): Promise<{ request: XMLHttpRequest, response: T }> {
-        return this.call("DELETE", path, body, context);
+    public async delete<T = void>(path: string, body: object, context = this.apiContext,
+                          disallowProjects: boolean = false): Promise<{ request: XMLHttpRequest, response: T }> {
+        return this.call({method: "DELETE", path, body, context, disallowProjects});
     }
 
     /**
      * Calls with the PATCH HTTP method. See call(method, path, body)
      */
-    async patch<T = any>(path: string, body: object, context = this.apiContext): Promise<{ request: XMLHttpRequest, response: T }> {
-        return this.call("PATCH", path, body, context);
+    public async patch<T = any>(path: string, body: object, context = this.apiContext,
+                         disallowProjects: boolean = false): Promise<{ request: XMLHttpRequest, response: T }> {
+        return this.call({method: "PATCH", path, body, context, disallowProjects});
     }
 
     /**
      * Calls with the OPTIONS HTTP method. See call(method, path, body)
      */
-    async options<T = any>(path: string, body: object, context = this.apiContext): Promise<{ request: XMLHttpRequest, response: T }> {
-        return this.call("OPTIONS", path, body, context);
+    public async options<T = any>(path: string, body: object, context = this.apiContext,
+                           disallowProjects: boolean = false): Promise<{ request: XMLHttpRequest, response: T }> {
+        return this.call({method: "OPTIONS", path, body, context, disallowProjects});
     }
 
     /**
      * Calls with the HEAD HTTP method. See call(method, path, body)
      */
-    async head<T = any>(path: string, context = this.apiContext): Promise<{ request: XMLHttpRequest, response: T }> {
-        return this.call("HEAD", path, undefined, context);
+    public async head<T = any>(path: string, context = this.apiContext,
+                        disallowProjects: boolean = false): Promise<{ request: XMLHttpRequest, response: T }> {
+        return this.call({method: "HEAD", path, body: undefined, context, disallowProjects});
     }
 
     /**
      * Opens up a new page which contains the login page at the auth service. This login page will automatically
      * redirect back to the correct service (using serviceName).
      */
-    openBrowserLoginPage() {
+    public openBrowserLoginPage() {
         if (window.location.href !== this.context + "/app/login")
             window.location.href = this.context + "/app/login";
     }
 
-    openLandingPage() {
+    public openLandingPage() {
         if (window.location.href !== this.context + "/app/")
             window.location.href = this.context + "/app/";
     }
@@ -229,32 +276,36 @@ export default class SDUCloud {
     /**
      * @returns the username of the authenticated user or null
      */
-    get username(): string | undefined {
+    public get username(): string | undefined {
         let info = this.userInfo;
         if (info) return info.sub;
         else return undefined;
     }
 
+    public get activeUsername(): string | undefined {
+        if (this.useProjectToken(false) && !!this.projectDecodedToken) {
+            return this.projectDecodedToken.payload.sub;
+        } else {
+            return this.username;
+        }
+    }
+
     /**
      * @returns {string} the homefolder path for the currently logged in user (with trailing slash).
      */
-    get homeFolder(): string {
+    public get homeFolder(): string {
         let username = this.username;
+        if (this.projectId !== undefined) {
+            username = this.projectId;
+        }
         return `/home/${username}/`
     }
 
-    /**
-     * @returns {string} the location of the jobs folder for the currently logged in user (with trailing slash)
-     */
-    get jobFolder(): string {
-        return `${this.homeFolder}Jobs/`
-    }
-
-    get trashFolder(): string {
+    public get trashFolder(): string {
         return `${this.homeFolder}Trash/`
     }
 
-    get isLoggedIn(): boolean {
+    public get isLoggedIn(): boolean {
         return this.userInfo != null;
     }
 
@@ -279,7 +330,7 @@ export default class SDUCloud {
      * will be able to put whatever they want in this. This is normally not a problem since all backend services _will_
      * verify the token.
      */
-    get userInfo(): undefined | JWT {
+    private get userInfo(): undefined | JWT {
         let token = this.decodedToken;
         if (!token) return undefined;
         else return this.decodedToken.payload;
@@ -291,6 +342,18 @@ export default class SDUCloud {
         else return userInfo.principalType;
     }
 
+    private useProjectToken(disallowProjects: boolean): boolean {
+        return this.projectId !== undefined && !disallowProjects;
+    }
+
+    private retrieveToken(disallowProjects: boolean): string {
+        if (this.useProjectToken(disallowProjects)) {
+            return this.projectAccessToken!;
+        } else {
+            return SDUCloud.storedAccessToken;
+        }
+    }
+
     /**
      * Attempts to receive a (non-expired) JWT access token from storage. In case the token has expired at attempt will
      * be made to refresh it. If it is not possible to refresh the token a MissingAuthError will be thrown. This would
@@ -299,19 +362,19 @@ export default class SDUCloud {
      *
      * @return {Promise} a promise of an access token
      */
-    receiveAccessTokenOrRefreshIt(): Promise<any> {
+    receiveAccessTokenOrRefreshIt(disallowProjects: boolean = false): Promise<any> {
         let tokenPromise: Promise<any> | null = null;
-        if (this.isTokenExpired() || this.forceRefresh) {
-            tokenPromise = this.refresh();
+        if (this.isTokenExpired(disallowProjects) || this.forceRefresh) {
+            tokenPromise = this.refresh(disallowProjects);
             this.forceRefresh = false;
         } else {
-            tokenPromise = new Promise((resolve, reject) => resolve(SDUCloud.storedAccessToken));
+            tokenPromise = new Promise((resolve, reject) => resolve(this.retrieveToken(disallowProjects)));
         }
         return tokenPromise;
     }
 
-    createOneTimeTokenWithPermission(permission): Promise<any> {
-        return this.receiveAccessTokenOrRefreshIt()
+    createOneTimeTokenWithPermission(permission, disallowProjects: boolean = false): Promise<any> {
+        return this.receiveAccessTokenOrRefreshIt(disallowProjects)
             .then(token => {
                 let oneTimeToken = `${this.context}${this.authContext}/request/?audience=${permission}`;
                 return new Promise((resolve, reject) => {
@@ -321,9 +384,9 @@ export default class SDUCloud {
                     req.setRequestHeader("Content-Type", "application/json");
                     req.onload = () => {
                         try {
-                            if (inRange({ status: req.status, min: 200, max: 299 })) {
+                            if (inRange({status: req.status, min: 200, max: 299})) {
                                 const response = req.response.length === 0 ? "{}" : req.response;
-                                resolve({ response: JSON.parse(response), request: req });
+                                resolve({response: JSON.parse(response), request: req});
                             } else {
                                 reject(req.response);
                             }
@@ -336,41 +399,59 @@ export default class SDUCloud {
             }).then((data: any) => new Promise((resolve, reject) => resolve(data.response.accessToken)));
     }
 
-    private refresh() {
-        let csrfToken = SDUCloud.storedCsrfToken;
-        if (!csrfToken) {
+    private async refresh(disallowProjects: boolean): Promise<string> {
+        const project = this.projectId;
+        if (project !== undefined && !disallowProjects) {
+            const result = await this.post("/projects/auth", {project}, undefined, true);
+            if (inSuccessRange(result.request.status)) {
+                const accessToken = result.response.accessToken;
+                this.projectAccessToken = accessToken;
+                this.projectDecodedToken = this.decodeToken(accessToken);
+                return accessToken;
+            } else {
+                if (result.request.status === 401 || result.request.status === 400) {
+                    SDUCloud.clearTokens();
+                    this.openBrowserLoginPage();
+                }
+
+                throw Error("Unable to refresh token")
+            }
+        } else {
+            let csrfToken = SDUCloud.storedCsrfToken;
+            if (!csrfToken) {
+                return new Promise((resolve, reject) => {
+                    reject(this.missingAuth());
+                });
+            }
+
+            let refreshPath = this.context + this.authContext + "/refresh/web";
             return new Promise((resolve, reject) => {
-                reject(this.missingAuth());
+                let req = new XMLHttpRequest();
+                req.open("POST", refreshPath);
+                req.setRequestHeader("X-CSRFToken", csrfToken);
+                req.onload = () => {
+                    try {
+                        if (inSuccessRange(req.status)) {
+                            resolve(JSON.parse(req.response));
+                        } else {
+                            if (req.status === 401 || req.status === 400) {
+                                SDUCloud.clearTokens();
+                                this.openBrowserLoginPage();
+                            }
+                            reject({status: req.status, response: req.response});
+                        }
+                    } catch (e) {
+                        reject({status: e.status, response: e.response});
+                    }
+                };
+                req.send();
+            }).then((data: any) => {
+                return new Promise((resolve, reject) => {
+                    this.setTokens(data.accessToken, data.csrfToken);
+                    resolve(data.accessToken);
+                });
             });
         }
-
-        let refreshPath = this.context + this.authContext + "/refresh/web";
-        return new Promise((resolve, reject) => {
-            let req = new XMLHttpRequest();
-            req.open("POST", refreshPath);
-            req.setRequestHeader("X-CSRFToken", csrfToken);
-            req.onload = () => {
-                try {
-                    if (inSuccessRange(req.status)) {
-                        resolve(JSON.parse(req.response));
-                    } else {
-                        if (req.status === 401 || req.status === 400) {
-                            this.clearTokens();
-                            this.openBrowserLoginPage();
-                        }
-                        reject({ status: req.status, response: req.response });
-                    }
-                } catch (e) {
-                    reject({ status: e.status, response: e.response });
-                }
-            };
-            req.send();
-        }).then((data: any) => {
-            return new Promise((resolve, reject) => {
-                this.setTokens(data.accessToken, data.csrfToken);
-                resolve(data.accessToken);
-            });
-        });
     }
 
     /**
@@ -379,7 +460,7 @@ export default class SDUCloud {
      * @param accessToken the (JWT) access token.
      * @param csrfToken the csrf token
      */
-    setTokens(accessToken: string, csrfToken: string) {
+    public setTokens(accessToken: string, csrfToken: string): void {
         if (!accessToken) throw this.missingAuth();
 
         this.accessToken = accessToken;
@@ -394,31 +475,30 @@ export default class SDUCloud {
 
     private decodeToken(accessToken: string): any {
         const bail = (): never => {
-            this.clearTokens();
+            SDUCloud.clearTokens();
             this.openBrowserLoginPage();
             return void (0) as never;
         };
         try {
-            const token = jwt.decode(accessToken, { complete: true });
+            const token = jwt.decode(accessToken, {complete: true});
 
             if (token === null) {
                 return bail();
-            } if (typeof token === "string") {
+            }
+
+            if (typeof token === "string") {
                 return bail();
-            } else if (typeof token === "object" && token !== null) {
+            } else if (typeof token === "object") {
                 const payload = token.payload;
                 const isValid = "sub" in payload &&
                     "uid" in payload &&
-                    "lastName" in payload &&
                     "aud" in payload &&
                     "role" in payload &&
                     "iss" in payload &&
-                    "firstNames" in payload &&
                     "exp" in payload &&
                     "extendedByChain" in payload &&
                     "iat" in payload &&
-                    "principalType" in payload &&
-                    "publicSessionReference" in payload;
+                    "principalType" in payload;
 
                 if (!isValid) {
                     console.log("Bailing. Bad JWT");
@@ -434,7 +514,7 @@ export default class SDUCloud {
         }
     }
 
-    async logout() {
+    public async logout() {
         try {
             const res = await fetch(`${this.context}${this.authContext}/logout/web`, {
                 headers: {
@@ -449,15 +529,14 @@ export default class SDUCloud {
                 window.localStorage.removeItem("csrfToken");
                 this.openBrowserLoginPage();
                 return;
-            };
+            }
             throw Error("The server was unreachable, please try again later.")
         } catch (err) {
-            // FIXME, not ideal way of showing error
-            GLOBAL_addSnack({ message: err.message, type: SnackType.Failure });
+            snackbarStore.addSnack({message: err.message, type: SnackType.Failure});
         }
     }
 
-    clearTokens() {
+    private static clearTokens() {
         SDUCloud.storedAccessToken = "";
         SDUCloud.storedCsrfToken = "";
     }
@@ -478,12 +557,12 @@ export default class SDUCloud {
         window.localStorage.setItem("csrfToken", value);
     }
 
-    private isTokenExpired() {
-        const token = this.decodedToken;
+    private isTokenExpired(disallowProject: boolean) {
+        const token = this.useProjectToken(disallowProject) ? this.projectDecodedToken : this.decodedToken;
         if (!token || !token.payload) return true;
         const nowInSeconds = Math.floor(Date.now() / 1000);
-        const inFiveMinutes = nowInSeconds + (5 * 60);
-        return token.payload.exp < inFiveMinutes;
+        const inOneMinute = nowInSeconds + (60);
+        return token.payload.exp < inOneMinute;
     }
 
     private missingAuth() {
@@ -499,20 +578,21 @@ export default class SDUCloud {
 interface JWT {
     sub: string
     uid: number
-    lastName: string
+    lastName?: string
     aud: string
     role: string
     iss: string
-    firstNames: string
+    firstNames?: string
     exp: number
     extendedByChain: any[]
     iat: number
     principalType: string
-    publicSessionReference: string
+    publicSessionReference?: string
 }
 
 export class MissingAuthError {
     private name: string;
+
     constructor() {
         this.name = "MissingAuthError";
     }

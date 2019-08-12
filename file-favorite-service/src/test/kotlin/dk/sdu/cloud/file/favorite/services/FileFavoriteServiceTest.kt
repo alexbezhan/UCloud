@@ -1,6 +1,9 @@
 package dk.sdu.cloud.file.favorite.services
 
 import dk.sdu.cloud.CommonErrorMessage
+import dk.sdu.cloud.SecurityPrincipal
+import dk.sdu.cloud.SecurityPrincipalToken
+import dk.sdu.cloud.SecurityScope
 import dk.sdu.cloud.file.api.FileDescriptions
 import dk.sdu.cloud.file.favorite.storageFile
 import dk.sdu.cloud.service.test.ClientMock
@@ -20,8 +23,8 @@ class FileFavoriteServiceTest {
         ClientMock.mockCall(FileDescriptions.stat) { req ->
             val file = when (req.path) {
                 "/home/user/1" -> storageFile
-                "/home/user/2" -> storageFile.copy(path = "/home/user/2", fileId = "fileId2")
-                "/home/user/3" -> storageFile.copy(path = "/home/user/3", fileId = "fileId3")
+                "/home/user/2" -> storageFile.copy(pathOrNull = "/home/user/2", fileIdOrNull = "fileId2")
+                "/home/user/3" -> storageFile.copy(pathOrNull = "/home/user/3", fileIdOrNull = "fileId3")
                 else -> null
             }
             if (file != null) {
@@ -45,7 +48,7 @@ class FileFavoriteServiceTest {
             runBlocking {
                 val failures = service.toggleFavorite(
                     listOf("/home/user/1", "/home/user/2", "/home/user/3"),
-                    user.username,
+                    user.createToken(),
                     cloud
                 )
                 assertTrue(failures.isEmpty())
@@ -53,10 +56,10 @@ class FileFavoriteServiceTest {
             val favorites = service.getFavoriteStatus(
                 listOf(
                     storageFile,
-                    storageFile.copy(path = "/home/user/2", fileId = "fileId2"),
-                    storageFile.copy(path = "/home/user/4", fileId = "fileId4")
+                    storageFile.copy(pathOrNull = "/home/user/2", fileIdOrNull = "fileId2"),
+                    storageFile.copy(pathOrNull = "/home/user/4", fileIdOrNull = "fileId4")
                 ),
-                user.username
+                user.createToken()
             )
 
             assertTrue(favorites["fileId"]!!)
@@ -66,7 +69,7 @@ class FileFavoriteServiceTest {
             runBlocking {
                 val failures = service.toggleFavorite(
                     listOf("/home/user/1", "/home/user/2", "/home/user/3"),
-                    user.username,
+                    user.createToken(),
                     cloud
                 )
                 assertTrue(failures.isEmpty())
@@ -75,10 +78,10 @@ class FileFavoriteServiceTest {
             val favorites2 = service.getFavoriteStatus(
                 listOf(
                     storageFile,
-                    storageFile.copy(path = "/home/user/2", fileId = "fileId2"),
-                    storageFile.copy(path = "/home/user/4", fileId = "fileId4")
+                    storageFile.copy(pathOrNull = "/home/user/2", fileIdOrNull = "fileId2"),
+                    storageFile.copy(pathOrNull = "/home/user/4", fileIdOrNull = "fileId4")
                 ),
-                user.username
+                user.createToken()
             )
 
             assertFalse(favorites2["fileId"]!!)
@@ -102,7 +105,7 @@ class FileFavoriteServiceTest {
             runBlocking {
                 val failures = service.toggleFavorite(
                     listOf("/home/user/1", "/home/user/4", "/home/user/5"),
-                    user.username,
+                    user.createToken(),
                     cloud
                 )
                 assertEquals("/home/user/4", failures.first())
@@ -112,9 +115,9 @@ class FileFavoriteServiceTest {
             val favorites = service.getFavoriteStatus(
                 listOf(
                     storageFile,
-                    storageFile.copy(path = "/home/user/2", fileId = "fileId2")
+                    storageFile.copy(pathOrNull = "/home/user/2", fileIdOrNull = "fileId2")
                 ),
-                user.username
+                user.createToken()
             )
 
             assertTrue(favorites["fileId"]!!)
@@ -129,3 +132,12 @@ class FileFavoriteServiceTest {
         assertEquals("username", entity.username)
     }
 }
+
+
+fun SecurityPrincipal.createToken(): SecurityPrincipalToken = SecurityPrincipalToken(
+    this,
+    listOf(SecurityScope.ALL_WRITE),
+    0,
+    Long.MAX_VALUE,
+    null
+)

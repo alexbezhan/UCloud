@@ -6,10 +6,12 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 enum class AccessRight {
     READ,
     WRITE,
+
+    @Deprecated("No longer in use")
     EXECUTE
 }
 
-data class AccessEntry(val entity: String, val isGroup: Boolean, val rights: Set<AccessRight>)
+data class AccessEntry(val entity: String, val rights: Set<AccessRight>)
 
 enum class FileType {
     FILE,
@@ -22,6 +24,11 @@ interface StorageFile {
     @get:JsonProperty("fileType")
     val fileTypeOrNull: FileType?
 
+    /**
+     * The canonical path of the file
+     *
+     * Because SDUCloud doesn't support hard links we are guaranteed that each file has exactly one canonical path.
+     */
     @get:JsonProperty("path")
     val pathOrNull: String?
 
@@ -31,6 +38,9 @@ interface StorageFile {
     @get:JsonProperty("modifiedAt")
     val modifiedAtOrNull: Long?
 
+    /**
+     * The SDUCloud username of the creator of this file
+     */
     @get:JsonProperty("ownerName")
     val ownerNameOrNull: String?
 
@@ -46,6 +56,7 @@ interface StorageFile {
     @get:JsonProperty("ownSensitivityLevel")
     val ownSensitivityLevelOrNull: SensitivityLevel?
 
+    @Deprecated("No longer in use")
     @get:JsonProperty("link")
     val linkOrNull: Boolean?
 
@@ -53,11 +64,27 @@ interface StorageFile {
     @Deprecated("no longer in use")
     val annotationsOrNull: Set<String>?
 
+    /**
+     * The unique ID of the file
+     *
+     * The ID is guaranteed to be unique for an entire file system. Across (potential) federation it is not guaranteed
+     * to be unique.
+     *
+     * The ID is an opaque identifier, and its contents is entirely implementation dependant. For the CephFS
+     * implementation this identifier corresponds to the inode of the file.
+     */
     @get:JsonProperty("fileId")
     val fileIdOrNull: String?
 
+    /**
+     * The SDUCloud username of the creator of this file
+     */
     @get:JsonProperty("creator")
     val creatorOrNull: String?
+
+    @Deprecated("No longer in use")
+    @get:JsonProperty("canonicalPath")
+    val canonicalPathOrNull: String?
 }
 
 val StorageFile.fileType: FileType
@@ -87,18 +114,19 @@ val StorageFile.sensitivityLevel: SensitivityLevel
 val StorageFile.ownSensitivityLevel: SensitivityLevel?
     get() = ownSensitivityLevelOrNull
 
+@Deprecated("No longer in use")
 val StorageFile.link: Boolean
     get() = linkOrNull!!
-
-@Deprecated("no longer in use")
-val StorageFile.annotations: Set<String>
-    get() = annotationsOrNull!!
 
 val StorageFile.fileId: String
     get() = fileIdOrNull!!
 
 val StorageFile.creator: String
     get() = creatorOrNull!!
+
+@Deprecated("No longer in use")
+val StorageFile.canonicalPath: String
+    get() = canonicalPathOrNull!!
 
 data class StorageFileImpl(
     override val fileTypeOrNull: FileType?,
@@ -109,12 +137,14 @@ data class StorageFileImpl(
     override val sizeOrNull: Long?,
     override val aclOrNull: List<AccessEntry>? = emptyList(),
     override val sensitivityLevelOrNull: SensitivityLevel? = SensitivityLevel.PRIVATE,
-    override val linkOrNull: Boolean? = false,
     override val annotationsOrNull: Set<String>? = emptySet(),
     override val fileIdOrNull: String?,
     override val creatorOrNull: String?,
     override val ownSensitivityLevelOrNull: SensitivityLevel?
-) : StorageFile
+) : StorageFile {
+    override val linkOrNull: Boolean? = null
+    override val canonicalPathOrNull = pathOrNull
+}
 
 fun StorageFile(
     fileType: FileType,
@@ -125,26 +155,24 @@ fun StorageFile(
     size: Long = 0,
     acl: List<AccessEntry>? = emptyList(),
     sensitivityLevel: SensitivityLevel = SensitivityLevel.PRIVATE,
-    link: Boolean = false,
     annotations: Set<String> = emptySet(),
     fileId: String = "",
     creator: String = ownerName,
     ownSensitivityLevel: SensitivityLevel? = SensitivityLevel.PRIVATE
 ): StorageFileImpl {
     return StorageFileImpl(
-        fileType,
-        path,
-        createdAt,
-        modifiedAt,
-        ownerName,
-        size,
-        acl,
-        sensitivityLevel,
-        link,
-        annotations,
-        fileId,
-        creator,
-        ownSensitivityLevel
+        fileTypeOrNull = fileType,
+        pathOrNull = path,
+        createdAtOrNull = createdAt,
+        modifiedAtOrNull = modifiedAt,
+        ownerNameOrNull = ownerName,
+        sizeOrNull = size,
+        aclOrNull = acl,
+        sensitivityLevelOrNull = sensitivityLevel,
+        annotationsOrNull = annotations,
+        fileIdOrNull = fileId,
+        creatorOrNull = creator,
+        ownSensitivityLevelOrNull = ownSensitivityLevel
     )
 }
 

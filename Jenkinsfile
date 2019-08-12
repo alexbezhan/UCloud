@@ -46,7 +46,7 @@ volumes: [
             }*/
             for (String item : serviceList) {
                 needToBuild.add(item + "/Jenkinsfile")
-            }          
+            } 
 
             String currentResult1
             String currentResult2
@@ -57,7 +57,6 @@ volumes: [
             int i = 0
 
             def resultList = [""] * size
-            /*
             while (true) {
                 stage("building and testing ${serviceList[i]}, ${serviceList[i+1]}, ${serviceList[i+2]}, ${serviceList[i+3]}") {
                     parallel (
@@ -83,7 +82,7 @@ volumes: [
                 if (i >= size-jumpsize) {
                     break
                 }
-            }*/
+            }
 
             for (i; i < needToBuild.size(); i++) {
                 stage("building and testing ${serviceList[i]}"){
@@ -91,8 +90,8 @@ volumes: [
                     resultList[i] = currentResult
                 }
             }
-
-            /*if (resultList.contains("FAILURE") || resultList.contains("UNSTABLE")) {
+            println(resultList)
+            if (resultList.contains("FAILURE") || resultList.contains("UNSTABLE")) {
                 String message = "Following services are marked UNSTABLE due to failing tests:\n"
                 for (int k = 0; k < resultList.size(); k++) {
                     if (resultList[k] == "UNSTABLE") {
@@ -101,13 +100,16 @@ volumes: [
                 }
                 message = message + "\nFollowing services have FAILED during builds:\n"
                 for (int k = 0; k < resultList.size(); k++) {
-                    if (resultList[k] == "FAILED") {
+                    if (resultList[k] == "FAILURE") {
                         message = message + "${serviceList[k]}\n"
                     }
                 }
                 sendAlert(message)
                 error('Job failed - message have been sent. JobInfo: $resultList \n Message: $message')
-            }*/
+            }
+
+            currentBuild.rawBuild.@result = hudson.model.Result.SUCCESS            
+
             junit '**/build/test-results/**/*.xml'      
             jacoco(
                 execPattern: '**/**.exec',

@@ -1,6 +1,6 @@
 def initialize() {
 
-/*  try {
+  try {
     stage('build storage-service') {
       sh '''cd storage-service
       ./gradlew clean
@@ -11,7 +11,7 @@ def initialize() {
     return 'FAILURE'
   } finally {
     publishHTML([allowmissing: false, alwaysLinkToLastBuild: false, keepAll: true, reportDir: 'storage-service/build/reports/detekt', reportFiles: 'detekt.html', reportName: 'storage-service-detekt-Report', reportTitles: ''])
-  }*/
+  }
 
   try {
     stage('test storage-service') {
@@ -22,9 +22,6 @@ def initialize() {
         apt-get -y install gcc
         apt-get -y install g++
         apt-get -y install acl
-        apt-get -y install curl libxml2-dev libboost-dev cmake pkg-config g++ \
-            qttools5-dev qttools5-dev-tools qtbase5-dev qtbase5-dev-tools \
-            qtchooser qt5-default libqt5svg5-dev
         JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-amd64
         cd storage-service/native
         g++ -std=gnu++0x -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" -shared -o ../src/main/resources/libthreading.so threading.cpp

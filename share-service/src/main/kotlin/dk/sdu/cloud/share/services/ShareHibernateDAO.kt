@@ -1,39 +1,14 @@
 package dk.sdu.cloud.share.services
 
-import dk.sdu.cloud.file.api.AccessRight
-import dk.sdu.cloud.file.api.StorageEvent
-import dk.sdu.cloud.file.api.fileName
-import dk.sdu.cloud.service.NormalizedPaginationRequest
-import dk.sdu.cloud.service.asEnumSet
-import dk.sdu.cloud.service.asInt
-import dk.sdu.cloud.service.db.CriteriaBuilderContext
-import dk.sdu.cloud.service.db.HibernateEntity
-import dk.sdu.cloud.service.db.HibernateSession
-import dk.sdu.cloud.service.db.WithId
-import dk.sdu.cloud.service.db.WithTimestamps
-import dk.sdu.cloud.service.db.countWithPredicate
-import dk.sdu.cloud.service.db.createCriteriaBuilder
-import dk.sdu.cloud.service.db.createQuery
-import dk.sdu.cloud.service.db.criteria
-import dk.sdu.cloud.service.db.deleteCriteria
-import dk.sdu.cloud.service.db.get
-import dk.sdu.cloud.service.db.paginatedList
+import dk.sdu.cloud.file.api.*
+import dk.sdu.cloud.service.*
+import dk.sdu.cloud.service.db.*
 import dk.sdu.cloud.share.api.ShareState
+import org.hibernate.ScrollMode
 import java.util.*
-import javax.persistence.Column
-import javax.persistence.Entity
-import javax.persistence.EnumType
-import javax.persistence.Enumerated
-import javax.persistence.GeneratedValue
-import javax.persistence.Id
-import javax.persistence.Index
-import javax.persistence.Table
-import javax.persistence.Temporal
-import javax.persistence.TemporalType
-import javax.persistence.UniqueConstraint
+import javax.persistence.*
 import javax.persistence.criteria.Predicate
 
-private const val COL_LINK_FILE_ID = "link_id"
 private const val COL_FILE_ID = "file_id"
 private const val COL_SHARED_WITH = "shared_with"
 private const val COL_PATH = "path"
@@ -45,8 +20,7 @@ private const val COL_PATH = "path"
         UniqueConstraint(columnNames = [COL_SHARED_WITH, COL_PATH])
     ],
     indexes = [
-        Index(columnList = COL_FILE_ID),
-        Index(columnList = COL_LINK_FILE_ID)
+        Index(columnList = COL_FILE_ID)
     ]
 )
 data class ShareEntity(
@@ -76,9 +50,6 @@ data class ShareEntity(
     var ownerToken: String,
 
     var recipientToken: String? = null,
-
-    @Column(name = COL_LINK_FILE_ID)
-    var linkId: String? = null,
 
     @Temporal(TemporalType.TIMESTAMP)
     override var createdAt: Date = Date(System.currentTimeMillis()),
@@ -166,11 +137,11 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
     override fun list(
         session: HibernateSession,
         auth: AuthRequirements,
-        state: ShareState?,
+        shareRelation: ShareRelationQuery,
         paging: NormalizedPaginationRequest
     ): ListSharesResponse {
-        val itemsInTotal = countShareGroups(session, auth, state)
-        val items = findShareGroups(session, auth, paging, state)
+        val itemsInTotal = countShareGroups(session, auth, shareRelation)
+        val items = findShareGroups(session, auth, paging, shareRelation)
 
         return ListSharesResponse(
             items,
@@ -178,15 +149,25 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
         )
     }
 
+    override fun listSharedToMe(
+        session: HibernateSession,
+        user: String,
+        paging: NormalizedPaginationRequest
+    ): Page<InternalShare> {
+        return session.paginatedCriteria<ShareEntity>(paging) {
+            (entity[ShareEntity::sharedWith] equal user) and (entity[ShareEntity::state] equal ShareState.ACCEPTED)
+        }.mapItems { it.toModel() }
+    }
+
     private fun countShareGroups(
         session: HibernateSession,
         auth: AuthRequirements,
-        state: ShareState?
+        shareRelation: ShareRelationQuery
     ): Long {
         return session.countWithPredicate<ShareEntity>(
             distinct = true,
             selection = { entity[ShareEntity::path] },
-            predicate = { findSharesBy(auth, state) }
+            predicate = { findSharesBy(auth, shareRelation) }
         )
     }
 
@@ -194,14 +175,14 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
         session: HibernateSession,
         auth: AuthRequirements,
         paging: NormalizedPaginationRequest,
-        state: ShareState?
+        shareRelation: ShareRelationQuery
     ): List<InternalShare> {
         // We first find the share groups (by path)
         val distinctPaths = session.createCriteriaBuilder<String, ShareEntity>().run {
             with(criteria) {
                 select(entity[ShareEntity::path])
                 distinct(true)
-                where(findSharesBy(auth, state))
+                where(findSharesBy(auth, shareRelation))
                 orderBy(ascending(entity[ShareEntity::path]))
             }
         }.createQuery(session).paginatedList(paging)
@@ -209,11 +190,16 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
         // We then retrieve all shares for each group
         return session
             .criteria<ShareEntity>(
-                orderBy = { listOf(ascending(entity[ShareEntity::owner]), ascending(entity[ShareEntity::sharedWith]), ascending(entity[ShareEntity::filename])) },
+                orderBy = {
+                    listOf(
+                        ascending(entity[ShareEntity::state]),
+                        ascending(entity[ShareEntity::filename])
+                    )
+                },
                 predicate = {
                     allOf(
                         entity[ShareEntity::path] isInCollection distinctPaths,
-                        findSharesBy(auth, state)
+                        findSharesBy(auth, shareRelation)
                     )
                 }
             )
@@ -229,9 +215,9 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
         state: ShareState?,
         rights: Set<AccessRight>?,
         path: String?,
-        linkId: String?
+        ownerToken: String?
     ): InternalShare {
-        if (path == null && recipientToken == null && state == null && rights == null && linkId == null) {
+        if (path == null && recipientToken == null && state == null && rights == null) {
             throw ShareException.InternalError("Nothing to update")
         }
 
@@ -241,9 +227,9 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
             share.filename = path.fileName()
         }
         if (recipientToken != null) share.recipientToken = recipientToken
+        if (ownerToken != null) share.ownerToken = ownerToken
         if (state != null) share.state = state
         if (rights != null) share.rights = rights.asInt()
-        if (linkId != null) share.linkId = linkId
 
         session.save(share)
         return share.toModel()
@@ -260,13 +246,13 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
     }
 
     override fun onFilesMoved(session: HibernateSession, events: List<StorageEvent.Moved>): List<InternalShare> {
-        val shares = internalFindAllByFileId(session, events.map { it.id })
+        val shares = internalFindAllByFileId(session, events.map { it.file.fileId })
         if (shares.isNotEmpty()) {
-            val eventsByFileId = events.associateBy { it.id }
+            val eventsByFileId = events.associateBy { it.file.fileId }
             shares.forEach { share ->
                 val event = eventsByFileId[share.fileId] ?: return@forEach
-                share.path = event.path
-                share.filename = event.path.fileName()
+                share.path = event.file.path
+                share.filename = event.file.path.fileName()
                 session.save(share)
             }
         }
@@ -277,27 +263,33 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
     override fun findAllByFileIds(
         session: HibernateSession,
         fileIds: List<String>,
-        includeShares: Boolean,
-        includeLinks: Boolean
+        includeShares: Boolean
     ): List<InternalShare> {
-        return internalFindAllByFileId(session, fileIds, includeShares, includeLinks).map { it.toModel() }
+        return internalFindAllByFileId(session, fileIds, includeShares).map { it.toModel() }
     }
 
     override fun deleteAllByShareId(session: HibernateSession, shareIds: List<Long>) {
         session.deleteCriteria<ShareEntity> { entity[ShareEntity::id] isInCollection shareIds }.executeUpdate()
     }
 
+    override fun listAll(session: HibernateSession): Sequence<InternalShare> = sequence {
+        session.createQuery("from ShareEntity").scroll(ScrollMode.FORWARD_ONLY).use { iterator ->
+            while (iterator.next()) {
+                val entity = iterator.get(0) as? ShareEntity ?: break
+                yield(entity.toModel())
+            }
+        }
+    }
+
     private fun internalFindAllByFileId(
         session: HibernateSession,
         fileIds: List<String>,
-        includeShares: Boolean = true,
-        includeLinks: Boolean = false
+        includeShares: Boolean = true
     ): List<ShareEntity> {
         if (fileIds.size > 250) throw IllegalArgumentException("fileIds.size > 250")
         return session.criteria<ShareEntity> {
             allOf(*ArrayList<Predicate>().apply {
                 if (includeShares) add(entity[ShareEntity::fileId] isInCollection fileIds)
-                if (includeLinks) add(entity[ShareEntity::linkId] isInCollection fileIds)
             }.toTypedArray())
         }.list()
     }
@@ -329,11 +321,13 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
 
     private fun CriteriaBuilderContext<*, ShareEntity>.findSharesBy(
         auth: AuthRequirements,
-        state: ShareState?
+        shareRelation: ShareRelationQuery
     ): Predicate {
         val predicates = arrayListOf(isAuthorized(auth))
-        if (state != null) {
-            predicates.add(entity[ShareEntity::state] equal state)
+        if (shareRelation.sharedByMe) {
+            predicates.add(entity[ShareEntity::owner] equal shareRelation.username)
+        } else {
+            predicates.add(entity[ShareEntity::sharedWith] equal shareRelation.username)
         }
         return allOf(*predicates.toTypedArray())
     }
@@ -349,7 +343,6 @@ class ShareHibernateDAO : ShareDAO<HibernateSession> {
             fileId = fileId,
             ownerToken = ownerToken,
             recipientToken = recipientToken,
-            linkId = linkId,
             createdAt = createdAt.time,
             modifiedAt = modifiedAt.time
         )

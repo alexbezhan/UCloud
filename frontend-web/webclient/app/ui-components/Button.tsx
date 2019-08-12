@@ -8,38 +8,39 @@ const size = ({ size, theme }: { size: string, theme: Theme }) => {
       return {
         fontSize: `${theme.fontSizes[0]}px`,
         padding: "5px 10px"
-      }
+      };
     case "small":
       return {
         fontSize: `${theme.fontSizes[0]}px`,
         padding: "7px 12px"
-      }
+      };
     case "medium":
       return {
         fontSize: `${theme.fontSizes[1]}px`,
         padding: "9.5px 18px"
-      }
+      };
     case "large":
       return {
         fontSize: `${theme.fontSizes[2]}px`,
         padding: "12px 22px"
-      }
+      };
     default:
       return {
         fontSize: `${theme.fontSizes[1]}px`,
         padding: "9.5px 18px"
-      }
+      };
   }
 };
 
-export const fullWidth = (props: { fullWidth?: boolean }) => (props.fullWidth ? { width: "100%" } : null)
+export const fullWidth = (props: { fullWidth?: boolean }) => props.fullWidth ? { width: "100%" } : null;
 
 export type ButtonProps = ButtonStyleProps & HeightProps & { fullWidth?: boolean, textColor?: ThemeColor, lineHeight?: number | string } & SpaceProps & SizeProps & { title?: string }
 
 const Button = styled.button<ButtonProps>` 
   -webkit-font-smoothing: antialiased;
-  display: inline-block;
-  vertical-align: middle;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   text-align: center;
   text-decoration: none;
   font-family: inherit;

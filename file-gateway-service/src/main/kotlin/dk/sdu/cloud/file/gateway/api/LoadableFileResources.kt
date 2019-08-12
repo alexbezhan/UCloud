@@ -2,7 +2,7 @@ package dk.sdu.cloud.file.gateway.api
 
 import dk.sdu.cloud.file.api.StorageFile
 
-const val DEFAULT_RESOURCES_TO_LOAD = "favorited"
+val DEFAULT_RESOURCES_TO_LOAD = FileResource.values().joinToString(",") { it.text }
 
 internal const val FAVORITES_BACKEND = "favorites"
 internal const val STORAGE_BACKEND = "storage"
@@ -21,7 +21,8 @@ enum class FileResource(val text: String, internal val backend: String) {
     OWN_SENSITIVITY_LEVEL("ownSensitivityLevel", STORAGE_BACKEND),
     LINK("link", STORAGE_BACKEND),
     FILE_ID("fileId", STORAGE_BACKEND),
-    CREATOR("creator", STORAGE_BACKEND)
+    CREATOR("creator", STORAGE_BACKEND),
+    CANONICAL_PATH("canonicalPath", STORAGE_BACKEND)
 }
 
 internal fun fileResourcesToString(load: Set<FileResource>) =
@@ -34,7 +35,7 @@ interface LoadFileResource {
 val LoadFileResource.resourcesToLoad: Set<FileResource>
     get() = (attributes ?: DEFAULT_RESOURCES_TO_LOAD).split(",").mapNotNull { param ->
         FileResource.values().find { it.text == param }
-    }.toSet()
+    }.toSet().normalize()
 
 class StorageFileWithMetadata(
     delegate: StorageFile,
@@ -42,3 +43,11 @@ class StorageFileWithMetadata(
     // custom resources
     val favorited: Boolean?
 ) : StorageFile by delegate
+
+private fun Set<FileResource>.normalize(): Set<FileResource> {
+    val result = HashSet(this)
+    if (FileResource.FAVORITES in result) {
+        result += FileResource.FILE_ID
+    }
+    return result
+}

@@ -1,25 +1,25 @@
 import * as React from "react";
-import { ActivityGroup } from "Activity";
+import {ActivityGroup} from "Activity";
 import * as Module from "Activity";
 import * as moment from "moment";
-import { getFilenameFromPath, replaceHomeFolder } from "Utilities/FileUtilities";
-import { fileInfoPage } from "Utilities/FileUtilities";
-import Icon, { IconName } from "ui-components/Icon";
-import { Flex, Text, Link, Box } from "ui-components";
-import Table, { TableRow, TableCell, TableBody, TableHeader, TableHeaderCell } from "ui-components/Table";
-import { Cloud } from "Authentication/SDUCloudObject";
+import {getFilenameFromPath, replaceHomeFolder} from "Utilities/FileUtilities";
+import {fileInfoPage} from "Utilities/FileUtilities";
+import Icon, {IconName} from "ui-components/Icon";
+import {Flex, Text, Box} from "ui-components";
+import Table, {TableRow, TableCell, TableBody, TableHeader, TableHeaderCell} from "ui-components/Table";
+import {Cloud} from "Authentication/SDUCloudObject";
 import styled from "styled-components";
-import { Link as ReactRouterLink } from "react-router-dom";
-import { colors } from "ui-components/theme";
+import {Link as ReactRouterLink} from "react-router-dom";
+import {colors} from "ui-components/theme";
 
 export class ActivityFeedFrame extends React.PureComponent<{ containerRef?: React.RefObject<any> }> {
     render() {
         return <Table>
             <TableHeader>
                 <TFRow>
-                    <TableHeaderCell width="12em" />
-                    <TableHeaderCell width="10.5em" />
-                    <TableHeaderCell width="99%" />
+                    <TableHeaderCell width="12em"/>
+                    <TableHeaderCell width="10.5em"/>
+                    <TableHeaderCell width="99%"/>
                 </TFRow>
             </TableHeader>
             <TableBody ref={this.props.containerRef}>
@@ -30,9 +30,9 @@ export class ActivityFeedFrame extends React.PureComponent<{ containerRef?: Reac
 
 }
 
-export const ActivityFeed = ({ activity }: { activity: Module.Activity[] }) => (
+export const ActivityFeed = ({activity}: { activity: Module.Activity[] }) => (
     <ActivityFeedFrame>
-        {groupActivity(activity).map((a, i) => <ActivityFeedItem key={i} activity={a} />)}
+        {groupActivity(activity).map((a, i) => <ActivityFeedItem key={i} activity={a}/>)}
     </ActivityFeedFrame>
 );
 
@@ -42,12 +42,12 @@ const ActivityEvent: React.FunctionComponent<{ event: Module.Activity }> = props
         <b>
             <ReactRouterLink to={fileInfoPage(props.event.originalFilePath)}>
                 <div className="ellipsis">
-                    {getFilenameFromPath(props.event.originalFilePath)}
+                    <Text color="black">{getFilenameFromPath(props.event.originalFilePath)}</Text>
                 </div>
             </ReactRouterLink>
         </b>
         {" "}
-        <OperationText event={props.event} />
+        <OperationText event={props.event}/>
     </div>
 );
 
@@ -60,8 +60,9 @@ const OperationText: React.FunctionComponent<{ event: Module.Activity }> = props
                 {" "}
                 <b>
                     <ReactRouterLink to={fileInfoPage((props.event as Module.MovedActivity).newName)}>
-                        <div className="ellipsis">
-                            {replaceHomeFolder((props.event as Module.MovedActivity).newName, Cloud.homeFolder)}
+                    <div className="ellipsis">
+                            <Text
+                                color="black">{replaceHomeFolder((props.event as Module.MovedActivity).newName, Cloud.homeFolder)}</Text>
                         </div>
                     </ReactRouterLink>
                 </b>
@@ -84,8 +85,8 @@ const OperationText: React.FunctionComponent<{ event: Module.Activity }> = props
 };
 
 export const ActivityFeedSpacer = (props: { height: number }) => (
-    <tr style={{ height: `${props.height}px` }} />
-)
+    <tr style={{height: `${props.height}px`}}/>
+);
 
 interface ActivityFeedProps {
     activity: ActivityGroup
@@ -97,24 +98,24 @@ export class ActivityFeedItem extends React.Component<ActivityFeedProps> {
     }
 
     render() {
-        const { activity } = this.props;
+        const {activity} = this.props;
         return <TFRow>
             <TableCell>
                 <Text fontSize={1} color="text">
                     {moment(new Date(activity.newestTimestamp)).fromNow()}
-                    <br />
+                    <br/>
                     {moment(new Date(activity.newestTimestamp)).format("lll")}
                 </Text>
             </TableCell>
             <TableCell>
                 <Flex>
-                    <Icon mr="0.5em" name={eventIcon(activity.type).icon} />
+                    <Icon mr="0.5em" name={eventIcon(activity.type).icon}/>
                     <Text fontSize={2}>{`Files ${operationToPastTense(activity.type)}`}</Text>
                 </Flex>
             </TableCell>
             <TableCell>
                 {activity.items.map((item, idx) =>
-                    <ActivityEvent key={idx} event={item} />
+                    <ActivityEvent key={idx} event={item}/>
                 )}
 
                 {!!activity.numberOfHiddenResults ?
@@ -131,14 +132,20 @@ export class ActivityFeedItem extends React.Component<ActivityFeedProps> {
 
 const operationToPastTense = (operation: Module.ActivityType): string => {
     switch (operation) {
-        case Module.ActivityType.DELETED: return "deleted";
-        case Module.ActivityType.DOWNLOAD: return "downloaded";
-        case Module.ActivityType.FAVORITE: return "favorited";
-        case Module.ActivityType.INSPECTED: return "inspected";
-        case Module.ActivityType.MOVED: return "moved";
-        case Module.ActivityType.UPDATED: return "updated";
+        case Module.ActivityType.DELETED:
+            return "deleted";
+        case Module.ActivityType.DOWNLOAD:
+            return "downloaded";
+        case Module.ActivityType.FAVORITE:
+            return "favorited";
+        case Module.ActivityType.INSPECTED:
+            return "inspected";
+        case Module.ActivityType.MOVED:
+            return "moved";
+        case Module.ActivityType.UPDATED:
+            return "updated";
     }
-}
+};
 
 interface EventIconAndColor {
     icon: IconName
@@ -147,19 +154,19 @@ interface EventIconAndColor {
 const eventIcon = (operation: Module.ActivityType): EventIconAndColor => {
     switch (operation) {
         case Module.ActivityType.FAVORITE:
-            return { icon: "starFilled" };
+            return {icon: "starFilled"};
         case Module.ActivityType.DOWNLOAD:
-            return { icon: "download" };
+            return {icon: "download"};
         case Module.ActivityType.UPDATED:
-            return { icon: "refresh" };
+            return {icon: "refresh"};
         case Module.ActivityType.DELETED:
-            return { icon: "close" };
+            return {icon: "close"};
         case Module.ActivityType.MOVED:
-            return { icon: "move" };
+            return {icon: "move"};
         default:
-            return { icon: "ellipsis" };
+            return {icon: "ellipsis"};
     }
-}
+};
 
 function groupActivity(items: Module.Activity[] = []): ActivityGroup[] {
     const result: ActivityGroup[] = [];

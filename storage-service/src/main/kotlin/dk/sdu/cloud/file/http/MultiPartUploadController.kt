@@ -12,13 +12,15 @@ import dk.sdu.cloud.file.api.MultiPartUploadAudit
 import dk.sdu.cloud.file.api.MultiPartUploadDescriptions
 import dk.sdu.cloud.file.api.UploadRequestAudit
 import dk.sdu.cloud.file.api.WriteConflictPolicy
-import dk.sdu.cloud.file.services.BackgroundScope
+import dk.sdu.cloud.file.services.background.BackgroundScope
 import dk.sdu.cloud.file.services.BulkUploader
 import dk.sdu.cloud.file.services.CoreFileSystemService
 import dk.sdu.cloud.file.services.FSCommandRunnerFactory
 import dk.sdu.cloud.file.services.FSUserContext
+import dk.sdu.cloud.file.services.FileAttribute
 import dk.sdu.cloud.file.services.FileSensitivityService
 import dk.sdu.cloud.file.services.withContext
+import dk.sdu.cloud.file.util.FSException
 import dk.sdu.cloud.service.Controller
 import dk.sdu.cloud.service.Loggable
 import io.ktor.http.HttpStatusCode
@@ -34,43 +36,6 @@ class MultiPartUploadController<Ctx : FSUserContext>(
     private val sensitivityService: FileSensitivityService<Ctx>
 ) : Controller {
     override fun configure(rpcServer: RpcServer) = with(rpcServer) {
-        implement(MultiPartUploadDescriptions.upload) {
-            audit(MultiPartUploadAudit(null))
-
-            request.asIngoing().receiveBlocks { req ->
-                val sensitivity = req.sensitivity
-                val owner = ctx.securityPrincipal.username
-
-                audit(
-                    MultiPartUploadAudit(
-                        UploadRequestAudit(
-                            req.location,
-                            sensitivity,
-                            owner
-                        )
-                    )
-                )
-
-                val upload = req.upload
-                if (upload != null) {
-                    commandRunnerFactory.withContext(owner) { ctx ->
-                        val policy = req.policy ?: WriteConflictPolicy.OVERWRITE
-
-                        val location = fs.write(ctx, req.location, policy) {
-                            val out = this
-                            req.upload.channel.copyTo(out)
-                        }
-
-                        if (sensitivity != null) {
-                            sensitivityService.setSensitivityLevel(ctx, location, sensitivity, owner)
-                        }
-                        Unit
-                    }
-                }
-            }
-            ok(Unit)
-        }
-
         implement(MultiPartUploadDescriptions.simpleUpload) {
             audit(MultiPartUploadAudit(null))
             val owner = ctx.securityPrincipal.username
@@ -88,9 +53,23 @@ class MultiPartUploadController<Ctx : FSUserContext>(
             )
 
             commandRunnerFactory.withContext(owner) { ctx ->
+                log.debug("writing")
+
+                val ingoingRequest = request.file.asIngoing()
                 val location = fs.write(ctx, request.location, policy) {
-                    request.file.asIngoing().channel.copyTo(this)
+                    ingoingRequest.channel.copyTo(this)
                 }
+
+                //handles cancellation of uploads
+                if (ingoingRequest.length != null) {
+                    val stat = fs.statOrNull(ctx, location, setOf(FileAttribute.SIZE))
+                    if (ingoingRequest.length != stat?.size) {
+                        fs.delete(ctx, location)
+                        throw FSException.BadRequest("File upload aborted")
+                    }
+                }
+
+                log.debug("done writing")
 
                 if (sensitivity != null) {
                     sensitivityService.setSensitivityLevel(ctx, location, sensitivity, owner)
@@ -101,6 +80,7 @@ class MultiPartUploadController<Ctx : FSUserContext>(
 
         implement(MultiPartUploadDescriptions.simpleBulkUpload) {
             val user = ctx.securityPrincipal.username
+            audit(BulkUploadAudit(request.location, WriteConflictPolicy.OVERWRITE, user))
 
             val uploader =
                 BulkUploader.fromFormat(request.format, commandRunnerFactory.type)
@@ -109,7 +89,7 @@ class MultiPartUploadController<Ctx : FSUserContext>(
             val archiveName = request.name ?: "upload"
             val policy = request.policy ?: WriteConflictPolicy.RENAME
 
-            audit(BulkUploadAudit(request.location, policy, request.format))
+            audit(BulkUploadAudit(request.location, policy, user))
 
             val temporaryFile = Files.createTempFile("upload", ".bin").toFile()
             temporaryFile.outputStream().use { outs ->
@@ -131,44 +111,6 @@ class MultiPartUploadController<Ctx : FSUserContext>(
                     )
                 } finally {
                     runCatching { temporaryFile.delete() }
-                }
-            }
-
-            ok(BulkUploadErrorMessage("OK"), HttpStatusCode.Accepted)
-        }
-
-        implement(MultiPartUploadDescriptions.bulkUpload) {
-            val user = ctx.securityPrincipal.username
-
-            request.asIngoing().receiveBlocks { req ->
-                val uploader =
-                    BulkUploader.fromFormat(req.format, commandRunnerFactory.type) ?: return@receiveBlocks error(
-                        CommonErrorMessage("Unsupported format '${req.format}'"),
-                        HttpStatusCode.BadRequest
-                    )
-
-                val archiveName = req.upload.fileName ?: "upload"
-
-                audit(BulkUploadAudit(req.location, req.policy, req.format))
-
-                val outputFile = Files.createTempFile("upload", ".tar.gz").toFile()
-                req.upload.channel.copyTo(outputFile.outputStream())
-                BackgroundScope.launch {
-                    uploader.upload(
-                        serviceCloud,
-                        fs,
-                        { commandRunnerFactory(user) },
-                        req.location,
-                        req.policy,
-                        outputFile.inputStream(),
-                        req.sensitivity,
-                        sensitivityService,
-                        archiveName
-                    )
-                    try {
-                        outputFile.delete()
-                    } catch (_: Exception) {
-                    }
                 }
             }
 

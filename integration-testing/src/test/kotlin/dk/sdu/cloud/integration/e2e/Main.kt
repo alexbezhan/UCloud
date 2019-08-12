@@ -13,7 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-const val HOST = "https://dev.cloud.sdu.dk"
+const val HOST = "https://cloud.sdu.dk"
 lateinit var driver: WebDriver
 
 class EndToEndTest {
@@ -23,7 +23,7 @@ class EndToEndTest {
         driver = FirefoxDriver()
         with(driver) {
             try {
-                get(HOST)
+                get("$HOST/app/dashboard")
                 await { driver.currentUrl.contains("login") }
 
                 login(username, password)
@@ -41,7 +41,7 @@ class EndToEndTest {
                 renameFiles()
                 favoriteFiles()
             } finally {
-//                close()
+                close()
             }
         }
     }
@@ -262,7 +262,7 @@ object UploadDialog {
     }
 
     fun close() {
-        driver.findElement(By.tagName("body")).sendKeys(Keys.ESCAPE)
+        driver.get(driver.currentUrl)
         await { !isOpen }
     }
 }
@@ -307,12 +307,17 @@ class FileRow(private val element: WebElement) {
     val renameField: WebElement?
         get() = element.findElementOrNull(byTag("renameField"))
 
-    fun openDropdown() {
-        if (dropdown != null) return
+    val isDropdownOpen: Boolean
+        get() = dropdown?.findElement(By.tagName("div"))?.isDisplayed ?: false
+
+    private fun openDropdown() {
+        if (isDropdownOpen) return
 
         if (dropdown == null) {
             checkBox!!.click()
         }
+
+
 
         retrySection {
             dropdown!!.click()
@@ -323,11 +328,9 @@ class FileRow(private val element: WebElement) {
         openDropdown()
         val dropdownOptions = dropdown!!.findElement(By.tagName("div"))!!.findElements(By.tagName("div"))
         val find = dropdownOptions.find { el ->
-            println(el.text)
             el.findElement(By.tagName("span"))?.text == option.option
-        }!!
-        println(find.text)
-        find.click()
+        }
+        find?.click()
     }
 }
 

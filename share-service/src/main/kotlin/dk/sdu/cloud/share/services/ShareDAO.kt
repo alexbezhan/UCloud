@@ -3,8 +3,11 @@ package dk.sdu.cloud.share.services
 import dk.sdu.cloud.file.api.AccessRight
 import dk.sdu.cloud.file.api.StorageEvent
 import dk.sdu.cloud.service.NormalizedPaginationRequest
+import dk.sdu.cloud.service.Page
 import dk.sdu.cloud.share.api.Share
 import dk.sdu.cloud.share.api.ShareState
+
+data class ShareRelationQuery(val username: String, val sharedByMe: Boolean)
 
 /**
  * Provides an interface to the [Share] data layer
@@ -47,9 +50,15 @@ interface ShareDAO<Session> {
     fun list(
         session: Session,
         auth: AuthRequirements,
-        state: ShareState? = null,
+        shareRelation: ShareRelationQuery,
         paging: NormalizedPaginationRequest = NormalizedPaginationRequest(null, null)
     ): ListSharesResponse
+
+    fun listSharedToMe(
+        session: Session,
+        user: String,
+        paging: NormalizedPaginationRequest
+    ): Page<InternalShare>
 
     fun updateShare(
         session: Session,
@@ -59,7 +68,7 @@ interface ShareDAO<Session> {
         state: ShareState? = null,
         rights: Set<AccessRight>? = null,
         path: String? = null,
-        linkId: String? = null
+        ownerToken: String? = null
     ): InternalShare
 
     fun deleteShare(
@@ -76,14 +85,15 @@ interface ShareDAO<Session> {
     fun findAllByFileIds(
         session: Session,
         fileIds: List<String>,
-        includeShares: Boolean = true,
-        includeLinks: Boolean = false
+        includeShares: Boolean = true
     ): List<InternalShare>
 
     fun deleteAllByShareId(
         session: Session,
         shareIds: List<Long>
     )
+
+    fun listAll(session: Session): Sequence<InternalShare>
 }
 
 data class ListSharesResponse(

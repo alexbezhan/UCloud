@@ -1,7 +1,11 @@
 package dk.sdu.cloud.file.services
 
-import dk.sdu.cloud.file.api.AccessRight
+import dk.sdu.cloud.calls.client.AuthenticatedClient
+import dk.sdu.cloud.calls.client.call
+import dk.sdu.cloud.file.api.FileSortBy
 import dk.sdu.cloud.file.api.FileType
+import dk.sdu.cloud.file.api.SensitivityLevel
+import dk.sdu.cloud.file.api.SortOrder
 import dk.sdu.cloud.file.api.StorageEvent
 import dk.sdu.cloud.file.api.WriteConflictPolicy
 import dk.sdu.cloud.file.api.fileName
@@ -12,7 +16,12 @@ import dk.sdu.cloud.file.api.relativize
 import dk.sdu.cloud.file.util.FSException
 import dk.sdu.cloud.file.util.retryWithCatch
 import dk.sdu.cloud.file.util.throwExceptionBasedOnStatus
+import dk.sdu.cloud.notification.api.CreateNotification
+import dk.sdu.cloud.notification.api.Notification
+import dk.sdu.cloud.notification.api.NotificationDescriptions
 import dk.sdu.cloud.service.Loggable
+import dk.sdu.cloud.service.NormalizedPaginationRequest
+import dk.sdu.cloud.service.Page
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -20,7 +29,9 @@ const val XATTR_BIRTH = "birth"
 
 class CoreFileSystemService<Ctx : FSUserContext>(
     private val fs: LowLevelFileSystemInterface<Ctx>,
-    private val eventProducer: StorageEventProducer
+    private val eventProducer: StorageEventProducer,
+    private val sensitivityService: FileSensitivityService<Ctx>,
+    private val cloud: AuthenticatedClient
 ) {
     private suspend fun writeTimeOfBirth(
         ctx: Ctx,
@@ -66,21 +77,45 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         ctx: Ctx,
         from: String,
         to: String,
+        sensitivityLevel: SensitivityLevel,
         conflictPolicy: WriteConflictPolicy
     ): String {
         val normalizedFrom = from.normalize()
-        val fromStat = stat(ctx, from, setOf(FileAttribute.FILE_TYPE))
+        val fromStat = stat(ctx, from, setOf(FileAttribute.FILE_TYPE, FileAttribute.SIZE))
         if (fromStat.fileType != FileType.DIRECTORY) {
+            if (fromStat.size > 10000000000) {
+                sendNotification(
+                    ctx.user,
+                    "Copying $from to $to.",
+                    "file_copy",
+                    mapOf("Destination" to to, "original" to from)
+                )
+            }
             val targetPath = renameAccordingToPolicy(ctx, to, conflictPolicy)
             fs.copy(ctx, from, targetPath, conflictPolicy.allowsOverwrite()).emitAll()
             writeTimeOfBirth(ctx, targetPath)
+            setSensitivity(ctx, targetPath, sensitivityLevel)
+            if (fromStat.size > 10000000000) {
+                sendNotification(
+                    ctx.user,
+                    "Done copying $from to $to.",
+                    "file_copy",
+                    mapOf("Destination" to to, "original" to from)
+                )
+            }
             return targetPath
         } else {
+            sendNotification(
+                ctx.user,
+                "Copying $from to $to.",
+                "dir_copy",
+                mapOf("Destination" to to, "original" to from)
+            )
             val newRoot = renameAccordingToPolicy(ctx, to, conflictPolicy).normalize()
             fs.makeDirectory(ctx, newRoot).emitAll()
 
-            tree(ctx, from, setOf(FileAttribute.RAW_PATH)).forEach { currentFile ->
-                val currentPath = currentFile.rawPath.normalize()
+            tree(ctx, from, setOf(FileAttribute.PATH)).forEach { currentFile ->
+                val currentPath = currentFile.path.normalize()
                 retryWithCatch(
                     retryDelayInMs = 0L,
                     exceptionFilter = { it is FSException.AlreadyExists },
@@ -93,7 +128,13 @@ class CoreFileSystemService<Ctx : FSUserContext>(
                     }
                 )
             }
-
+            setSensitivity(ctx, newRoot, sensitivityLevel)
+            sendNotification(
+                ctx.user,
+                "Done copying $from to $to.",
+                "dir_copy",
+                mapOf("Destination" to to, "original" to from)
+            )
             return newRoot
         }
     }
@@ -131,6 +172,24 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         mode: Set<FileAttribute>
     ): List<FileRow> {
         return fs.listDirectory(ctx, path, mode).unwrap()
+    }
+
+    suspend fun listDirectorySorted(
+        ctx: Ctx,
+        path: String,
+        mode: Set<FileAttribute>,
+        sortBy: FileSortBy,
+        order: SortOrder,
+        paginationRequest: NormalizedPaginationRequest? = null
+    ): Page<FileRow> {
+        return fs.listDirectoryPaginated(
+            ctx,
+            path,
+            mode,
+            sortBy,
+            paginationRequest,
+            order
+        ).unwrap()
     }
 
     suspend fun tree(
@@ -197,46 +256,6 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         }
     }
 
-    suspend fun createSymbolicLink(
-        ctx: Ctx,
-        targetPath: String,
-        linkPath: String
-    ): StorageEvent.CreatedOrRefreshed {
-        // TODO Automatic renaming... Not a good idea
-        val linkRenamedPath = findFreeNameForNewFile(ctx, linkPath)
-        val filesCreated = fs.createSymbolicLink(ctx, targetPath, linkRenamedPath).emitAll()
-        return filesCreated.single()
-    }
-
-    suspend fun chmod(
-        ctx: Ctx,
-        path: String,
-        owner: Set<AccessRight>,
-        group: Set<AccessRight>,
-        other: Set<AccessRight>,
-        recurse: Boolean,
-        fileIds: ArrayList<String>? = null
-    ) {
-        suspend fun applyChmod(path: String): FSResult<List<StorageEvent.CreatedOrRefreshed>> {
-            return fs.chmod(ctx, path, owner, group, other)
-        }
-
-        if (recurse) {
-            fs.tree(
-                ctx, path, setOf(
-                    FileAttribute.PATH,
-                    FileAttribute.INODE
-                )
-            ).unwrap().forEach {
-                fileIds?.add(it.inode)
-                applyChmod(it.path).emitAll()
-            }
-        } else {
-            fileIds?.add(fs.stat(ctx, path, setOf(FileAttribute.INODE)).unwrap().inode)
-            applyChmod(path).emitAll()
-        }
-    }
-
     private val duplicateNamingRegex = Regex("""\((\d+)\)""")
     private suspend fun findFreeNameForNewFile(ctx: Ctx, desiredPath: String): String {
         fun findFileNameNoExtension(fileName: String): String {
@@ -286,6 +305,32 @@ class CoreFileSystemService<Ctx : FSUserContext>(
                 "$parentPath/$desiredWithoutExtension(${currentMax + 1})$extension"
             }
         }
+    }
+
+    private suspend fun setSensitivity(ctx: Ctx, targetPath: String, sensitivityLevel: SensitivityLevel) {
+        val newSensitivity = stat(ctx, targetPath, setOf(FileAttribute.SENSITIVITY))
+        if (sensitivityLevel != newSensitivity.sensitivityLevel) {
+            sensitivityService.setSensitivityLevel(
+                ctx,
+                targetPath,
+                sensitivityLevel,
+                ctx.user
+            )
+        }
+    }
+
+    private suspend fun sendNotification(user: String, message: String, type: String, notificationMeta: Map<String,Any>) {
+        NotificationDescriptions.create.call(
+            CreateNotification(
+                user,
+                Notification(
+                    type,
+                    message,
+                    meta = notificationMeta
+                )
+            ),
+            cloud
+        )
     }
 
     private fun <T : StorageEvent> FSResult<List<T>>.emitAll(): List<T> {

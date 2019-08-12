@@ -1,184 +1,216 @@
 package dk.sdu.cloud.app.kubernetes.services
 
-import dk.sdu.cloud.app.api.ComputationCallbackDescriptions
-import dk.sdu.cloud.app.api.JobCompletedRequest
-import dk.sdu.cloud.app.api.JobState
-import dk.sdu.cloud.app.api.SimpleDuration
-import dk.sdu.cloud.app.api.StateChangeRequest
-import dk.sdu.cloud.app.api.SubmitComputationResult
-import dk.sdu.cloud.app.api.VerifiedJob
+import dk.sdu.cloud.app.orchestrator.api.*
+import dk.sdu.cloud.app.store.api.ContainerDescription
+import dk.sdu.cloud.app.store.api.SimpleDuration
+import dk.sdu.cloud.app.store.api.buildEnvironmentValue
 import dk.sdu.cloud.calls.RPCException
 import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.calls.client.call
 import dk.sdu.cloud.calls.client.orThrow
 import dk.sdu.cloud.calls.types.BinaryStream
+import dk.sdu.cloud.file.api.LINUX_FS_USER_UID
 import dk.sdu.cloud.service.Loggable
-import io.fabric8.kubernetes.api.model.Container
-import io.fabric8.kubernetes.api.model.ContainerBuilder
-import io.fabric8.kubernetes.api.model.DoneablePod
-import io.fabric8.kubernetes.api.model.EmptyDirVolumeSource
-import io.fabric8.kubernetes.api.model.ObjectMetaBuilder
-import io.fabric8.kubernetes.api.model.PersistentVolumeClaimVolumeSource
-import io.fabric8.kubernetes.api.model.Pod
-import io.fabric8.kubernetes.api.model.PodSpecBuilder
-import io.fabric8.kubernetes.api.model.PodTemplateSpecBuilder
-import io.fabric8.kubernetes.api.model.Volume
-import io.fabric8.kubernetes.api.model.VolumeBuilder
-import io.fabric8.kubernetes.api.model.VolumeMount
-import io.fabric8.kubernetes.api.model.batch.DoneableJob
+import dk.sdu.cloud.service.stackTraceToString
+import io.fabric8.kubernetes.api.model.*
 import io.fabric8.kubernetes.api.model.batch.Job
-import io.fabric8.kubernetes.api.model.batch.JobSpecBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.Watcher
-import io.fabric8.kubernetes.client.dsl.ExecListener
-import io.fabric8.kubernetes.client.dsl.ExecWatch
-import io.fabric8.kubernetes.client.dsl.PodResource
-import io.fabric8.kubernetes.client.dsl.internal.PodOperationsImpl
 import io.ktor.http.HttpStatusCode
 import io.ktor.util.cio.readChannel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import okhttp3.Response
-import java.io.InputStream
-import java.io.OutputStream
-import java.io.PipedInputStream
-import java.io.PipedOutputStream
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.Closeable
+import java.io.File
 import java.nio.file.Files
 import java.time.ZonedDateTime
-import java.util.concurrent.CountDownLatch
 
-private const val JOB_PREFIX = "job-"
-private const val ROLE_LABEL = "role"
-private const val APP_ROLE = "sducloud-app"
+const val JOB_PREFIX = "job-"
+const val ROLE_LABEL = "role"
+const val RANK_LABEL = "rank"
+const val JOB_ID_LABEL = "job-id"
+const val INPUT_DIRECTORY = "/input"
+const val WORKING_DIRECTORY = "/work"
+const val MULTI_NODE_DIRECTORY = "/etc/sducloud"
+const val DATA_STORAGE = "workspace-storage"
+const val MULTI_NODE_STORAGE = "multi-node-config"
+const val MULTI_NODE_CONTAINER = "init"
+
+private class K8JobState(val id: String) {
+    private val mutex: Mutex = Mutex()
+    var finished: Boolean = false
+        private set
+
+    suspend fun markAsFinished(block: suspend () -> Unit) {
+        mutex.withLock {
+            if (!finished) {
+                block()
+                finished = true
+            }
+        }
+    }
+
+    suspend fun withLock(block: suspend () -> Unit) {
+        mutex.withLock {
+            if (!finished) {
+                block()
+            }
+        }
+    }
+}
+
+// This manager will leak memory, but we shouldn't just delete from it when a job finishes. In fact we need it for
+// slightly after we delete a job since we will be notified about it during deletion.
+//
+// Be careful when this leak is being fixed. For now we just leave it in, it is unlikely to leak a lot of memory.
+private class JobManager {
+    private val mutex = Mutex()
+    private val states = HashMap<String, K8JobState>()
+
+    suspend fun get(jobId: String): K8JobState {
+        mutex.withLock {
+            val existing = states[jobId]
+            if (existing != null) return existing
+
+            val state = K8JobState(jobId)
+            states[jobId] = state
+            return state
+        }
+    }
+}
 
 class PodService(
     private val k8sClient: KubernetesClient,
     private val serviceClient: AuthenticatedClient,
-    private val namespace: String = "app-kubernetes"
+    private val networkPolicyService: NetworkPolicyService,
+    private val sharedFileSystemMountService: SharedFileSystemMountService,
+    private val hostAliasesService: HostAliasesService,
+    private val namespace: String = "app-kubernetes",
+    private val appRole: String = "sducloud-app"
 ) {
-    private val dataDirectory = "/data"
-    private val localDirectory = "/scratch"
-    private val temporaryStorage = "temporary-storage"
-    private val dataStorage = "workspace-storage"
-    private val finishedJobs = HashSet<String>()
+    private val jobManager = JobManager()
 
-    private fun podName(requestId: String): String = "$JOB_PREFIX$requestId"
-    private fun reverseLookupJobName(podName: String): String? =
-        if (podName.startsWith(JOB_PREFIX)) podName.removePrefix(JOB_PREFIX) else null
+    private val isRunningInsideKubernetes: Boolean by lazy {
+        runCatching {
+            File("/var/run/secrets/kubernetes.io").exists()
+        }.getOrNull() == true
+    }
 
-    private fun findPod(jobName: String?): Pod? =
-        k8sClient.pods().inNamespace(namespace).withLabel("job-name", jobName).list().items.firstOrNull()
+    private fun jobName(requestId: String, rank: Int): String = "$JOB_PREFIX$requestId-$rank"
+
+    private fun reverseLookupJobName(jobName: String): String? =
+        if (jobName.startsWith(JOB_PREFIX)) jobName.removePrefix(JOB_PREFIX).substringBeforeLast('-') else null
+
+    private fun findPods(jobId: String?): List<Pod> =
+        k8sClient.pods().inNamespace(namespace).withLabel(JOB_ID_LABEL, jobId).list().items
 
     fun initializeListeners() {
         fun handlePodEvent(job: Job) {
             val jobName = job.metadata.name
             val jobId = reverseLookupJobName(jobName) ?: return
 
+            // Check for failure
             val firstOrNull = job.status?.conditions?.firstOrNull()
-            if (firstOrNull != null && firstOrNull.type == "Failed" && firstOrNull.reason == "DeadlineExceeded" &&
-                jobId !in finishedJobs) {
-                finishedJobs.add(jobId)
-
+            if (firstOrNull != null && firstOrNull.type == "Failed" && firstOrNull.reason == "DeadlineExceeded") {
                 GlobalScope.launch {
-                    ComputationCallbackDescriptions.requestStateChange.call(
-                        StateChangeRequest(
-                            jobId,
-                            JobState.TRANSFER_SUCCESS,
-                            job.status.conditions.first().message
-                        ),
-                        serviceClient
-                    ).orThrow()
+                    jobManager.get(jobId).markAsFinished {
+                        ComputationCallbackDescriptions.requestStateChange.call(
+                            StateChangeRequest(
+                                jobId,
+                                JobState.TRANSFER_SUCCESS,
+                                job.status.conditions.first().message
+                            ),
+                            serviceClient
+                        ).orThrow()
 
-                    // TODO FIXME We should still do accounting for the time we spent running code
-                    ComputationCallbackDescriptions.completed.call(
-                        JobCompletedRequest(
-                            jobId,
-                            SimpleDuration(0, 0, 0),
-                            false
-                        ),
-                        serviceClient
-                    ).orThrow()
+                        ComputationCallbackDescriptions.completed.call(
+                            JobCompletedRequest(
+                                jobId,
+                                null,
+                                false
+                            ),
+                            serviceClient
+                        ).orThrow()
+                    }
                 }
 
                 return
             }
 
-            val resource = findPod(jobName)!!
-            val userContainer = resource.status.containerStatuses.getOrNull(0) ?: return
+            val resources = findPods(jobId)
+            if (resources.isEmpty()) return
 
-            val containerState = userContainer.state.terminated
-            if (containerState != null && jobId !in finishedJobs && containerState.startedAt != null) {
+            var isDone = true
+            var maxDurationInMillis = 0L
+            var isSuccess = true
+            for (resource in resources) {
+                val userContainer = resource.status.containerStatuses.getOrNull(0) ?: return
+                val containerState = userContainer.state.terminated
+
+                if (containerState == null || containerState.startedAt == null) {
+                    isDone = false
+                    break
+                }
+
                 val startAt = ZonedDateTime.parse(containerState.startedAt).toInstant().toEpochMilli()
                 val finishedAt =
                     ZonedDateTime.parse(containerState.finishedAt).toInstant().toEpochMilli()
-                log.info("App finished in ${finishedAt - startAt}ms")
 
-                log.debug("Downloading log")
-                val logFile = Files.createTempFile("log", ".txt").toFile()
-                k8sClient.pods().inNamespace(namespace).withName(resource.metadata.name).logReader.use { ins ->
-                    logFile.writer().use { out ->
-                        ins.copyTo(out)
-                    }
+                // We add 5 seconds for just running the application.
+                // It seems unfair that a job completing instantly is accounted for nothing.
+                val duration = ((finishedAt - startAt) + 5_000)
+                if (duration > maxDurationInMillis) {
+                    maxDurationInMillis = duration
                 }
-                log.debug("Log retrieved")
 
-                val duration = run {
-                    // We add 5 seconds for just running the application.
-                    // It seems unfair that a job completing instantly is accounted for nothing.
-                    val durationMs = (finishedAt - startAt) + 5_000
-                    val hours = durationMs / (1000 * 60 * 60)
-                    val minutes = (durationMs % (1000 * 60 * 60)) / (1000 * 60)
-                    val seconds = ((durationMs % (1000 * 60 * 60)) % (1000 * 60)) / 1000
-
-
-                    SimpleDuration(hours.toInt(), minutes.toInt(), seconds.toInt())
+                if (containerState.exitCode != 0) {
+                    isSuccess = false
                 }
-                log.info("Simple duration $duration")
+            }
 
-                finishedJobs.add(jobId)
-
+            if (isDone) {
+                val resource = resources.first()
                 GlobalScope.launch {
-                    ComputationCallbackDescriptions.requestStateChange.call(
-                        StateChangeRequest(
-                            jobId,
-                            JobState.TRANSFER_SUCCESS,
-                            "Job has finished. Total duration: $duration."
-                        ),
-                        serviceClient
-                    ).orThrow()
+                    jobManager.get(jobId).markAsFinished {
+                        val duration = SimpleDuration.fromMillis(maxDurationInMillis)
+                        log.info("App finished in $duration")
 
-                    ComputationCallbackDescriptions.submitFile.call(
-                        SubmitComputationResult(
-                            jobId,
-                            "stdout.txt",
-                            false,
-                            BinaryStream.outgoingFromChannel(logFile.readChannel(), logFile.length())
-                        ),
-                        serviceClient
-                    ).orThrow()
+                        ComputationCallbackDescriptions.requestStateChange.call(
+                            StateChangeRequest(
+                                jobId,
+                                JobState.TRANSFER_SUCCESS,
+                                "Job has finished. Total duration: $duration."
+                            ),
+                            serviceClient
+                        ).orThrow()
 
+                        transferLog(jobId, resource.metadata.name)
 
-                    log.info("Calling completed")
-                    ComputationCallbackDescriptions.completed.call(
-                        JobCompletedRequest(
-                            jobId,
-                            duration,
-                            containerState.exitCode == 0
-                        ),
-                        serviceClient
-                    ).orThrow()
+                        log.info("Calling completed")
+                        ComputationCallbackDescriptions.completed.call(
+                            JobCompletedRequest(
+                                jobId,
+                                duration,
+                                isSuccess
+                            ),
+                            serviceClient
+                        ).orThrow()
+                    }
                 }
             }
         }
 
         // Handle old pods on start up
-        k8sClient.batch().jobs().inNamespace(namespace).withLabel(ROLE_LABEL, APP_ROLE).list().items.forEach {
+        k8sClient.batch().jobs().inNamespace(namespace).withLabel(ROLE_LABEL, appRole).list().items.forEach {
             handlePodEvent(it)
         }
 
         // Watch for new pods
-        k8sClient.batch().jobs().inNamespace(namespace).withLabel(ROLE_LABEL, APP_ROLE).watch(object : Watcher<Job> {
+        k8sClient.batch().jobs().inNamespace(namespace).withLabel(ROLE_LABEL, appRole).watch(object : Watcher<Job> {
             override fun onClose(cause: KubernetesClientException?) {
                 // Do nothing
             }
@@ -189,131 +221,362 @@ class PodService(
         })
     }
 
-    fun create(verifiedJob: VerifiedJob) {
-        val podName = podName(verifiedJob.id)
-
-        log.info("Creating new job with name: $podName")
-
-        k8sClient.batch().jobs().inNamespace(namespace).createNew()
-            .metadata {
-                withName(podName)
-                withNamespace(this@PodService.namespace)
-
-                withLabels(
-                    mapOf(
-                        ROLE_LABEL to APP_ROLE
-                    )
-                )
+    private suspend fun transferLog(jobId: String, podName: String) {
+        log.debug("Downloading log")
+        val logFile = Files.createTempFile("log", ".txt").toFile()
+        k8sClient.pods().inNamespace(namespace).withName(podName)
+            .logReader.use { ins ->
+            logFile.writer().use { out ->
+                ins.copyTo(out)
             }
-            .spec {
-                val deadline = verifiedJob.maxTime.toSeconds()
-                withActiveDeadlineSeconds(deadline)
-                withBackoffLimit(1)
-                withParallelism(1)
+        }
 
-                withTemplate(
-                    PodTemplateSpecBuilder().apply {
-                        metadata {
-                            withName(podName)
-                            withNamespace(this@PodService.namespace)
+        ComputationCallbackDescriptions.submitFile.call(
+            SubmitComputationResult(
+                jobId,
+                "stdout.txt",
+                false,
+                BinaryStream.outgoingFromChannel(logFile.readChannel(), logFile.length())
+            ),
+            serviceClient
+        ).orThrow()
+    }
 
-                            withLabels(
-                                mapOf(
-                                    ROLE_LABEL to APP_ROLE
+    suspend fun cancel(verifiedJob: VerifiedJob) {
+        val pod = findPods(verifiedJob.id).firstOrNull() ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
+        jobManager.get(verifiedJob.id).markAsFinished {
+            transferLog(verifiedJob.id, pod.metadata.name)
+
+            k8sClient.batch().jobs()
+                .inNamespace(namespace)
+                .withLabel(ROLE_LABEL, appRole)
+                .withLabel(JOB_ID_LABEL, verifiedJob.id)
+                .delete()
+
+            ComputationCallbackDescriptions.completed.call(
+                JobCompletedRequest(verifiedJob.id, null, true),
+                serviceClient
+            ).orThrow()
+        }
+    }
+
+    fun create(verifiedJob: VerifiedJob) {
+        log.info("Creating new job with name: ${verifiedJob.id}")
+
+        val (sharedVolumes, sharedMounts) = sharedFileSystemMountService.createVolumesAndMounts(verifiedJob)
+
+        networkPolicyService.createPolicy(verifiedJob.id, verifiedJob.peers.map { it.jobId })
+        val hostAliases = hostAliasesService.findAliasesForPeers(verifiedJob.peers)
+
+        repeat(verifiedJob.nodes) { rank ->
+            val podName = jobName(verifiedJob.id, rank)
+            k8sClient.batch().jobs().inNamespace(namespace).createNew()
+                .metadata {
+                    withName(podName)
+                    withNamespace(this@PodService.namespace)
+
+                    withLabels(
+                        mapOf(
+                            ROLE_LABEL to appRole,
+                            RANK_LABEL to rank.toString(),
+                            JOB_ID_LABEL to verifiedJob.id
+                        )
+                    )
+                }
+                .spec {
+                    val containerConfig = verifiedJob.application.invocation.container ?: ContainerDescription()
+
+                    val deadline = verifiedJob.maxTime.toSeconds()
+                    withActiveDeadlineSeconds(deadline)
+                    withBackoffLimit(1)
+                    withParallelism(1)
+
+                    withTemplate(
+                        PodTemplateSpecBuilder().apply {
+                            metadata {
+                                withName(podName)
+                                withNamespace(this@PodService.namespace)
+
+                                withLabels(
+                                    mapOf(
+                                        ROLE_LABEL to appRole,
+                                        RANK_LABEL to rank.toString(),
+                                        JOB_ID_LABEL to verifiedJob.id
+                                    )
                                 )
-                            )
-                        }
+                            }
 
-                        spec {
-                            withContainers(
-                                container {
-                                    val app = verifiedJob.application.invocation
-                                    val tool = verifiedJob.application.invocation.tool.tool!!.description
-                                    val givenParameters =
-                                        verifiedJob.jobInput.asMap().mapNotNull { (paramName, value) ->
-                                            if (value != null) {
-                                                app.parameters.find { it.name == paramName }!! to value
-                                            } else {
-                                                null
-                                            }
-                                        }.toMap()
+                            spec {
+                                if (verifiedJob.nodes > 1) {
+                                    // Insert multi-node data
+                                    //
+                                    // Each pod creates a single shared volume between the init container and the
+                                    // work container. This shared volume can use `emptyDir`. This directory will be
+                                    // mounted at `/etc/sducloud` and will contain metadata about the other nodes.
 
-                                    val command = app.invocation.flatMap { it.buildInvocationList(givenParameters) }
-
-                                    log.debug("Container is: ${tool.container}")
-                                    log.debug("Executing command: $command")
-
-                                    withName("user-job")
-                                    withImage(tool.container)
-                                    withRestartPolicy("Never")
-                                    withCommand(command)
-
-                                    withWorkingDir(dataDirectory)
-
-                                    withVolumeMounts(
-                                        VolumeMount(localDirectory, null, temporaryStorage, false, null),
-                                        VolumeMount(
-                                            dataDirectory,
-                                            null,
-                                            dataStorage,
-                                            false,
-                                            verifiedJob.workspace?.removePrefix("/") ?: throw RPCException(
-                                                "No workspace found",
-                                                HttpStatusCode.BadRequest
+                                    withInitContainers(
+                                        container {
+                                            withName(MULTI_NODE_CONTAINER)
+                                            withImage("alpine:latest")
+                                            withRestartPolicy("Never")
+                                            withCommand(
+                                                "sh",
+                                                "-c",
+                                                "while [ ! -f $MULTI_NODE_DIRECTORY/job_id.txt ]; do sleep 0.5; done;"
                                             )
-                                        )
+                                            withAutomountServiceAccountToken(false)
+
+                                            withVolumeMounts(
+                                                VolumeMount(
+                                                    MULTI_NODE_DIRECTORY,
+                                                    null,
+                                                    MULTI_NODE_STORAGE,
+                                                    false,
+                                                    null
+                                                )
+                                            )
+                                        }
                                     )
                                 }
-                            )
 
-                            withVolumes(
-                                volume {
-                                    withName(temporaryStorage)
-                                    withEmptyDir(EmptyDirVolumeSource())
-                                },
+                                withContainers(
+                                    container {
+                                        val uid = LINUX_FS_USER_UID.toLong()
+                                        val app = verifiedJob.application.invocation
+                                        val tool = verifiedJob.application.invocation.tool.tool!!.description
+                                        val givenParameters =
+                                            verifiedJob.jobInput.asMap().mapNotNull { (paramName, value) ->
+                                                if (value != null) {
+                                                    app.parameters.find { it.name == paramName }!! to value
+                                                } else {
+                                                    null
+                                                }
+                                            }.toMap()
 
-                                volume {
-                                    withName(dataStorage)
-                                    withPersistentVolumeClaim(PersistentVolumeClaimVolumeSource("cephfs", false))
-                                }
-                            )
-                        }
-                    }.build()
-                )
-            }
-            .done()
+                                        val command = app.invocation.flatMap { it.buildInvocationList(givenParameters) }
+
+                                        log.debug("Container is: ${tool.container}")
+                                        log.debug("Executing command: $command")
+
+                                        withName("user-job")
+                                        withImage(tool.container)
+                                        withRestartPolicy("Never")
+                                        withCommand(command)
+                                        withAutomountServiceAccountToken(false)
+
+                                        run {
+                                            val envVars = ArrayList<EnvVar>()
+
+                                            val builtInVars = mapOf(
+                                                "CLOUD_UID" to uid.toString()
+                                            )
+
+                                            builtInVars.forEach { (t, u) ->
+                                                envVars.add(EnvVar(t, u, null))
+                                            }
+
+                                            verifiedJob.application.invocation.environment?.forEach { (name, value) ->
+                                                if (name !in builtInVars) {
+                                                    val resolvedValue = value.buildEnvironmentValue(givenParameters)
+                                                    if (resolvedValue != null) {
+                                                        envVars.add(EnvVar(name, resolvedValue, null))
+                                                    }
+                                                }
+                                            }
+
+                                            withEnv(envVars)
+                                        }
+
+                                        if (containerConfig.changeWorkingDirectory) {
+                                            withWorkingDir(WORKING_DIRECTORY)
+                                        }
+
+                                        if (containerConfig.runAsRoot) {
+                                            withSecurityContext(
+                                                PodSecurityContext(
+                                                    0,
+                                                    0,
+                                                    false,
+                                                    0,
+                                                    null,
+                                                    emptyList(),
+                                                    emptyList()
+                                                )
+                                            )
+                                        } else if (containerConfig.runAsRealUser) {
+                                            withSecurityContext(
+                                                PodSecurityContext(
+                                                    uid,
+                                                    uid,
+                                                    false,
+                                                    uid,
+                                                    null,
+                                                    emptyList(),
+                                                    emptyList()
+                                                )
+                                            )
+                                        }
+
+                                        withVolumeMounts(
+                                            VolumeMount(
+                                                WORKING_DIRECTORY,
+                                                null,
+                                                DATA_STORAGE,
+                                                false,
+                                                verifiedJob.workspace?.removePrefix("/")?.removeSuffix("/")?.let { it + "/output" }
+                                                    ?: throw RPCException(
+                                                        "No workspace found",
+                                                        HttpStatusCode.BadRequest
+                                                    )
+                                            ),
+
+                                            VolumeMount(
+                                                INPUT_DIRECTORY,
+                                                null,
+                                                DATA_STORAGE,
+                                                true,
+                                                verifiedJob.workspace?.removePrefix("/")?.removeSuffix("/")?.let { it + "/input" }
+                                                    ?: throw RPCException(
+                                                        "No workspace found",
+                                                        HttpStatusCode.BadRequest
+                                                    )
+                                            ),
+
+                                            VolumeMount(
+                                                MULTI_NODE_DIRECTORY,
+                                                null,
+                                                MULTI_NODE_STORAGE,
+                                                true,
+                                                null
+                                            ),
+
+                                            *sharedMounts.toTypedArray()
+                                        )
+
+                                        withHostAliases(*hostAliases.toTypedArray())
+                                    }
+                                )
+
+                                withVolumes(
+                                    volume {
+                                        withName(DATA_STORAGE)
+                                        withPersistentVolumeClaim(PersistentVolumeClaimVolumeSource("cephfs", false))
+                                    },
+
+                                    volume {
+                                        withName(MULTI_NODE_STORAGE)
+                                        withEmptyDir(EmptyDirVolumeSource())
+                                    },
+
+                                    *sharedVolumes.toTypedArray()
+                                )
+                            }
+                        }.build()
+                    )
+                }
+                .done()
+        }
 
         GlobalScope.launch {
             log.info("Awaiting container start!")
             try {
-                awaitCatching(retries = 1200, delay = 100) {
-                    val pod = findPod(podName)!!
-                    val state = pod.status.containerStatuses.first().state
-                    state.running != null || state.terminated != null
+                if (verifiedJob.nodes > 1) {
+                    awaitCatching(retries = 36_000, delay = 100) {
+                        val pods = findPods(verifiedJob.id)
+                        pods.all { pod ->
+                            // Note: We are awaiting the init containers
+                            val state = pod.status.initContainerStatuses.first().state
+                            state.running != null || state.terminated != null
+                        }
+                    }
+
+                    // Now we initialize the files stored in MULTI_NODE_CONFIG
+                    val findPods = findPods(verifiedJob.id)
+
+                    log.info("Found the following pods: ${findPods.map { it.metadata.name }}")
+
+                    val podsWithIp = findPods.map {
+                        val rankLabel = it.metadata.labels[RANK_LABEL]!!.toInt()
+                        rankLabel to it.status.podIP
+                    }
+
+                    log.info(podsWithIp.toString())
+
+                    findPods.forEach { pod ->
+                        val podResource = k8sClient.pods()
+                            .inNamespace(namespace)
+                            .withName(pod.metadata.name)
+
+                        fun writeFile(path: String, contents: String) {
+                            val (out, _, ins) = podResource.execWithDefaultListener(
+                                listOf("sh", "-c", "cat > $path"),
+                                attachStdout = true,
+                                attachStdin = true,
+                                container = MULTI_NODE_CONTAINER
+                            )
+
+                            ins!!.use {
+                                it.write(contents.toByteArray())
+                            }
+                        }
+
+                        podsWithIp.forEach { (rank, ip) ->
+                            writeFile("$MULTI_NODE_DIRECTORY/node-$rank.txt", ip + "\n")
+                        }
+
+                        writeFile("$MULTI_NODE_DIRECTORY/rank.txt", pod.metadata.labels[RANK_LABEL]!! + "\n")
+                        writeFile("$MULTI_NODE_DIRECTORY/number_of_nodes.txt", verifiedJob.nodes.toString() + "\n")
+                        writeFile("$MULTI_NODE_DIRECTORY/job_id.txt", verifiedJob.id + "\n")
+                    }
+
+                    log.debug("Multi node configuration written to all nodes for ${verifiedJob.id}")
                 }
 
-                ComputationCallbackDescriptions.requestStateChange.call(
-                    StateChangeRequest(
-                        verifiedJob.id,
-                        JobState.RUNNING,
-                        "Your job is now running. You will be able to follow the logs while the job is running."
-                    ),
-                    serviceClient
-                ).orThrow()
+                awaitCatching(retries = 36_000, delay = 100) {
+                    val pods = findPods(verifiedJob.id)
+                    pods.all { pod ->
+                        // Note: We are awaiting the user container
+                        val state = pod.status.containerStatuses.first().state
+                        state.running != null || state.terminated != null
+                    }
+                }
+
+                jobManager.get(verifiedJob.id).withLock {
+                    // We need to hold the lock until we get a response to avoid race conditions.
+                    ComputationCallbackDescriptions.requestStateChange.call(
+                        StateChangeRequest(
+                            verifiedJob.id,
+                            JobState.RUNNING,
+                            "Your job is now running. You will be able to follow the logs while the job is running."
+                        ),
+                        serviceClient
+                    ).orThrow()
+                }
             } catch (ex: Throwable) {
-                log.warn("Container did not start within deadline!")
-                ComputationCallbackDescriptions.requestStateChange.call(
-                    StateChangeRequest(verifiedJob.id, JobState.FAILURE, "Job did not start within deadline."),
-                    serviceClient
-                ).orThrow()
+                jobManager.get(verifiedJob.id).markAsFinished {
+                    log.warn("Container did not start within deadline!")
+                    ComputationCallbackDescriptions.requestStateChange.call(
+                        StateChangeRequest(verifiedJob.id, JobState.FAILURE, "Job did not start within deadline."),
+                        serviceClient
+                    ).orThrow()
+                }
             }
         }
     }
 
     fun cleanup(requestId: String) {
-        val pod = podName(requestId)
         try {
-            k8sClient.batch().jobs().inNamespace(namespace).withName(pod).delete()
+            networkPolicyService.deletePolicy(requestId)
+        } catch (ex: KubernetesClientException) {
+            // Ignored
+            if (ex.status.code !in setOf(400, 404)) {
+                log.warn(ex.stackTraceToString())
+            }
+        }
+
+        try {
+            k8sClient.batch().jobs().inNamespace(namespace).withLabel(ROLE_LABEL, appRole)
+                .withLabel(JOB_ID_LABEL, requestId).delete()
         } catch (ex: KubernetesClientException) {
             when (ex.status.code) {
                 400, 404 -> return
@@ -325,8 +588,7 @@ class PodService(
     fun retrieveLogs(requestId: String, startLine: Int, maxLines: Int): Pair<String, Int> {
         return try {
             // This is a stupid implementation that works with the current API. We should be using websockets.
-            val jobName = podName(requestId)
-            val pod = findPod(jobName) ?: return Pair("", 0)
+            val pod = findPods(requestId).firstOrNull() ?: return Pair("", 0)
             val completeLog = k8sClient.pods().inNamespace(namespace).withName(pod.metadata.name).log.lines()
             val lines = completeLog.drop(startLine).take(maxLines)
             val nextLine = startLine + lines.size
@@ -339,193 +601,82 @@ class PodService(
         }
     }
 
+    fun createTunnel(jobId: String, localPortSuggestion: Int, remotePort: Int): Tunnel {
+        val pod = findPods(jobId).firstOrNull() ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
+        fun findPodResource() = k8sClient.pods().inNamespace(namespace).withName(pod.metadata.name)
+        val podResource = findPodResource()
+
+        if (!isRunningInsideKubernetes) {
+            val k8sTunnel = run {
+                podResource.portForward(remotePort)
+                // Using kubectl port-forward appears to be a lot more reliable than using the built-in.
+                ProcessBuilder().apply {
+                    val cmd = listOf(
+                        "kubectl",
+                        "port-forward",
+                        "-n",
+                        namespace,
+                        pod.metadata.name,
+                        "$localPortSuggestion:$remotePort"
+                    )
+                    log.debug("Running command: $cmd")
+                    command(cmd)
+                }.start()
+            }
+
+            // Consume first line (wait for process to be ready)
+            val bufferedReader = k8sTunnel.inputStream.bufferedReader()
+            bufferedReader.readLine()
+
+            val job = GlobalScope.launch(Dispatchers.IO) {
+                // Read remaining lines to avoid buffer filling up
+                bufferedReader.lineSequence().forEach {
+                    // Discard line
+                }
+            }
+
+            log.info("Port forwarding $jobId to $localPortSuggestion")
+            return Tunnel(
+                jobId = jobId,
+                ipAddress = "127.0.0.1",
+                localPort = localPortSuggestion,
+                _isAlive = {
+                    k8sTunnel.isAlive
+                },
+                _close = {
+                    k8sTunnel.destroyForcibly()
+                    job.cancel()
+                }
+            )
+        } else {
+            val ipAddress = podResource.get().status.podIP
+            log.debug("Running inside of kubernetes going directly to pod at $ipAddress")
+            return Tunnel(
+                jobId = jobId,
+                ipAddress = ipAddress,
+                localPort = remotePort,
+                _isAlive = { runCatching { findPodResource()?.get() }.getOrNull() != null },
+                _close = { }
+            )
+        }
+    }
+
     companion object : Loggable {
         override val log = logger()
     }
 }
 
-data class RemoteProcess(
-    val stdout: InputStream?,
-    val stderr: InputStream?,
-    val stdin: OutputStream?
-)
-
-class OutputStreamWithCustomClose(
-    private val delegate: OutputStream,
-    private val onClose: () -> Unit
-) : OutputStream() {
-    override fun write(b: Int) {
-        delegate.write(b)
-    }
-
-    override fun write(b: ByteArray?) {
-        delegate.write(b)
-    }
-
-    override fun write(b: ByteArray?, off: Int, len: Int) {
-        delegate.write(b, off, len)
-    }
-
-    override fun flush() {
-        delegate.flush()
-    }
-
-    override fun close() {
-        delegate.close()
-        onClose()
-    }
-}
-
-fun PodResource<Pod, DoneablePod>.execWithDefaultListener(
-    command: List<String>,
-    attachStdout: Boolean = true,
-    attachStderr: Boolean = false,
-    attachStdin: Boolean = false
-): RemoteProcess {
-    // I don't have a clue on how you are supposed to call this API.
-    lateinit var watch: ExecWatch
-
-    val latch = CountDownLatch(1)
-
-    var pipeErrIn: InputStream? = null
-    var pipeErrOut: OutputStream? = null
-
-    var pipeOutIn: InputStream? = null
-    var pipeOutOut: OutputStream? = null
-
-    var pipeInOut: OutputStream? = null
-
-    var execable: PodResource<Pod, DoneablePod> = this
-    if (attachStdout) {
-        pipeOutOut = PipedOutputStream()
-        pipeOutIn = PipedInputStream(pipeOutOut)
-        execable = execable.writingOutput(pipeOutOut) as PodOperationsImpl
-    }
-
-    if (attachStderr) {
-        pipeErrOut = PipedOutputStream()
-        pipeErrIn = PipedInputStream(pipeErrOut)
-        execable = execable.writingError(pipeErrOut) as PodOperationsImpl
-    }
-
-    if (attachStdin) {
-        pipeInOut = PipedOutputStream()
-        val pipeInIn = PipedInputStream(pipeInOut)
-        execable = execable.readingInput(pipeInIn) as PodOperationsImpl
-    }
-
-    execable
-        .usingListener(object : ExecListener {
-            override fun onOpen(response: Response?) {
-                println("Open!")
-                latch.countDown()
-            }
-
-            override fun onFailure(t: Throwable?, response: Response?) {
-            }
-
-            override fun onClose(code: Int, reason: String?) {
-                println("Closing!")
-                pipeErrOut?.close()
-                pipeOutOut?.close()
-                pipeInOut?.close()
-                watch.close()
-            }
-        })
-        .exec(*command.toTypedArray()).also { watch = it }
-
-    latch.await()
-    return RemoteProcess(
-        pipeOutIn,
-        pipeErrIn,
-        pipeInOut?.let {
-            OutputStreamWithCustomClose(it) {
-                // We need to wait for the data to reach the other end. Without this sleep we will close before
-                // the data is even sent to the pod.
-                Thread.sleep(250)
-
-                // We need to signal the other end that we are done. We do this by closing the watch.
-                watch.close()
-            }
-        }
-    )
-}
-
-
-fun PodTemplateSpecBuilder.metadata(builder: ObjectMetaBuilder.() -> Unit): PodTemplateSpecBuilder {
-    val objectMetaBuilder = ObjectMetaBuilder()
-    objectMetaBuilder.builder()
-    withMetadata(objectMetaBuilder.build())
-    return this
-}
-
-fun DoneableJob.metadata(builder: ObjectMetaBuilder.() -> Unit): DoneableJob {
-    val objectMetaBuilder = ObjectMetaBuilder()
-    objectMetaBuilder.builder()
-    withMetadata(objectMetaBuilder.build())
-    return this
-}
-
-
-fun DoneablePod.metadata(builder: ObjectMetaBuilder.() -> Unit): DoneablePod {
-    val objectMetaBuilder = ObjectMetaBuilder()
-    objectMetaBuilder.builder()
-    withMetadata(objectMetaBuilder.build())
-    return this
-}
-
-fun DoneableJob.spec(builder: JobSpecBuilder.() -> Unit): DoneableJob {
-    val podBuilder = JobSpecBuilder()
-    podBuilder.builder()
-    withSpec(podBuilder.build())
-    return this
-}
-
-fun PodTemplateSpecBuilder.spec(builder: PodSpecBuilder.() -> Unit): PodTemplateSpecBuilder {
-    val podBuilder = PodSpecBuilder()
-    podBuilder.builder()
-    withSpec(podBuilder.build())
-    return this
-}
-
-fun DoneablePod.spec(builder: PodSpecBuilder.() -> Unit): DoneablePod {
-    val podBuilder = PodSpecBuilder()
-    podBuilder.builder()
-    withSpec(podBuilder.build())
-    return this
-}
-
-fun PodSpecBuilder.container(builder: ContainerBuilder.() -> Unit): Container {
-    val containerBuilder = ContainerBuilder()
-    containerBuilder.builder()
-    return containerBuilder.build()
-}
-
-fun PodSpecBuilder.volume(builder: VolumeBuilder.() -> Unit): Volume {
-    val volumeBuilder = VolumeBuilder()
-    volumeBuilder.builder()
-    return volumeBuilder.build()
-}
-
-fun await(retries: Int = 50, delay: Long = 100, condition: () -> Boolean) {
-    for (attempt in 0 until retries) {
-        if (condition()) return
-        Thread.sleep(delay)
-    }
-
-    throw IllegalStateException("Condition failed!")
-}
-
-fun awaitCatching(retries: Int = 50, delay: Long = 100, condition: () -> Boolean) {
-    for (attempt in 0 until retries) {
-        if (runCatching(condition).getOrNull() == true) return
-        Thread.sleep(delay)
-    }
-
-    throw IllegalStateException("Condition failed!")
+class Tunnel(
+    val jobId: String,
+    val ipAddress: String,
+    val localPort: Int,
+    private val _isAlive: () -> Boolean,
+    private val _close: () -> Unit
+) : Closeable {
+    fun isAlive() = _isAlive()
+    override fun close() = _close()
 }
 
 private fun SimpleDuration.toSeconds(): Long {
     return (hours * 3600L) + (minutes * 60) + seconds
 }
-

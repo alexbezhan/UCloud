@@ -19,7 +19,7 @@ export const Dropdown = styled.div<{ hover?: boolean, fullWidth?: boolean }>`
 
 Dropdown.defaultProps = {
     hover: true
-}
+};
 
 export const DropdownContent = styled.div<DropdownContentProps>`
     ${props => props.overflow ? 
@@ -73,9 +73,11 @@ DropdownContent.defaultProps = {
     disabled: false,
     cursor: "pointer",
     minWidth: "138px",
-    boxShadow: "sm",
+    boxShadow: "md",
     visible: false
-}
+};
+
+Dropdown.displayName = "Dropdown";
 
 interface DropdownContentProps extends RightProps, LeftProps, TopProps, BottomProps, BoxShadowProps {
     hover?: boolean

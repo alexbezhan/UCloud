@@ -1,14 +1,15 @@
-import { File } from "Files";
-import { Page } from "Types";
-import { match } from "react-router";
+import {File, SortOrder} from "Files";
+import {Page} from "Types";
+import {match} from "react-router";
 import PromiseKeeper from "PromiseKeeper";
-import { History } from "history";
-import { DetailedResultReduxObject, ResponsiveReduxObject } from "DefaultObjects";
-import { ParameterValues } from "Utilities/ApplicationUtilities";
-import { AddSnackOperation } from "Snackbar/Snackbars";
-import { SetStatusLoading } from "Navigation/Redux/StatusActions";
+import {History} from "history";
+import {ResponsiveReduxObject, AnalysisReduxObject} from "DefaultObjects";
+import {ParameterValues} from "Utilities/ApplicationUtilities";
+import {SetStatusLoading} from "Navigation/Redux/StatusActions";
+import * as React from "react";
 
 export interface Analysis {
+    checked?: boolean
     status: string
     state: AppState
     jobId: string
@@ -20,38 +21,36 @@ export interface Analysis {
     metadata: ApplicationMetadata
 }
 
-export interface AnalysesProps extends AnalysesStateProps, AnalysesOperations { }
+export type AnalysesStateProps = AnalysisReduxObject & {responsive: ResponsiveReduxObject}
+export type AnalysesProps = AnalysesStateProps & AnalysesOperations;
 
-export interface AnalysesStateProps {
-    page: Page<Analysis>
-    loading: boolean
-    responsive: ResponsiveReduxObject
-    error?: string
-}
+type FetchJobsOperation = (
+    itemsPerPage: number,
+    pageNumber: number,
+    sortOrder: SortOrder,
+    sortBy: RunsSortBy,
+    minTimestamp?: number,
+    maxTimestamp?: number,
+    filter?: AppState
+) => void
 
 export interface AnalysesOperations {
-    onErrorDismiss: () => void
-    updatePageTitle: () => void
     setLoading: (loading: boolean) => void
-    fetchJobs: (itemsPerPage: number, pageNumber: number) => void
-    setActivePage: () => void
+    fetchJobs: FetchJobsOperation
+    onInit: () => void
     setRefresh: (refresh?: () => void) => void
+    checkAnalysis: (jobId: string, checked: boolean) => void
+    checkAllAnalyses: (checked: boolean) => void
 }
 
-export interface AnalysesState {
-}
-
-export interface DetailedResultOperations extends AddSnackOperation {
-    receivePage: (page: Page<File>) => void,
+export interface DetailedResultOperations {
     setPageTitle: (jobId: string) => void
     setLoading: (loading: boolean) => void
-    detailedResultError: (error: string) => void
-    fetchPage: (jobId: string, pageNumber: number, itemsPerPage: number) => void
     setRefresh: (refresh?: () => void) => void
 }
 
-export interface DetailedResultProps extends DetailedResultReduxObject, DetailedResultOperations {
-    match: match<{ jobId: string }>
+export interface DetailedResultProps extends DetailedResultOperations {
+    match: match<{jobId: string}>
     history: History
 }
 
@@ -74,12 +73,13 @@ interface ApplicationTool {
         container: string
         defaultNumberOfNodes: number
         defaultTasksPerNode: number
-        defaultMaxTime: MaxTime
+        defaultAllocationTime: MaxTime
         requiredModules: string[]
         authors: string[]
         title: string
         description: string
         backend: string
+        license: string
     }
 }
 
@@ -98,7 +98,7 @@ export interface ApplicationDescription {
     parameters: ApplicationParameter[]
     outputFileGlobs: string[]
     website?: string
-    resources: { multiNodeSupport: boolean }
+    resources: {multiNodeSupport: boolean}
     tags: string[]
 }
 
@@ -109,7 +109,8 @@ export enum AppState {
     RUNNING = "RUNNING",
     TRANSFER_SUCCESS = "TRANSFER_SUCCESS",
     SUCCESS = "SUCCESS",
-    FAILURE = "FAILURE"
+    FAILURE = "FAILURE",
+    CANCELLING = "CANCELLING"
 }
 
 export interface DetailedResultState {
@@ -125,18 +126,12 @@ export interface DetailedResultState {
     stderrOldTop: number,
     reloadIntervalId: number
     promises: PromiseKeeper
-    fsError?: string
-    fsLoading: boolean
-    fsShown: boolean
-    fsPath: string
-    fsPage: Page<File>
-    fsDisallowedPaths: string[]
-    fsCallback: Function
-    fsIsFavorite: boolean
     outputFolder?: string
+    appType?: ApplicationType
+    webLink?: string
 }
 
-export type StdElement = { scrollTop: number, scrollHeight: number } | null
+export type StdElement = {scrollTop: number, scrollHeight: number} | null
 
 export interface MaxTime {
     hours: number
@@ -145,43 +140,48 @@ export interface MaxTime {
 }
 
 export interface MaxTimeForInput {
-    hours: number | null,
-    minutes: number | null,
-    seconds: number | null
+    hours: number
+    minutes: number
+    seconds: number
 }
 
 export interface JobSchedulingOptionsForInput {
-    maxTime: MaxTimeForInput | null
-    numberOfNodes: number | null
-    tasksPerNode: number | null
+    maxTime: MaxTimeForInput
+    numberOfNodes: number
+    tasksPerNode: number
+}
+
+export interface RefReadPair {
+    readOnly: boolean
+    ref: React.RefObject<HTMLInputElement>
+    defaultValue?: string
 }
 
 export interface RunAppState {
     promises: PromiseKeeper
     jobSubmitted: boolean
     initialSubmit: boolean
-
-    error?: string
-
-    application?: WithAppMetadata & WithAppInvocation & WithAppFavorite
+    application?: FullAppInfo
     parameterValues: ParameterValues
     schedulingOptions: JobSchedulingOptionsForInput
     favorite: boolean
     favoriteLoading: boolean
+    mountedFolders: RefReadPair[]
+    fsShown: boolean
 }
 
-export interface RunOperations extends AddSnackOperation, SetStatusLoading {
+export interface RunOperations extends SetStatusLoading {
     updatePageTitle: () => void
 }
 
 export interface RunAppProps extends RunOperations {
-    match: match<{ appName: string, appVersion: string }>
+    match: match<{appName: string, appVersion: string}>
     history: History
     updatePageTitle: () => void
 }
 
 export interface NumberParameter extends BaseParameter {
-    defaultValue: { value: number, type: "double" | "int" } | null
+    defaultValue: {value: number, type: "double" | "int"} | null
     min: number | null
     max: number | null
     step: number | null
@@ -189,7 +189,7 @@ export interface NumberParameter extends BaseParameter {
 }
 
 export interface BooleanParameter extends BaseParameter {
-    defaultValue: { value: boolean, type: "bool" } | null
+    defaultValue: {value: boolean, type: "bool"} | null
     trueValue?: string | null
     falseValue?: string | null
     type: ParameterTypes.Boolean
@@ -206,7 +206,7 @@ export interface InputDirectoryParameter extends BaseParameter {
 }
 
 export interface TextParameter extends BaseParameter {
-    defaultValue: { value: string, type: "string" } | null
+    defaultValue: {value: string, type: "string"} | null
     type: ParameterTypes.Text
 }
 
@@ -215,7 +215,7 @@ interface BaseParameter {
     optional: boolean
     title: string
     description: string
-    unitName?: string | null
+    unitName?: string | React.ReactNode | null
     type: string
     visible?: boolean
 }
@@ -239,7 +239,7 @@ interface VarInvocation {
     variableSeparator: string
 }
 
-type Info = { name: string, version: string }
+type Info = {name: string, version: string}
 export interface Description {
     info: Info
     tool: Info
@@ -282,7 +282,6 @@ export interface DetailedApplicationSearchReduxState {
 export interface DetailedApplicationOperations {
     setAppName: (n: string) => void
     setVersionName: (v: string) => void
-    setError: (err?: string) => void
     fetchApplicationsFromName: (q: string, i: number, p: number, c?: Function) => void
     fetchApplicationsFromTag: (t: string, i: number, p: number, c?: Function) => void
 }
@@ -300,12 +299,14 @@ export interface ApplicationMetadata {
     website?: string
 }
 
+type ApplicationType = "BATCH" | "VNC" | "WEB"
+
 export interface ApplicationInvocationDescription {
     tool: Tool
     invocation: Invocation[]
     parameters: ApplicationParameter[]
     outputFileGlobs: string[]
-    applicationType: "BATCH"
+    applicationType: ApplicationType
     resources: Resources
 }
 
@@ -341,12 +342,13 @@ interface ToolDescription {
     container: string
     defaultNumberOfNodes: number
     defaultTasksPerNode: number
-    defaultMaxTime: MaxTime
+    defaultTimeAllocation: MaxTime
     requiredModules: string[]
     authors: string[]
     title: string
     description: string
     backend: string
+    license: string
 }
 
 export interface WithAppMetadata {
@@ -360,3 +362,16 @@ export interface WithAppInvocation {
 export interface WithAppFavorite {
     favorite: boolean
 }
+
+export enum RunsSortBy {
+    state = "STATE",
+    application = "APPLICATION",
+    startedAt = "STARTED_AT",
+    lastUpdate = "LAST_UPDATE",
+    createdAt = "CREATED_AT"
+}
+export interface WithAllAppTags {
+    tags: string[]
+}
+
+export type FullAppInfo = WithAppFavorite & WithAppInvocation & WithAppMetadata & WithAllAppTags
