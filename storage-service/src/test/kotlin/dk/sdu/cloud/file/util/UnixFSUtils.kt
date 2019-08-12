@@ -87,7 +87,7 @@ fun File.timestamps(): Timestamps {
 }
 
 fun createDummyFS(): File {
-    val fsRoot = Files.createTempDirectory("share-service-test").toFile()
+    val fsRoot = Files.createTempDirectory("share-service-test").toFile().also { it.setExecutable(true) and it.setReadable(true) and it.setWritable(true)}
     fsRoot.apply { createDummyFSInRoot() }
     return fsRoot
 }
