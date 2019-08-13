@@ -301,6 +301,7 @@ class LinuxFS(
         mode: Set<FileAttribute>,
         hasPerformedPermissionCheck: Boolean
     ): FileRow {
+        println("Performing stat on $systemFile, modes: ${mode.joinToString()}, and the permissionchecks are: $hasPerformedPermissionCheck")
         return stat(ctx, listOf(systemFile), mode, hasPerformedPermissionCheck).first()
             ?: throw FSException.NotFound()
     }
