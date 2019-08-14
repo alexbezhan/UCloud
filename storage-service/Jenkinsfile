@@ -18,11 +18,11 @@ def initialize() {
       container('centos'){
         sh '''
         apt-get update
-        apt-get -y install openjdk-8-jdk        
+        apt-get -y install openjdk-11-jdk        
         apt-get -y install gcc
         apt-get -y install g++
         apt-get -y install acl
-        JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-amd64
+        JAVA_HOME=/usr/lib/jvm/java-1.11.0-openjdk-amd64
         cd storage-service/native
         g++ -std=gnu++0x -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" -shared -o ../src/main/resources/libthreading.so threading.cpp
         cd ..
