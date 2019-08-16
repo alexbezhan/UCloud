@@ -3,12 +3,11 @@ def label = "worker-${UUID.randomUUID().toString()}"
 podTemplate(
     label: label, 
     yaml: """
-    spec:
-      securityContext: {
-        runAsUser: 0
-        runAsGroup: 0
-      }
-    """,
+spec:
+  securityContext: 
+    runAsUser: 0
+    runAsGroup: 0
+""",
     containers: [
 containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true),
 containerTemplate(name: 'node', image: 'node:11-alpine', command: 'cat', ttyEnabled: true),
