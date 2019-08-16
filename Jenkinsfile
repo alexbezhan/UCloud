@@ -8,9 +8,7 @@ podTemplate(
         runAsUser: 0
         runAsGroup: 0
       }
-    """
-
-
+    """,
     containers: [
 containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true),
 containerTemplate(name: 'node', image: 'node:11-alpine', command: 'cat', ttyEnabled: true),
