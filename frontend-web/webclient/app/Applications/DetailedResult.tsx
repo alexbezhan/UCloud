@@ -1,23 +1,23 @@
 import * as React from "react";
 import PromiseKeeper from "PromiseKeeper";
 import {Cloud} from "Authentication/SDUCloudObject";
-import {shortUUID, errorMessageOrDefault} from "UtilityFunctions";
+import {errorMessageOrDefault, shortUUID} from "UtilityFunctions";
 import {Link} from "react-router-dom";
 import {connect} from "react-redux";
 import {setLoading, updatePageTitle} from "Navigation/Redux/StatusActions";
 import {
+    AppState,
+    DetailedResultOperations,
     DetailedResultProps,
     DetailedResultState,
     StdElement,
-    DetailedResultOperations,
-    AppState,
     WithAppInvocation
 } from ".";
 import {fileTablePage} from "Utilities/FileUtilities";
-import {hpcJobQuery, cancelJobDialog, inCancelableState, cancelJob} from "Utilities/ApplicationUtilities";
+import {cancelJob, cancelJobDialog, hpcJobQuery, inCancelableState} from "Utilities/ApplicationUtilities";
 import {Dispatch} from "redux";
 import {Dropdown, DropdownContent} from "ui-components/Dropdown";
-import {Flex, Box, List, Card, ContainerForText, ExternalLink, Button} from "ui-components";
+import {Box, Button, Card, ContainerForText, ExternalLink, Flex, List} from "ui-components";
 import {Step, StepGroup} from "ui-components/Step";
 import styled from "styled-components";
 import {TextSpan} from "ui-components/Text";
@@ -31,6 +31,7 @@ import {snackbarStore} from "Snackbar/SnackbarStore";
 import LoadingIcon from "LoadingIcon/LoadingIcon";
 import {Spacer} from "ui-components/Spacer";
 import {EmbeddedFileTable} from "Files/FileTable";
+import {pad} from "./View";
 
 const Panel = styled(Box)`
     margin-bottom: 1em;
@@ -45,8 +46,10 @@ class DetailedResult extends React.Component<DetailedResultProps, DetailedResult
     constructor(props: Readonly<DetailedResultProps>) {
         super(props);
         this.state = {
+            name: "",
             complete: false,
             appState: AppState.VALIDATED,
+            failedState: undefined,
             status: "",
             stdout: "",
             stderr: "",
@@ -57,9 +60,11 @@ class DetailedResult extends React.Component<DetailedResultProps, DetailedResult
             reloadIntervalId: -1,
             promises: new PromiseKeeper(),
             appType: undefined,
-            webLink: undefined
+            webLink: undefined,
+            timeLeft: null
         };
         this.props.setPageTitle(shortUUID(this.jobId));
+        this.props.setLoading(true);
     }
 
     get jobId(): string {
@@ -123,7 +128,6 @@ class DetailedResult extends React.Component<DetailedResultProps, DetailedResult
             }
         }
         try {
-            this.props.setLoading(true);
             const {response} = await this.state.promises.makeCancelable(
                 Cloud.get(hpcJobQuery(this.jobId, this.state.stdoutLine, this.state.stderrLine))
             ).promise;
@@ -135,10 +139,13 @@ class DetailedResult extends React.Component<DetailedResultProps, DetailedResult
                 stderrLine: response.stderrNextLine,
 
                 app: response.metadata,
+                name: response.name,
                 status: response.status,
                 appState: response.state,
+                failedState: response.failedState,
                 complete: response.complete,
-                outputFolder: response.outputFolder
+                outputFolder: response.outputFolder,
+                timeLeft: response.timeLeft
             }));
 
             this.scrollIfNeeded();
@@ -168,19 +175,24 @@ class DetailedResult extends React.Component<DetailedResultProps, DetailedResult
             <StepGroup>
                 <StepTrackerItem
                     stateToDisplay={AppState.VALIDATED}
-                    currentState={this.state.appState}/>
+                    currentState={this.state.appState}
+                    failedState={this.state.failedState} />
                 <StepTrackerItem
                     stateToDisplay={AppState.PREPARED}
-                    currentState={this.state.appState}/>
+                    currentState={this.state.appState}
+                    failedState={this.state.failedState} />
                 <StepTrackerItem
                     stateToDisplay={AppState.SCHEDULED}
-                    currentState={this.state.appState}/>
+                    currentState={this.state.appState}
+                    failedState={this.state.failedState} />
                 <StepTrackerItem
                     stateToDisplay={AppState.RUNNING}
-                    currentState={this.state.appState}/>
+                    currentState={this.state.appState}
+                    failedState={this.state.failedState} />
                 <StepTrackerItem
                     stateToDisplay={AppState.TRANSFER_SUCCESS}
-                    currentState={this.state.appState}/>
+                    currentState={this.state.appState}
+                    failedState={this.state.failedState} />
             </StepGroup>
         </Panel>
     );
@@ -194,6 +206,8 @@ class DetailedResult extends React.Component<DetailedResultProps, DetailedResult
             {key: "Status", value: this.state.status},
         ];
 
+        if (this.state.name) entries.unshift({key: "Name", value: this.state.name});
+
         let domEntries = entries.map(it => <Box pt="0.8em" pb="0.8em" key={it.key}><b>{it.key}</b>: {it.value}</Box>);
 
         switch (this.state.appState) {
@@ -204,6 +218,17 @@ class DetailedResult extends React.Component<DetailedResultProps, DetailedResult
                         Click <Link to={fileTablePage(this.state.outputFolder!)}>here</Link> to go to the output.
                     </Box>
                 );
+                break;
+            case AppState.RUNNING:
+                const {timeLeft} = this.state;
+                const seconds = (timeLeft! / 1000) % 60;
+                const minutes = ((timeLeft! / (1000 * 60)) % 60);
+                const hours = ((timeLeft! / (1000 * 60 * 60)) % 24);
+                domEntries.push(
+                    <Box key={AppState.RUNNING} pt="0.8em" pb="0.8em">
+                        <b>Time remaining</b>: {pad(hours | 0, 2)}:{pad(minutes | 0, 2)}:{pad(seconds | 0, 2)}
+                    </Box>
+                )
                 break;
         }
 
@@ -360,17 +385,20 @@ const stateToTitle = (state: AppState): string => {
     }
 };
 
-const StepTrackerItem: React.FunctionComponent<{ stateToDisplay: AppState, currentState: AppState }> = ({
-                                                                                                            stateToDisplay, currentState
-                                                                                                        }) => {
+const StepTrackerItem: React.FunctionComponent<{stateToDisplay: AppState, currentState: AppState, failedState?: AppState}> = ({
+    stateToDisplay, currentState, failedState
+}) => {
     const active = stateToDisplay === currentState;
     const complete = isStateComplete(stateToDisplay, currentState);
     const failed = currentState === AppState.FAILURE;
+    const failedNum = failedState ? stateToOrder(failedState) : 10;
+    const thisFailed = stateToOrder(stateToDisplay) >= failedNum;
+
     return (
         <Step active={active}>
             {complete ?
-                <Icon name={failed ? "close" : "check"} color={failed ? "red" : "green"} mr="0.7em" size="30px"/> :
-                <JobStateIcon state={stateToDisplay} mr="0.7em" size="30px"/>
+                <Icon name={thisFailed ? "close" : "check"} color={thisFailed ? "red" : "green"} mr="0.7em" size="30px" /> :
+                <JobStateIcon state={stateToDisplay} mr="0.7em" size="30px" />
             }
             <TextSpan fontSize={3}>{stateToTitle(stateToDisplay)}</TextSpan>
         </Step>

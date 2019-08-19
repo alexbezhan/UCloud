@@ -1,5 +1,5 @@
 import * as React from "react";
-import {capitalized, errorMessageOrDefault} from "UtilityFunctions"
+import {capitalized, errorMessageOrDefault, shortUUID} from "UtilityFunctions"
 import {updatePageTitle, setActivePage} from "Navigation/Redux/StatusActions";
 import {List} from "Pagination/List";
 import {connect} from "react-redux";
@@ -18,7 +18,7 @@ import {Spacer} from "ui-components/Spacer";
 import * as moment from "moment";
 import "moment/locale/en-gb";
 import {JobStateIcon} from "./JobStateIcon";
-import {TextSpan} from "ui-components/Text";
+import {italic, TextSpan} from "ui-components/Text";
 import ClickableDropdown from "ui-components/ClickableDropdown";
 import {DatePicker} from "ui-components/DatePicker";
 import {prettierString} from "UtilityFunctions";
@@ -44,7 +44,7 @@ interface FetchJobsOptions {
     sortOrder?: SortOrder
     minTimestamp?: number
     maxTimestamp?: number
-    filter?: AppState
+    filter?: string
 }
 
 /* FIXME: Almost identical to similar one in FilesTable.tsx */
@@ -75,11 +75,12 @@ function JobResults(props: AnalysesProps & {history: History}) {
         const sortBy = opts.sortBy != null ? opts.sortBy : props.sortBy;
         const minTimestamp = opts.minTimestamp != null ? opts.minTimestamp : undefined;
         const maxTimestamp = opts.maxTimestamp != null ? opts.maxTimestamp : undefined;
-        const filter = opts.filter != null ? opts.filter : undefined;
+        const filterValue = opts.filter && opts.filter !== "Don't filter" ? opts.filter as AppState : undefined;
+    
         setLoading(true);
-        props.fetchJobs(itemsPerPage, pageNumber, sortOrder, sortBy, minTimestamp, maxTimestamp, filter);
+        props.fetchJobs(itemsPerPage, pageNumber, sortOrder, sortBy, minTimestamp, maxTimestamp, filterValue);
         props.setRefresh(() =>
-            props.fetchJobs(itemsPerPage, pageNumber, sortOrder, sortBy, minTimestamp, maxTimestamp, filter)
+            props.fetchJobs(itemsPerPage, pageNumber, sortOrder, sortBy, minTimestamp, maxTimestamp, filterValue)
         );
     }
 
@@ -138,12 +139,13 @@ function JobResults(props: AnalysesProps & {history: History}) {
         onPageChanged={pageNumber => fetchJobs({pageNumber})}
     />;
 
-    const [filter, setFilter] = React.useState({text: "Don't filter", value: "Don't filter"});
+    const defaultFilter = {text: "Don't filter", value: "Don't filter"}
+    const [filter, setFilter] = React.useState(defaultFilter);
     const [firstDate, setFirstDate] = React.useState<Date | null>(null);
     const [secondDate, setSecondDate] = React.useState<Date | null>(null);
 
     const appStates = Object.keys(AppState).map(it => ({text: prettierString(it), value: it}));
-    appStates.push({text: "Don't Filter", value: "Don't filter"});
+    appStates.push(defaultFilter);
 
     function fetchJobsInRange(minDate: Date | null, maxDate: Date | null) {
         return () => fetchJobs({
@@ -152,7 +154,8 @@ function JobResults(props: AnalysesProps & {history: History}) {
             sortOrder,
             sortBy,
             minTimestamp: minDate == null ? undefined : minDate.getTime(),
-            maxTimestamp: maxDate == null ? undefined : maxDate.getTime()
+            maxTimestamp: maxDate == null ? undefined : maxDate.getTime(),
+            filter: filter.value === "Don't filter" ? undefined : filter.value
         })
     }
 
@@ -286,6 +289,10 @@ const Header = ({hide, sortBy, sortOrder, masterCheckbox, fetchJobs}: HeaderProp
             <JobResultsHeaderCell width="4%" textAlign="center">
                 {masterCheckbox}
             </JobResultsHeaderCell>
+            <JobResultsHeaderCell pointer textAlign="left" onClick={() => fetchJobs(RunsSortBy.name)}>
+                <Arrow sortBy={RunsSortBy.name} activeSortBy={sortBy} order={sortOrder} />
+                Name
+            </JobResultsHeaderCell>
             <JobResultsHeaderCell pointer textAlign="left" onClick={() => fetchJobs(RunsSortBy.state)}>
                 <Arrow sortBy={RunsSortBy.state} activeSortBy={sortBy} order={sortOrder} />
                 State
@@ -301,7 +308,7 @@ const Header = ({hide, sortBy, sortOrder, masterCheckbox, fetchJobs}: HeaderProp
                 </JobResultsHeaderCell>}
             <JobResultsHeaderCell pointer textAlign="left" onClick={() => fetchJobs(RunsSortBy.lastUpdate)}>
                 <Arrow sortBy={RunsSortBy.lastUpdate} activeSortBy={sortBy} order={sortOrder} />
-                Last update
+                Expiration
             </JobResultsHeaderCell>
         </TableRow>
     </TableHeader>
@@ -314,16 +321,18 @@ interface RowProps {
 }
 const Row: React.FunctionComponent<RowProps> = ({analysis, to, hide, children}) => {
     const metadata = analysis.metadata;
+
     return (
         <TableRow cursor={"pointer"}>
             <TableCell textAlign="center">
                 {children}
             </TableCell>
+            <TableCell onClick={to}>{analysis.name ? analysis.name : shortUUID(analysis.jobId) }</TableCell>
             <TableCell onClick={to}><JobStateIcon state={analysis.state} mr={"8px"} /> {capitalized(analysis.state)}
             </TableCell>
             <TableCell onClick={to}>{metadata.title} v{metadata.version}</TableCell>
             {hide ? null : <TableCell onClick={to}>{moment(analysis.createdAt).calendar()}</TableCell>}
-            <TableCell onClick={to}>{moment(analysis.modifiedAt).calendar()}</TableCell>
+            <TableCell onClick={to}>{analysis.expiresAt ? moment(analysis.expiresAt).calendar() : "N/A"}</TableCell>
         </TableRow>)
 };
 

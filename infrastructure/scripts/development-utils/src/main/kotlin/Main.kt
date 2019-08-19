@@ -67,18 +67,19 @@ fun main(args: Array<String>) {
 
     val targetServiceWithDir = services.find { it.service.name == targetService } ?: panic("No such target service")
 
-    val servicesToStart =
+    val servicesForConfig =
         (findDependencies("auth", services) +
-                findDependencies(targetServiceWithDir.service.namespaces.first(), services))
-            .filter { (service, _) ->
-                service.name != targetService && service.name !in excludeList
-            }
+                findDependencies(targetServiceWithDir.service.namespaces.first(), services)) + targetServiceWithDir
+
+    val servicesToStart = servicesForConfig.filter { it != targetServiceWithDir && it.service.name !in excludeList }
 
     val configDir = Files.createTempDirectory("config").toFile()
     val overrides = HashMap<String, Any?>()
 
     var port = 8001
-    servicesToStart.forEach { (service, _) ->
+    servicesForConfig.forEach { (service, _) ->
+        if (service == targetServiceWithDir.service) return@forEach
+
         overrides[service.name] = ":$port"
         service.namespaces.forEach { overrides[it] = ":$port" }
         port++
@@ -89,9 +90,13 @@ fun main(args: Array<String>) {
         service.namespaces.forEach { overrides[it] = ":8800"}
     }
 
+    val frontendDirectory = Files.createTempDirectory("frontend").toFile()
     File(configDir, "overrides.yml").writeText(
         yamlMapper.writeValueAsString(
-            mapOf("development" to mapOf("serviceDiscovery" to overrides))
+            mapOf("development" to mapOf(
+                "serviceDiscovery" to overrides,
+                "frontend" to mapOf("configDir" to frontendDirectory.absolutePath)
+            ))
         )
     )
 
@@ -99,6 +104,12 @@ fun main(args: Array<String>) {
 
     val userHome = System.getProperty("user.home")
     val sducloudConfig = File(userHome, "sducloud").absolutePath
+    File(sducloudConfig, "start-dependencies.yml").writeText("""
+        ---
+        config:
+          additionalDirectories:
+          - ${configDir.absolutePath}
+    """.trimIndent())
     val scriptBuilder = StringBuilder()
 
     // Use this to make output pretty https://unix.stackexchange.com/questions/440426/how-to-prefix-any-output-in-a-bash-script
@@ -147,6 +158,8 @@ fun main(args: Array<String>) {
         }
     )
 
+    scriptBuilder.appendln("prefixed frontend-helper dependencies-frontend-server \"${frontendDirectory.absolutePath}\" < /dev/null")
+
     scriptBuilder.appendln("read -r line")
     scriptBuilder.appendln("kill `jobs -p`")
 
@@ -175,3 +188,4 @@ fun panic(message: String): Nothing {
     println(message)
     exitProcess(1)
 }
+
