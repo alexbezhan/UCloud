@@ -11,7 +11,7 @@ spec:
     containers: [
 containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true),
 containerTemplate(name: 'node', image: 'node:11-alpine', command: 'cat', ttyEnabled: true),
-containerTemplate(name: 'centos', image: 'ubuntu', command: 'cat', ttyEnabled: true)
+containerTemplate(name: 'ubuntu', image: 'ubuntu', command: 'cat', ttyEnabled: true)
 ],
 volumes: [
   hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')
