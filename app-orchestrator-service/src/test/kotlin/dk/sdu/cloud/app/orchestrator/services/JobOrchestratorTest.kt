@@ -323,11 +323,9 @@ class JobOrchestratorTest {
                 TestUsers.user
             )
 
-            assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
-
             log.info("Block 1 end")
         }
-
+        Thread.sleep(1000)
         runBlocking {
             log.info("Block 2")
 
@@ -344,6 +342,7 @@ class JobOrchestratorTest {
 
             log.info("Block 2 end")
         }
+        Thread.sleep(1000)
 
         runBlocking {
             log.info("Block 3")
