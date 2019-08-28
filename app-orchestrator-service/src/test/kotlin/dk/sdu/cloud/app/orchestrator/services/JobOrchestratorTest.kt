@@ -108,7 +108,7 @@ class JobOrchestratorTest {
 
     //This test requires to run in multiple runBlocking - otherwise it won't change status.
     //When no runBlocking, it fails when run alone or on jenkins, when all tests are run, it passes....
- /*   @Test
+    @Test
     fun `orchestrator start job, handle proposed state, lookup test `() {
         val orchestrator = setup()
 
@@ -304,7 +304,7 @@ class JobOrchestratorTest {
             )
         }
     }
-*/
+
     @Test
     fun `Handle cancel of successful job test`() {
         val orchestrator = setup()
@@ -313,8 +313,6 @@ class JobOrchestratorTest {
         }
 
         runBlocking {
-            log.info("Block 1 ")
-
             assertEquals(JobState.VALIDATED, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
 
             orchestrator.handleProposedStateChange(
@@ -322,12 +320,9 @@ class JobOrchestratorTest {
                 null,
                 TestUsers.user
             )
-
-            log.info("Block 1 end")
         }
-        Thread.sleep(1000)
+
         runBlocking {
-            log.info("Block 2")
 
             assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
 
@@ -336,22 +331,13 @@ class JobOrchestratorTest {
                 null,
                 TestUsers.user
             )
-            log.info("This is current: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
-
-            assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
-
-            log.info("Block 2 end")
         }
-        Thread.sleep(1000)
 
         runBlocking {
-            log.info("Block 3")
-            log.info("This is current next block: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
             assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
-            log.info("Block 3 end")
         }
     }
-/*
+
     @Test
     fun `Handle failed state of unsuccessful job test`() {
         val orchestrator = setup()
@@ -377,6 +363,6 @@ class JobOrchestratorTest {
             assertEquals(JobState.FAILURE, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
             assertEquals(JobState.PREPARED, orchestrator.lookupOwnJob(returnedID, TestUsers.user).failedState)
         }
-    }*/
+    }
 }
 
