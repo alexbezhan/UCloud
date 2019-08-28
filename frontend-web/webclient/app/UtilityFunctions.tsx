@@ -18,7 +18,7 @@ export const setSiteTheme = (isLightTheme: boolean): void => {
 };
 
 /**
- * Returns whether or not the value "light", "dark" or null is stored. 
+ * Returns whether or not the value "light", "dark" or null is stored.
  * @returns {boolean} True if "light" or null is stored, otherwise "dark".
  */
 export const isLightThemeStored = (): boolean => {
@@ -52,7 +52,7 @@ export const getMembersString = (acls?: Acl[]): string => {
 export function sortingColumnToValue(sortBy: SortBy, file: File): string {
     switch (sortBy) {
         case SortBy.FILE_TYPE:
-            return capitalized(file.fileType);
+            return prettierString(file.fileType);
         case SortBy.PATH:
             return getFilenameFromPath(file.path);
         case SortBy.CREATED_AT:
@@ -77,7 +77,7 @@ export const extensionFromPath = (path: string): string => {
     return splitString[splitString.length - 1];
 };
 
-type ExtensionType = null | "code" | "image" | "text" | "audio" | "video" | "archive" | "pdf" | "binary"
+type ExtensionType = null | "code" | "image" | "text" | "audio" | "video" | "archive" | "pdf" | "binary";
 export const extensionType = (ext: string): ExtensionType => {
     switch (ext) {
         case "md":
@@ -144,7 +144,7 @@ export const extensionType = (ext: string): ExtensionType => {
         case "mp4":
         case "avi":
         case "mov":
-        case "wmv": 
+        case "wmv":
             return "video";
         case "gz":
         case "zip":
@@ -167,41 +167,47 @@ export interface FtIconProps {
 
 export const iconFromFilePath = (filePath: string, type: FileType, homeFolder: string): FtIconProps => {
     const icon: FtIconProps = {type: "FILE"};
-    if (isDirectory({fileType: type})) {
-        const homeFolderReplaced = replaceHomeFolder(filePath, homeFolder);
-        switch (homeFolderReplaced) {
-            case "Home/Jobs":
-                icon.type = "RESULTFOLDER";
-                break;
-            case "Home/Favorites":
-                icon.type = "FAVFOLDER";
-                break;
-            case "Home/Shares":
-                icon.type = "SHARESFOLDER";
-                break;
-            case "Home/Trash":
-                icon.type = "TRASHFOLDER";
-                break;
-            default:
-                icon.type = "DIRECTORY";
-        }
-        return icon;
-    }
 
-    const filename = getFilenameFromPath(filePath);
-    if (!filename.includes(".")) {
-        return icon;
-    }
-    icon.ext = extensionFromPath(filePath);
+    switch (type) {
+        case "DIRECTORY":
+        case "SHARED_FS":
+            const homeFolderReplaced = replaceHomeFolder(filePath, homeFolder);
+            switch (homeFolderReplaced) {
+                case "Home/Jobs":
+                    icon.type = "RESULTFOLDER";
+                    break;
+                case "Home/Favorites":
+                    icon.type = "FAVFOLDER";
+                    break;
+                case "Home/Shares":
+                    icon.type = "SHARESFOLDER";
+                    break;
+                case "Home/Trash":
+                    icon.type = "TRASHFOLDER";
+                    break;
+                default:
+                    icon.type = "DIRECTORY";
+                    break;
+            }
+            return icon;
 
-    return icon;
+        case "FILE":
+        default:
+            const filename = getFilenameFromPath(filePath);
+            if (!filename.includes(".")) {
+                return icon;
+            }
+            icon.ext = extensionFromPath(filePath);
+
+            return icon;
+    }
 };
 
 /**
  *
  * @param params: { status, min, max } (both inclusive)
  */
-export const inRange = ({status, min, max}: {status: number, min: number, max: number}): boolean =>
+export const inRange = ({status, min, max}: { status: number, min: number, max: number }): boolean =>
     status >= min && status <= max;
 export const inSuccessRange = (status: number): boolean => inRange({status, min: 200, max: 299});
 export const removeTrailingSlash = (path: string) => path.endsWith("/") ? path.slice(0, path.length - 1) : path;
@@ -212,10 +218,10 @@ export const addTrailingSlash = (path: string) => {
 
 export const shortUUID = (uuid: string): string => uuid.substring(0, 8).toUpperCase();
 export const is5xxStatusCode = (status: number) => inRange({status, min: 500, max: 599});
-export const blankOrUndefined = (value?: string): boolean => value == null || value.length == 0 || /^\s*$/.test(value);
+export const blankOrUndefined = (value?: string): boolean => value == null || value.length === 0 || /^\s*$/.test(value);
 
 export const ifPresent = (f: any, handler: (f: any) => void) => {
-    if (f) handler(f)
+    if (f) handler(f);
 };
 
 // FIXME The frontend can't handle downloading multiple files currently. When fixed, remove === 1 check.
@@ -229,7 +235,7 @@ export const downloadAllowed = (files: File[]) =>
 export const prettierString = (str: string) => capitalized(str).replace(/_/g, " ");
 
 export function defaultErrorHandler(
-    error: {request: XMLHttpRequest, response: any}
+    error: { request: XMLHttpRequest, response: any }
 ): number {
     const request: XMLHttpRequest = error.request;
     // FIXME must be solvable more elegantly
@@ -290,9 +296,9 @@ export function requestFullScreen(el: Element, onFailure: () => void) {
 
 export function timestampUnixMs(): number {
     return window.performance &&
-        window.performance.now &&
-        window.performance.timing &&
-        window.performance.timing.navigationStart ?
+    window.performance.now &&
+    window.performance.timing &&
+    window.performance.timing.navigationStart ?
         window.performance.now() + window.performance.timing.navigationStart :
         Date.now();
 }
@@ -327,7 +333,7 @@ export function copyToClipboard({value, message}: CopyToClipboard) {
 }
 
 export function errorMessageOrDefault(
-    err: {request: XMLHttpRequest, response: any} | {status: number, response: string},
+    err: { request: XMLHttpRequest, response: any } | { status: number, response: string },
     defaultMessage: string
 ): string {
     try {

@@ -1,27 +1,27 @@
-import * as React from "react";
-import {
-    Icon,
-    FtIcon,
-    Absolute,
-    Flex,
-    Text,
-    Label,
-    Checkbox,
-    Box,
-    Divider,
-    Button,
-    Select,
-    Input,
-    Radio
-} from "ui-components";
-import * as Heading from "ui-components/Heading";
-import {DropdownContent, Dropdown} from "ui-components/Dropdown";
-import {FtIconProps} from "UtilityFunctions";
-import styled from "styled-components";
-import {replaceHomeFolder} from "Utilities/FileUtilities";
-import {dialogStore} from "Dialog/DialogStore";
 import {SensitivityLevelMap} from "DefaultObjects";
+import {dialogStore} from "Dialog/DialogStore";
 import {SortOrder} from "Files";
+import * as React from "react";
+import styled from "styled-components";
+import {
+    Absolute,
+    Box,
+    Button,
+    Checkbox,
+    Divider,
+    Flex,
+    FtIcon,
+    Icon,
+    Input,
+    Label,
+    Radio,
+    Select,
+    Text
+} from "ui-components";
+import {Dropdown, DropdownContent} from "ui-components/Dropdown";
+import * as Heading from "ui-components/Heading";
+import {replaceHomeFolder} from "Utilities/FileUtilities";
+import {FtIconProps} from "UtilityFunctions";
 
 interface StandardDialog {
     title?: string;
@@ -33,15 +33,17 @@ interface StandardDialog {
     validator?: () => boolean;
 }
 
-export function addStandardDialog({
-    title,
-    message,
-    onConfirm,
-    onCancel = () => undefined,
-    validator = () => true,
-    cancelText = "Cancel",
-    confirmText = "Confirm"
-}: StandardDialog) {
+export function addStandardDialog(
+    {
+        title,
+        message,
+        onConfirm,
+        onCancel = () => undefined,
+        validator = () => true,
+        cancelText = "Cancel",
+        confirmText = "Confirm"
+    }: StandardDialog
+) {
     dialogStore.addDialog(<Box>
         <Box>
             <Heading.h3>{title}</Heading.h3>
@@ -51,14 +53,14 @@ export function addStandardDialog({
         <Flex mt="20px">
             <Button onClick={() => {
                 onCancel();
-                dialogStore.popDialog()
+                dialogStore.popDialog();
             }} color="red" mr="5px">{cancelText}</Button>
             <Button onClick={() => {
                 if (validator()) onConfirm();
-                dialogStore.popDialog()
+                dialogStore.popDialog();
             }} color="green">{confirmText}</Button>
         </Flex>
-    </Box>)
+    </Box>);
 }
 
 export function sensitivityDialog(): Promise<{ cancelled: true } | { option: SensitivityLevelMap }> {
@@ -79,44 +81,56 @@ export function sensitivityDialog(): Promise<{ cancelled: true } | { option: Sen
     }));
 }
 
-export function shareDialog(): Promise<{ cancelled: true } | { username: string, readOrEdit: "read" | "read_edit" }> {
-    let username = "";
-    let readOrEdit: "read" | "read_edit" = "read";
-    let error = false;
-    // FIXME: Less than dry, however, this needed to be wrapped in a from. Can be make standard dialog do similar?
+export function shareDialog(): Promise<{ cancelled: true } | { username: string, access: "read" | "read_edit" }> {
+    // FIXME: Less than dry, however, this needed to be wrapped in a form. Can be make standard dialog do similar?
     return new Promise(resolve => dialogStore.addDialog(
-        <form onSubmit={e => e.preventDefault()}>
-            <Heading.h3>Share</Heading.h3>
-            <Divider/>
-            <Flex mb="10px">
-                <Label>
-                    <Radio name="right" defaultChecked onClick={() => readOrEdit = "read"}/> {" "} Can view
-                </Label>
-                <Label>
-                    <Radio name="right" onClick={() => readOrEdit = "read_edit"}/> {" "} Can edit
-                </Label>
-            </Flex>
-            <Label>
-                <Input required type="text" onChange={e => username = e.target.value}
-                       placeholder="Enter username..."/>
-            </Label>
-            <Flex mt="20px">
-                <Button type="button" onClick={() => {
-                    dialogStore.popDialog();
-                    resolve({cancelled: true})
-                }} color="red" mr="5px">Cancel</Button>
-                <Button onClick={() => {
-                    if (username) {
-                        dialogStore.popDialog();
-                        resolve({username, readOrEdit})
-                    } else {
-                        error = true;
-                    }
-                }} color="green">Share</Button>
-            </Flex>
-        </form>
-    ))
+        <SharePrompt resolve={resolve} />
+    ));
 }
+
+function SharePrompt({resolve}) {
+    const username = React.useRef<HTMLInputElement>(null);
+    const [access, setAccess] =  React.useState<"read" | "read_edit">("read");
+    return (<form onSubmit={e => e.preventDefault()}>
+    <Heading.h3>Share</Heading.h3>
+    <Divider/>
+    <Flex mb="10px">
+        <Label>
+            <Radio
+                name="right"
+                checked={access === "read"}
+                onClick={() => setAccess("read")}
+                onChange={() => setAccess("read")}
+            /> {" "} Can view
+        </Label>
+        <Label>
+            <Radio
+                name="right"
+                checked={access === "read_edit"}
+                onClick={() => setAccess("read_edit")}
+                onChange={() => setAccess("read_edit")}
+            /> {" "} Can edit
+        </Label>
+    </Flex>
+    <Label>
+        <Input required type="text" ref={username}
+               placeholder="Enter username..."/>
+    </Label>
+    <Flex mt="20px">
+        <Button type="button" onClick={() => {
+            dialogStore.popDialog();
+            resolve({cancelled: true});
+        }} color="red" mr="5px">Cancel</Button>
+        <Button onClick={() => {
+            if (username.current && username.current.value) {
+                dialogStore.popDialog();
+                resolve({username: username.current.value, access});
+            }
+        }} color="green">Share</Button>
+        </Flex>
+    </form>);
+}
+
 
 export function overwriteDialog(): Promise<{ cancelled?: boolean }> {
     return new Promise(resolve => addStandardDialog({
@@ -130,13 +144,13 @@ export function overwriteDialog(): Promise<{ cancelled?: boolean }> {
 }
 
 interface RewritePolicy {
-    path: string
-    homeFolder: string
-    filesRemaining: number
-    allowOverwrite: boolean
+    path: string;
+    homeFolder: string;
+    filesRemaining: number;
+    allowOverwrite: boolean;
 }
 
-type RewritePolicyResult = { policy: string, applyToAll: boolean } | false
+type RewritePolicyResult = { policy: string, applyToAll: boolean } | false;
 
 export function rewritePolicyDialog({
     path,
@@ -173,7 +187,7 @@ export function rewritePolicyDialog({
             }} color="red" mr="5px">No</Button>
             <Button onClick={() => {
                 dialogStore.popDialog();
-                resolve({policy, applyToAll})
+                resolve({policy, applyToAll});
             }} color="green">Yes</Button>
         </Box>
     </Box>));
@@ -211,13 +225,13 @@ interface Arrow<T> {
 
 export function Arrow<T>({sortBy, activeSortBy, order}: Arrow<T>) {
     if (sortBy !== activeSortBy) return null;
-    if (order === SortOrder.ASCENDING) 
+    if (order === SortOrder.ASCENDING)
         return (<Icon cursor="pointer" name="arrowDown" rotation="180" size=".7em" mr=".4em"/>);
     return (<Icon cursor="pointer" name="arrowDown" size=".7em" mr=".4em"/>);
 }
 
 export class PP extends React.Component<{ visible: boolean }, { duration: number }> {
-    constructor(props) {
+    constructor(props: Readonly<{visible: boolean;}>) {
         super(props);
         this.state = {
             duration: 500

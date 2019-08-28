@@ -77,7 +77,7 @@ fun KtorApplicationTestSetupContext.configureServerWithFileController(
     fsRootInitializer: () -> File = { createDummyFS() },
     fileUpdateAclWhitelist: Set<String> = emptySet(),
     additional: (FileControllerContext) -> List<Controller> = { emptyList() }
-    ): List<Controller> {
+): List<Controller> {
     BackgroundScope.reset()
 
     val fsRoot = fsRootInitializer()

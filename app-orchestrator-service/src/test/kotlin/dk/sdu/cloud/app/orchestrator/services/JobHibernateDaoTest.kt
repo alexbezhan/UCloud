@@ -49,7 +49,7 @@ class JobHibernateDaoTest {
         db = micro.hibernateDatabase
         val tokenValidation = micro.tokenValidation as TokenValidationJWT
 
-        jobHibDao = JobHibernateDao(appDao, toolDao, tokenValidation)
+        jobHibDao = JobHibernateDao(appDao, toolDao)
 
         coEvery { toolDao.findByNameAndVersion(normToolDesc.info.name, normToolDesc.info.version) } returns normTool
         coEvery {
@@ -100,9 +100,9 @@ class JobHibernateDaoTest {
                     JobState.VALIDATED,
                     "Unknown",
                     null,
-                    archiveInCollection = normAppDesc.metadata.title,
-                    uid = 1337L
+                    archiveInCollection = normAppDesc.metadata.title
                 ),
+                "token",
                 "token"
             )
             jobHibDao.create(it, jobWithToken)
@@ -137,7 +137,14 @@ class JobHibernateDaoTest {
         }
 
         db.withTransaction(autoFlush = true) {
-            val result = runBlocking { jobHibDao.list(it, user.createToken(), NormalizedPaginationRequest(10, 0)) }
+            val result =
+                runBlocking { jobHibDao.list(
+                    it,
+                    user.createToken(),
+                    NormalizedPaginationRequest(10, 0),
+                    application = null,
+                    version = null
+                ) }
             assertEquals(1, result.itemsInTotal)
         }
     }
@@ -161,9 +168,9 @@ class JobHibernateDaoTest {
                     JobState.VALIDATED,
                     "Unknown",
                     null,
-                    archiveInCollection = normAppDesc.metadata.title,
-                    uid = 1337L
+                    archiveInCollection = normAppDesc.metadata.title
                 ),
+                "token",
                 "token"
             )
             jobHibDao.create(it, firstJob)
@@ -185,9 +192,9 @@ class JobHibernateDaoTest {
                     JobState.VALIDATED,
                     "Unknown",
                     null,
-                    archiveInCollection = normAppDesc2.metadata.title,
-                    uid = 1337L
+                    archiveInCollection = normAppDesc2.metadata.title
                 ),
+                "token",
                 "token"
             )
             jobHibDao.create(it, secondJob)
@@ -249,9 +256,9 @@ class JobHibernateDaoTest {
                     JobState.VALIDATED,
                     "Unknown",
                     null,
-                    archiveInCollection = normAppDesc.metadata.title,
-                    uid = 1337L
+                    archiveInCollection = normAppDesc.metadata.title
                 ),
+                "token",
                 "token"
             )
             jobHibDao.create(it, firstJob)
@@ -273,9 +280,9 @@ class JobHibernateDaoTest {
                     JobState.VALIDATED,
                     "Unknown",
                     null,
-                    archiveInCollection = normAppDesc2.metadata.title,
-                    uid = 1337L
+                    archiveInCollection = normAppDesc2.metadata.title
                 ),
+                "token",
                 "token"
             )
             jobHibDao.create(it, secondJob)
@@ -335,7 +342,9 @@ class JobHibernateDaoTest {
                 SortOrder.DESCENDING,
                 JobSortBy.LAST_UPDATE,
                 null,
-                null
+                null,
+                application = null,
+                version = null
             )
         }
     }
@@ -352,7 +361,9 @@ class JobHibernateDaoTest {
             SortOrder.DESCENDING,
             JobSortBy.LAST_UPDATE,
             min,
-            max
+            max,
+            application = null,
+            version = null
         )
     }
 
@@ -376,7 +387,9 @@ class JobHibernateDaoTest {
                     JobSortBy.LAST_UPDATE,
                     null,
                     null,
-                    JobState.VALIDATED
+                    JobState.VALIDATED,
+                    null,
+                    null
                 )
             }
             assertEquals(1, jobByFilter.items.size)
@@ -390,7 +403,9 @@ class JobHibernateDaoTest {
                     JobSortBy.LAST_UPDATE,
                     null,
                     null,
-                    JobState.CANCELING
+                    JobState.CANCELING,
+                    null,
+                    null
                 )
             }
 
@@ -414,9 +429,9 @@ class JobHibernateDaoTest {
                 JobState.VALIDATED,
                 "Unknown",
                 null,
-                archiveInCollection = normAppDesc.metadata.title,
-                uid = 1337L
+                archiveInCollection = normAppDesc.metadata.title
             ),
+            "token",
             "token"
         )
         jobHibDao.create(session, firstJob)

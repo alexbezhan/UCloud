@@ -1,13 +1,18 @@
 package dk.sdu.cloud.app.orchestrator.services
 
 import com.auth0.jwt.interfaces.DecodedJWT
-import dk.sdu.cloud.app.orchestrator.api.*
+import dk.sdu.cloud.app.orchestrator.api.AccountingEvents
+import dk.sdu.cloud.app.orchestrator.api.ApplicationBackend
+import dk.sdu.cloud.app.orchestrator.api.FollowStdStreamsRequest
+import dk.sdu.cloud.app.orchestrator.api.InternalStdStreamsResponse
+import dk.sdu.cloud.app.orchestrator.api.JobState
+import dk.sdu.cloud.app.orchestrator.api.JobStateChange
 import dk.sdu.cloud.app.orchestrator.utils.normAppDesc
 import dk.sdu.cloud.app.orchestrator.utils.normTool
 import dk.sdu.cloud.app.orchestrator.utils.normToolDesc
 import dk.sdu.cloud.app.orchestrator.utils.startJobRequest
 import dk.sdu.cloud.app.store.api.SimpleDuration
-import dk.sdu.cloud.app.store.api.ToolStore
+import dk.sdu.cloud.auth.api.AuthDescriptions
 import dk.sdu.cloud.file.api.FileDescriptions
 import dk.sdu.cloud.file.api.FindHomeFolderResponse
 import dk.sdu.cloud.file.api.MultiPartUploadDescriptions
@@ -17,7 +22,6 @@ import dk.sdu.cloud.micro.install
 import dk.sdu.cloud.micro.tokenValidation
 import dk.sdu.cloud.service.TokenValidationJWT
 import dk.sdu.cloud.service.db.HibernateSession
-import dk.sdu.cloud.service.db.withTransaction
 import dk.sdu.cloud.service.test.*
 import io.mockk.coEvery
 import io.mockk.every
@@ -27,7 +31,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 
 class JobOrchestratorTest {
 
@@ -50,19 +53,25 @@ class JobOrchestratorTest {
 
         val toolDao = mockk<ToolStoreService>()
         val appDao = mockk<AppStoreService>()
-        val jobDao = JobHibernateDao(appDao, toolDao, tokenValidation)
+        val jobDao = JobHibernateDao(appDao, toolDao)
         val backendName = "backend"
         val compBackend = ComputationBackendService(listOf(ApplicationBackend(backendName)), true)
 
-        coEvery { appDao.findByNameAndVersion(normAppDesc.metadata.name, normAppDesc.metadata.version) } returns normAppDesc
+        coEvery {
+            appDao.findByNameAndVersion(
+                normAppDesc.metadata.name,
+                normAppDesc.metadata.version
+            )
+        } returns normAppDesc
         coEvery { toolDao.findByNameAndVersion(normToolDesc.info.name, normToolDesc.info.version) } returns normTool
 
-        val jobFileService = JobFileService(client)
+
+        val jobFileService = JobFileService(client) { _, _ -> client}
         val orchestrator = JobOrchestrator(
             client,
             EventServiceMock.createProducer(AccountingEvents.jobCompleted),
             db,
-            JobVerificationService(appDao, toolDao, tokenValidation, backendName, SharedMountVerificationService()),
+            JobVerificationService(appDao, toolDao, backendName, SharedMountVerificationService(), db, jobDao),
             compBackend,
             jobFileService,
             jobDao,
@@ -85,6 +94,11 @@ class JobOrchestratorTest {
             Unit
         )
 
+        ClientMock.mockCallSuccess(
+            AuthDescriptions.logout,
+            Unit
+        )
+
         this.orchestrator = orchestrator
         this.streamFollowService = StreamFollowService(jobFileService, client, compBackend, db, jobDao)
     }
@@ -100,7 +114,8 @@ class JobOrchestratorTest {
         val returnedID = runBlocking {
             orchestrator.startJob(
                 startJobRequest,
-                decodedJWT,
+                TestUsers.user.createToken(),
+                "token",
                 client
             )
         }
@@ -158,7 +173,8 @@ class JobOrchestratorTest {
             val returnedID = run {
                 orchestrator.startJob(
                     startJobRequest,
-                    decodedJWT,
+                    TestUsers.user.createToken(),
+                    "token",
                     client
                 )
             }
@@ -181,7 +197,8 @@ class JobOrchestratorTest {
             val returnedID = run {
                 orchestrator.startJob(
                     startJobRequest,
-                    decodedJWT,
+                    TestUsers.user.createToken(),
+                    "token",
                     client
                 )
             }
@@ -204,7 +221,7 @@ class JobOrchestratorTest {
     fun `handle incoming files`() {
         val orchestrator = setup()
         val returnedID = runBlocking {
-            orchestrator.startJob(startJobRequest, decodedJWT, client)
+            orchestrator.startJob(startJobRequest, TestUsers.user.createToken(), "token", client)
         }
 
         ClientMock.mockCallSuccess(
@@ -237,7 +254,7 @@ class JobOrchestratorTest {
     fun `followStreams test`() {
         val orchestrator = setup()
         val returnedID = runBlocking {
-            orchestrator.startJob(startJobRequest, decodedJWT, client)
+            orchestrator.startJob(startJobRequest, TestUsers.user.createToken(), "token", client)
         }
 
         ClientMock.mockCallSuccess(
@@ -262,7 +279,7 @@ class JobOrchestratorTest {
     fun `test with job exception`() {
         val orchestrator = setup()
         val returnedID = runBlocking {
-            orchestrator.startJob(startJobRequest, decodedJWT, client)
+            orchestrator.startJob(startJobRequest, TestUsers.user.createToken(), "token", client)
         }
 
         runBlocking {
@@ -291,7 +308,7 @@ class JobOrchestratorTest {
     fun `Handle cancel of successful job test`() {
         val orchestrator = setup()
         val returnedID = runBlocking {
-            orchestrator.startJob(startJobRequest, decodedJWT, client)
+            orchestrator.startJob(startJobRequest, TestUsers.user.createToken(), "token", client)
         }
 
         runBlocking {
@@ -322,7 +339,7 @@ class JobOrchestratorTest {
     fun `Handle failed state of unsuccessful job test`() {
         val orchestrator = setup()
         val returnedID = runBlocking {
-            orchestrator.startJob(startJobRequest, decodedJWT, client)
+            orchestrator.startJob(startJobRequest, TestUsers.user.createToken(), "token", client)
         }
 
         runBlocking {

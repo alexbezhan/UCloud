@@ -1,50 +1,50 @@
-import * as React from "react";
-import {capitalized, errorMessageOrDefault, shortUUID} from "UtilityFunctions"
-import {updatePageTitle, setActivePage} from "Navigation/Redux/StatusActions";
-import {List} from "Pagination/List";
-import {connect} from "react-redux";
-import {setLoading, fetchAnalyses, checkAnalysis, checkAllAnalyses} from "./Redux/AnalysesActions";
-import {AnalysesProps, AnalysesOperations, Analysis, AppState, RunsSortBy, AnalysesStateProps} from ".";
-import {Dispatch} from "redux";
-import {Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow} from "ui-components/Table";
-import {MainContainer} from "MainContainer/MainContainer";
-import {History} from "history";
+import {getStartOfDay, getStartOfWeek} from "Activity/Page";
+import {Cloud} from "Authentication/SDUCloudObject";
 import {ReduxObject} from "DefaultObjects";
-import {SidebarPages} from "ui-components/Sidebar";
-import * as Heading from "ui-components/Heading";
-import {setRefreshFunction} from "Navigation/Redux/HeaderActions";
-import {EntriesPerPageSelector} from "Pagination";
-import {Spacer} from "ui-components/Spacer";
+import {SortOrder} from "Files";
+import {History} from "history";
+import {MainContainer} from "MainContainer/MainContainer";
 import * as moment from "moment";
 import "moment/locale/en-gb";
-import {JobStateIcon} from "./JobStateIcon";
-import {italic, TextSpan} from "ui-components/Text";
+import {setRefreshFunction} from "Navigation/Redux/HeaderActions";
+import {setActivePage, updatePageTitle} from "Navigation/Redux/StatusActions";
+import {EntriesPerPageSelector} from "Pagination";
+import {List} from "Pagination/List";
+import * as React from "react";
+import {connect} from "react-redux";
+import {Dispatch} from "redux";
+import {SnackType} from "Snackbar/Snackbars";
+import {snackbarStore} from "Snackbar/SnackbarStore";
+import styled from "styled-components";
+import {ContainerForText} from "ui-components";
+import Box from "ui-components/Box";
+import Button from "ui-components/Button";
+import Checkbox from "ui-components/Checkbox";
 import ClickableDropdown from "ui-components/ClickableDropdown";
 import {DatePicker} from "ui-components/DatePicker";
-import {prettierString} from "UtilityFunctions";
-import styled from "styled-components";
-import {MasterCheckbox, Arrow} from "UtilityComponents";
-import {inCancelableState, cancelJobDialog, cancelJob} from "Utilities/ApplicationUtilities";
-import {Cloud} from "Authentication/SDUCloudObject";
-import {snackbarStore} from "Snackbar/SnackbarStore";
-import {SnackType} from "Snackbar/Snackbars";
-import {SortOrder} from "Files";
-import {getStartOfWeek, getStartOfDay} from "Activity/Page";
-import Button from "ui-components/Button";
+import * as Heading from "ui-components/Heading";
 import InputGroup from "ui-components/InputGroup";
 import Label from "ui-components/Label";
-import Box from "ui-components/Box";
-import {ContainerForText} from "ui-components";
-import Checkbox from "ui-components/Checkbox";
+import {SidebarPages} from "ui-components/Sidebar";
+import {Spacer} from "ui-components/Spacer";
+import {Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow} from "ui-components/Table";
+import {TextSpan} from "ui-components/Text";
+import {cancelJob, cancelJobDialog, inCancelableState} from "Utilities/ApplicationUtilities";
+import {Arrow, MasterCheckbox} from "UtilityComponents";
+import {capitalized, errorMessageOrDefault, shortUUID} from "UtilityFunctions";
+import {prettierString} from "UtilityFunctions";
+import {AnalysesOperations, AnalysesProps, AnalysesStateProps, Analysis, AppState, RunsSortBy} from ".";
+import {JobStateIcon} from "./JobStateIcon";
+import {checkAllAnalyses, checkAnalysis, fetchAnalyses, setLoading} from "./Redux/AnalysesActions";
 
 interface FetchJobsOptions {
-    itemsPerPage?: number
-    pageNumber?: number
-    sortBy?: RunsSortBy
-    sortOrder?: SortOrder
-    minTimestamp?: number
-    maxTimestamp?: number
-    filter?: string
+    itemsPerPage?: number;
+    pageNumber?: number;
+    sortBy?: RunsSortBy;
+    sortOrder?: SortOrder;
+    minTimestamp?: number;
+    maxTimestamp?: number;
+    filter?: string;
 }
 
 /* FIXME: Almost identical to similar one in FilesTable.tsx */
@@ -76,7 +76,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
         const minTimestamp = opts.minTimestamp != null ? opts.minTimestamp : undefined;
         const maxTimestamp = opts.maxTimestamp != null ? opts.maxTimestamp : undefined;
         const filterValue = opts.filter && opts.filter !== "Don't filter" ? opts.filter as AppState : undefined;
-    
+
         setLoading(true);
         props.fetchJobs(itemsPerPage, pageNumber, sortOrder, sortBy, minTimestamp, maxTimestamp, filterValue);
         props.setRefresh(() =>
@@ -139,7 +139,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
         onPageChanged={pageNumber => fetchJobs({pageNumber})}
     />;
 
-    const defaultFilter = {text: "Don't filter", value: "Don't filter"}
+    const defaultFilter = {text: "Don't filter", value: "Don't filter"};
     const [filter, setFilter] = React.useState(defaultFilter);
     const [firstDate, setFirstDate] = React.useState<Date | null>(null);
     const [secondDate, setSecondDate] = React.useState<Date | null>(null);
@@ -156,7 +156,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
             minTimestamp: minDate == null ? undefined : minDate.getTime(),
             maxTimestamp: maxDate == null ? undefined : maxDate.getTime(),
             filter: filter.value === "Don't filter" ? undefined : filter.value
-        })
+        });
     }
 
     const startOfToday = getStartOfDay(new Date());
@@ -171,19 +171,28 @@ function JobResults(props: AnalysesProps & {history: History}) {
             pageNumber,
             sortBy,
             sortOrder,
-            filter: value == "Don't filter" ? undefined : value as AppState
+            filter: value === "Don't filter" ? undefined : value as AppState
         });
     }
-
     const sidebar = (<Box pt={48}>
         <Heading.h3>
             Quick Filters
         </Heading.h3>
-        <Box cursor="pointer" onClick={fetchJobsInRange(getStartOfDay(new Date()), null)}><TextSpan>Today</TextSpan></Box>
-        <Box cursor="pointer" onClick={fetchJobsInRange(new Date(startOfYesterday), new Date(startOfYesterday.getTime() + dayInMillis))}>
+        <Box cursor="pointer" onClick={fetchJobsInRange(getStartOfDay(new Date()), null)}>
+            <TextSpan>Today</TextSpan>
+        </Box>
+        <Box
+            cursor="pointer"
+            onClick={fetchJobsInRange(new Date(startOfYesterday), new Date(startOfYesterday.getTime() + dayInMillis))}
+        >
             <TextSpan>Yesterday</TextSpan>
         </Box>
-        <Box cursor="pointer" onClick={fetchJobsInRange(new Date(startOfWeek), null)}><TextSpan>This week</TextSpan></Box>
+        <Box
+            cursor="pointer"
+            onClick={fetchJobsInRange(new Date(startOfWeek), null)}
+        >
+            <TextSpan>This week</TextSpan>
+        </Box>
         <Box cursor="pointer" onClick={fetchJobsInRange(null, null)}><TextSpan>No filter</TextSpan></Box>
         <Heading.h3 mt={16}>Active Filters</Heading.h3>
         <Label>Filter by app state</Label>
@@ -191,7 +200,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
             chevron
             trigger={filter.text}
             onChange={updateFilterAndFetchJobs}
-            options={appStates.filter(it => it.value != filter.value)}
+            options={appStates.filter(it => it.value !== filter.value)}
         />
         <Box mb={16} mt={16}>
             <Label>Job created after</Label>
@@ -239,7 +248,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
                     <EntriesPerPageSelector
                         content="Jobs per page"
                         entriesPerPage={page.itemsPerPage}
-                        onChange={itemsPerPage => fetchJobs({itemsPerPage})}
+                        onChange={items => fetchJobs({itemsPerPage: items})}
                     />
                 }
             />
@@ -252,8 +261,8 @@ function JobResults(props: AnalysesProps & {history: History}) {
 }
 
 interface AnalysisOperationsProps {
-    cancelableAnalyses: Analysis[]
-    onFinished: () => void
+    cancelableAnalyses: Analysis[];
+    onFinished: () => void;
 }
 
 const AnalysisOperations = ({cancelableAnalyses, onFinished}: AnalysisOperationsProps) =>
@@ -266,7 +275,7 @@ const AnalysisOperations = ({cancelableAnalyses, onFinished}: AnalysisOperations
                     await Promise.all(cancelableAnalyses.map(a => cancelJob(Cloud, a.jobId)));
                     snackbarStore.addSnack({type: SnackType.Success, message: "Jobs cancelled"});
                 } catch (e) {
-                    snackbarStore.addFailure(errorMessageOrDefault(e, "An error occured"))
+                    snackbarStore.addFailure(errorMessageOrDefault(e, "An error occured"));
                 } finally {
                     onFinished();
                 }
@@ -276,11 +285,11 @@ const AnalysisOperations = ({cancelableAnalyses, onFinished}: AnalysisOperations
     </Button>);
 
 interface HeaderProps {
-    hide: boolean
-    masterCheckbox: JSX.Element
-    sortBy: RunsSortBy
-    sortOrder: SortOrder
-    fetchJobs: (sortBy: RunsSortBy) => void
+    hide: boolean;
+    masterCheckbox: JSX.Element;
+    sortBy: RunsSortBy;
+    sortOrder: SortOrder;
+    fetchJobs: (sortBy: RunsSortBy) => void;
 }
 
 const Header = ({hide, sortBy, sortOrder, masterCheckbox, fetchJobs}: HeaderProps) => (
@@ -315,9 +324,9 @@ const Header = ({hide, sortBy, sortOrder, masterCheckbox, fetchJobs}: HeaderProp
 );
 
 interface RowProps {
-    hide: boolean
-    analysis: Analysis
-    to: () => void
+    hide: boolean;
+    analysis: Analysis;
+    to: () => void;
 }
 const Row: React.FunctionComponent<RowProps> = ({analysis, to, hide, children}) => {
     const metadata = analysis.metadata;
@@ -327,13 +336,16 @@ const Row: React.FunctionComponent<RowProps> = ({analysis, to, hide, children}) 
             <TableCell textAlign="center">
                 {children}
             </TableCell>
-            <TableCell onClick={to}>{analysis.name ? analysis.name : shortUUID(analysis.jobId) }</TableCell>
+            <TableCell onClick={to}>{analysis.name ? analysis.name : shortUUID(analysis.jobId)}</TableCell>
             <TableCell onClick={to}><JobStateIcon state={analysis.state} mr={"8px"} /> {capitalized(analysis.state)}
             </TableCell>
             <TableCell onClick={to}>{metadata.title} v{metadata.version}</TableCell>
             {hide ? null : <TableCell onClick={to}>{moment(analysis.createdAt).calendar()}</TableCell>}
-            <TableCell onClick={to}>{analysis.expiresAt ? moment(analysis.expiresAt).calendar() : "N/A"}</TableCell>
-        </TableRow>)
+            <TableCell onClick={to}>
+                {!!analysis.expiresAt &&
+                     analysis.state === AppState.RUNNING ? moment(analysis.expiresAt).calendar() : "N/A"}
+            </TableCell>
+        </TableRow>);
 };
 
 const mapDispatchToProps = (dispatch: Dispatch): AnalysesOperations => ({
@@ -343,7 +355,7 @@ const mapDispatchToProps = (dispatch: Dispatch): AnalysesOperations => ({
     setRefresh: refresh => dispatch(setRefreshFunction(refresh)),
     onInit: () => {
         dispatch(setActivePage(SidebarPages.Runs));
-        dispatch(updatePageTitle("Runs"))
+        dispatch(updatePageTitle("Runs"));
     },
     checkAnalysis: (jobId, checked) => dispatch(checkAnalysis(jobId, checked)),
     checkAllAnalyses: checked => dispatch(checkAllAnalyses(checked))

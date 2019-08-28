@@ -22,7 +22,9 @@ data class ListRecentRequest(
     val sortBy: JobSortBy?,
     val minTimestamp: Long?,
     val maxTimestamp: Long?,
-    val filter: JobState?
+    val filter: JobState?,
+    val application: String?,
+    val version: String?
 ) : WithPaginationRequest
 
 enum class SortOrder {
@@ -85,6 +87,8 @@ object JobDescriptions : CallDescriptionContainer("hpc.jobs") {
                 +boundTo(ListRecentRequest::minTimestamp)
                 +boundTo(ListRecentRequest::maxTimestamp)
                 +boundTo(ListRecentRequest::filter)
+                +boundTo(ListRecentRequest::application)
+                +boundTo(ListRecentRequest::version)
             }
         }
     }
@@ -278,7 +282,7 @@ data class FollowStdStreamsResponse(
     /**
      * Time (in milliseconds) left of the job
      */
-    val timeLeft: Int?,
+    val timeLeft: Long?,
 
     /**
      * The job ID
