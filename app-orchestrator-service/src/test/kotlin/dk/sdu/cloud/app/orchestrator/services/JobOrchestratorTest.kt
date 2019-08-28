@@ -7,6 +7,7 @@ import dk.sdu.cloud.app.orchestrator.api.FollowStdStreamsRequest
 import dk.sdu.cloud.app.orchestrator.api.InternalStdStreamsResponse
 import dk.sdu.cloud.app.orchestrator.api.JobState
 import dk.sdu.cloud.app.orchestrator.api.JobStateChange
+import dk.sdu.cloud.app.orchestrator.services.JobOrchestrator.Companion.log
 import dk.sdu.cloud.app.orchestrator.utils.normAppDesc
 import dk.sdu.cloud.app.orchestrator.utils.normTool
 import dk.sdu.cloud.app.orchestrator.utils.normToolDesc
@@ -312,6 +313,8 @@ class JobOrchestratorTest {
         }
 
         runBlocking {
+            log.info("Block 1 ")
+
             assertEquals(JobState.VALIDATED, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
 
             orchestrator.handleProposedStateChange(
@@ -319,8 +322,11 @@ class JobOrchestratorTest {
                 null,
                 TestUsers.user
             )
+            log.info("Block 1 end")
         }
         runBlocking {
+            log.info("Block 2")
+
             assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
 
             orchestrator.handleProposedStateChange(
@@ -328,13 +334,16 @@ class JobOrchestratorTest {
                 null,
                 TestUsers.user
             )
+            log.info("This is current: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
 
-            println("This is current: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
+            log.info("Block 2 end")
         }
 
         runBlocking {
-            println("This is current next block: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
+            log.info("Block 3")
+            log.info("This is current next block: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
             assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
+            log.info("Block 3 end")
         }
     }
 /*
