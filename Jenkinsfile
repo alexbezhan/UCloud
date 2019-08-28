@@ -41,7 +41,7 @@ volumes: [
             def needToBuild = []
 
             def serviceList = [
-                "storage-service"
+                "app-orchestrator-service"
             ]
 
             def list = sh(script: 'ls', returnStdout: true).split("\n")

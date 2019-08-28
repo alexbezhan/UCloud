@@ -167,6 +167,7 @@ class JobOrchestrator<DBSession>(
             computationBackendService.getAndVerifyByName(job.backend, computeBackend)
 
             val validStates = validStateTransitions[job.currentState] ?: emptySet()
+            println("proposed: $proposedState, and valid: ${validStates.joinToString()}")
             if (proposedState in validStates) {
                 if (proposedState != job.currentState) {
                     val asyncJob = handleStateChange(jobWithToken, event, newStatus)

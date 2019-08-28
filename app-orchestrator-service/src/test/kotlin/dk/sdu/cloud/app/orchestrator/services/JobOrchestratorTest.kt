@@ -328,9 +328,12 @@ class JobOrchestratorTest {
                 null,
                 TestUsers.user
             )
+
+            println("This is current: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
         }
 
         runBlocking {
+            println("This is current next block: ${orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState}")
             assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
         }
     }
