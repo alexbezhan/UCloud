@@ -1,17 +1,13 @@
+properties([
+    buildDiscarder(logRotator(numToKeepStr: '30')),
+])
+
 def label = "worker-${UUID.randomUUID().toString()}"
 
-podTemplate(
-    label: label, 
-    yaml: """
-spec:
-  securityContext: 
-    runAsUser: 0
-    runAsGroup: 0
-""",
-    containers: [
+podTemplate(label: label, containers: [
 containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true),
 containerTemplate(name: 'node', image: 'node:11-alpine', command: 'cat', ttyEnabled: true),
-containerTemplate(name: 'ubuntu', image: 'ubuntu', command: 'cat', ttyEnabled: true)
+containerTemplate(name: 'centos', image: 'ubuntu', command: 'cat', ttyEnabled: true)
 ],
 volumes: [
   hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')
@@ -41,7 +37,8 @@ volumes: [
             def needToBuild = []
 
             def serviceList = [
-                "app-orchestrator-service"
+                //"frontend-web",
+                "service-common"
             ]
 
             def list = sh(script: 'ls', returnStdout: true).split("\n")
@@ -55,15 +52,19 @@ volumes: [
             } 
 
             String currentResult1
-            String currentResult2
+            /*String currentResult2
             String currentResult3
-            String currentResult4
+            String currentResult4*/
             int size = needToBuild.size()
             int jumpsize = 4
             int i = 0
 
             def resultList = [""] * size
-            /*while (true) {
+            
+            while (true) {
+                if (i >= size-jumpsize) {
+                    break
+                }
                 stage("building and testing ${serviceList[i]}, ${serviceList[i+1]}, ${serviceList[i+2]}, ${serviceList[i+3]}") {
                     parallel (
                         (serviceList[i]): {
@@ -88,7 +89,7 @@ volumes: [
                 if (i >= size-jumpsize) {
                     break
                 }
-            }*/
+            }
 
             for (i; i < needToBuild.size(); i++) {
                 stage("building and testing ${serviceList[i]}"){
@@ -110,7 +111,7 @@ volumes: [
                         message = message + "${serviceList[k]}\n"
                     }
                 }
-                //sendAlert(message)
+                sendAlert(message)
                 junit '**/build/test-results/**/*.xml'      
                 jacoco(
                     execPattern: '**/**.exec',
@@ -152,6 +153,11 @@ def sendAlert(String alertMessage) {
         slackSend(
             baseUrl: 'https://sdu-escience.slack.com/services/hooks/jenkins-ci/',
             message: alertMessage,
+            token: "$slackToken"
+        )
+    }
+}
+alertMessage,
             token: "$slackToken"
         )
     }
