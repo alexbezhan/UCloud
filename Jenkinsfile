@@ -157,8 +157,3 @@ def sendAlert(String alertMessage) {
         )
     }
 }
-alertMessage,
-            token: "$slackToken"
-        )
-    }
-}
