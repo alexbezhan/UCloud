@@ -3,11 +3,13 @@ package dk.sdu.cloud.app.orchestrator
 import dk.sdu.cloud.auth.api.RefreshingJWTCloudFeature
 import dk.sdu.cloud.app.orchestrator.api.AppOrchestratorServiceDescription
 import dk.sdu.cloud.app.orchestrator.api.ApplicationBackend
+import dk.sdu.cloud.app.orchestrator.api.MachineReservation
 import dk.sdu.cloud.micro.*
 
 data class Configuration(
     val backends: List<ApplicationBackend> = emptyList(),
-    val defaultBackend: String = "abacus"
+    val defaultBackend: String = "kubernetes",
+    val machines: List<MachineReservation> = listOf(MachineReservation.BURST)
 )
 
 fun main(args: Array<String>) {
@@ -15,6 +17,7 @@ fun main(args: Array<String>) {
         initWithDefaultFeatures(AppOrchestratorServiceDescription, args)
         install(HibernateFeature)
         install(RefreshingJWTCloudFeature)
+        install(BackgroundScopeFeature)
     }
 
     if (micro.runScriptHandler()) return

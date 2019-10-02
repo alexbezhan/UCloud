@@ -2,6 +2,7 @@ import * as AccountingRedux from "Accounting/Redux";
 import {Activity, ActivityFilter, ActivityGroup} from "Activity";
 import {Analysis, DetailedApplicationSearchReduxState, RunsSortBy} from "Applications";
 import * as ApplicationRedux from "Applications/Redux";
+import {TaskReduxState} from "BackgroundTasks/redux";
 import {DashboardStateProps} from "Dashboard";
 import {DetailedFileSearchReduxState, File, SortOrder} from "Files";
 import {Status} from "Navigation";
@@ -124,7 +125,7 @@ export interface UploaderReduxObject {
     visible: boolean;
     path: string;
     allowMultiple: boolean;
-    onFilesUploaded: (p: string) => void;
+    onFilesUploaded: () => void;
     error?: string;
     loading: boolean;
 }
@@ -166,7 +167,8 @@ interface LegacyReduxObject {
 export type ReduxObject =
     LegacyReduxObject &
     ApplicationRedux.Objects &
-    AccountingRedux.Objects;
+    AccountingRedux.Objects &
+    TaskReduxState;
 
 export const initActivity = (): ActivityReduxObject => ({
     loading: false
@@ -295,5 +297,5 @@ export const initApplicationsAdvancedSearch = (): DetailedApplicationSearchRedux
     hidden: true,
     appName: "",
     appVersion: "",
-    tags: ""
+    tags: new Set()
 });

@@ -1,62 +1,67 @@
-import * as React from "react";
+import {MachineTypes} from "Applications/MachineTypes";
+import {OptionalParameters} from "Applications/OptionalParameters";
+import {InputDirectoryParameter} from "Applications/Widgets/FileParameter";
+import {AdditionalPeerParameter} from "Applications/Widgets/PeerParameter";
+import {callAPI} from "Authentication/DataHook";
 import {Cloud} from "Authentication/SDUCloudObject";
-import LoadingIcon from "LoadingIcon/LoadingIcon"
-import PromiseKeeper from "PromiseKeeper";
-import {connect} from "react-redux";
-import {errorMessageOrDefault, removeTrailingSlash} from "UtilityFunctions";
+import {emptyPage} from "DefaultObjects";
+import {dialogStore} from "Dialog/DialogStore";
+import {File as CloudFile, FileResource, SortBy, SortOrder} from "Files";
+import FileSelector from "Files/FileSelector";
+import {listDirectory} from "Files/LowLevelFileTable";
+import LoadingIcon from "LoadingIcon/LoadingIcon";
+import {MainContainer} from "MainContainer/MainContainer";
 import {setLoading, updatePageTitle} from "Navigation/Redux/StatusActions";
+import PromiseKeeper from "PromiseKeeper";
+import * as React from "react";
+import {connect} from "react-redux";
+import {Dispatch} from "redux";
+import {SnackType} from "Snackbar/Snackbars";
+import {snackbarStore} from "Snackbar/SnackbarStore";
+import styled from "styled-components";
+import {AccessRight, Page} from "Types";
+import {Box, Button, ContainerForText, Flex, Label, OutlineButton, VerticalButtonGroup} from "ui-components";
+import BaseLink from "ui-components/BaseLink";
+import ClickableDropdown from "ui-components/ClickableDropdown";
+import * as Heading from "ui-components/Heading";
+import Input, {HiddenInputField} from "ui-components/Input";
+import Link from "ui-components/Link";
 import {
+    checkForMissingParameters,
+    extractValuesFromWidgets,
+    findKnownParameterValues,
+    hpcFavoriteApp,
+    hpcJobQueryPost,
+    isFileOrDirectoryParam,
+    validateOptionalFields
+} from "Utilities/ApplicationUtilities";
+import {removeEntry} from "Utilities/CollectionUtilities";
+import {
+    allFilesHasAccessRight,
+    checkIfFileExists,
+    expandHomeFolder,
+    fetchFileContent,
+    fileTablePage, getFilenameFromPath,
+    statFileOrNull,
+    statFileQuery
+} from "Utilities/FileUtilities";
+import {addStandardDialog} from "UtilityComponents";
+import {errorMessageOrDefault, removeTrailingSlash} from "UtilityFunctions";
+import {
+    AdditionalMountedFolder,
     ApplicationParameter,
     FullAppInfo,
     JobSchedulingOptionsForInput,
     ParameterTypes,
-    AdditionalMountedFolder,
     RunAppProps,
     RunAppState,
     RunOperations,
     WithAppInvocation,
     WithAppMetadata,
 } from ".";
-import {Dispatch} from "redux";
-import {Box, Button, ContainerForText, Flex, Label, OutlineButton, VerticalButtonGroup} from "ui-components";
-import Input, {HiddenInputField} from "ui-components/Input";
-import {MainContainer} from "MainContainer/MainContainer";
-import {Parameter} from "./Widgets/Parameter";
-import {
-    findKnownParameterValues,
-    extractValuesFromWidgets,
-    hpcFavoriteApp,
-    hpcJobQueryPost,
-    isFileOrDirectoryParam,
-    validateOptionalFields,
-    checkForMissingParameters
-} from "Utilities/ApplicationUtilities";
 import {AppHeader} from "./View";
-import * as Heading from "ui-components/Heading";
-import {
-    allFilesHasAccessRight,
-    checkIfFileExists,
-    expandHomeFolder,
-    fetchFileContent, fileTablePage,
-    statFileOrNull,
-    statFileQuery
-} from "Utilities/FileUtilities";
-import {SnackType} from "Snackbar/Snackbars";
-import ClickableDropdown from "ui-components/ClickableDropdown";
-import {removeEntry} from "Utilities/CollectionUtilities";
-import {snackbarStore} from "Snackbar/SnackbarStore";
-import {addStandardDialog} from "UtilityComponents";
-import {File as CloudFile} from "Files";
-import {dialogStore} from "Dialog/DialogStore";
-import FileSelector from "Files/FileSelector";
-import {AccessRight} from "Types";
-import {OptionalParameters} from "Applications/OptionalParameters";
-import {InputDirectoryParameter} from "Applications/Widgets/FileParameter";
-import {AdditionalPeerParameter} from "Applications/Widgets/PeerParameter";
-import Link from "ui-components/Link";
-import BaseLink from "ui-components/BaseLink";
-import styled from "styled-components";
-
+import {Parameter} from "./Widgets/Parameter";
+import {RangeRef} from "./Widgets/RangeParameters";
 
 const hostnameRegex = new RegExp(
     "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*" +
@@ -64,8 +69,6 @@ const hostnameRegex = new RegExp(
 );
 
 class Run extends React.Component<RunAppProps, RunAppState> {
-    private siteVersion = 1;
-
     constructor(props: Readonly<RunAppProps>) {
         super(props);
         this.state = {
@@ -89,10 +92,12 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             favorite: false,
             favoriteLoading: false,
             fsShown: false,
+            previousRuns: emptyPage,
+            reservation: React.createRef(),
 
             sharedFileSystems: {mounts: []}
         };
-    };
+    }
 
     public componentDidMount() {
         this.props.updatePageTitle();
@@ -112,6 +117,350 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 this.retrieveApplication(this.props.match.params.appName, this.props.match.params.appVersion)
             );
         }
+
+        if (prevState.application !== this.state.application && this.state.application !== undefined) {
+            this.fetchPreviousRuns();
+        }
+    }
+
+    public render() {
+        const {application, jobSubmitted, schedulingOptions, parameterValues} = this.state;
+        if (!application) return <MainContainer main={<LoadingIcon size={18} />} />;
+
+        const parameters = application.invocation.parameters;
+        const mandatory = parameters.filter(parameter => !parameter.optional);
+        const visible = parameters.filter(parameter =>
+            parameter.optional && (parameter.visible === true || parameterValues.get(parameter.name)!.current != null)
+        );
+        const optional = parameters.filter(parameter =>
+            parameter.optional && parameter.visible !== true && parameterValues.get(parameter.name)!.current == null);
+
+        const onParameterChange = (parameter: ApplicationParameter, isVisible: boolean) => {
+            parameter.visible = isVisible;
+            if (!isVisible) {
+                parameterValues.set(parameter.name, React.createRef<HTMLSelectElement | HTMLInputElement>());
+            }
+            this.setState(() => ({application: this.state.application}));
+        };
+
+        const mapParamToComponent = (parameter: ApplicationParameter) => {
+            const ref = parameterValues.get(parameter.name)!;
+            function handleParamChange() {
+                onParameterChange(parameter, false);
+            }
+            return (
+                <Parameter
+                    key={parameter.name}
+                    initialSubmit={this.state.initialSubmit}
+                    parameterRef={ref}
+                    parameter={parameter}
+                    onParamRemove={handleParamChange}
+                    application={application}
+                />
+            );
+        };
+
+        const mandatoryParams = mandatory.map(mapParamToComponent);
+        const visibleParams = visible.map(mapParamToComponent);
+
+        return (
+            <MainContainer
+                headerSize={48}
+                header={(
+                    <Flex ml="50px">
+                        <AppHeader slim application={application} />
+                    </Flex>
+                )}
+
+                sidebar={(
+                    <VerticalButtonGroup>
+                        <OutlineButton
+                            onClick={() => importParameterDialog(
+                                file => this.importParameters(file),
+                                () => this.setState(() => ({fsShown: true}))
+                            )}
+                            fullWidth
+                            color="darkGreen"
+                            as="label"
+                        >
+                            Import parameters
+                        </OutlineButton>
+                        <Button fullWidth disabled={this.state.favoriteLoading} onClick={() => this.toggleFavorite()}>
+                            {this.state.favorite ? "Remove from favorites" : "Add to favorites"}
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={this.onSubmit}
+                            disabled={jobSubmitted}
+                            color="blue"
+                        >
+                            Submit
+                        </Button>
+                    </VerticalButtonGroup>
+                )}
+
+                additional={(
+                    <FileSelector
+                        onFileSelect={it => {
+                            if (!!it) this.onImportFileSelected(it);
+                            this.setState(() => ({fsShown: false}));
+                        }}
+                        trigger={null}
+                        visible={this.state.fsShown}
+                    />
+                )}
+
+                main={(
+                    <ContainerForText>
+                        <form onSubmit={this.onSubmit} style={{width: "100%"}}>
+                            {
+                                this.state.previousRuns.items.length <= 0 ? null : (
+                                    <RunSection>
+                                        <Label>Load parameters from a previous run:</Label>
+                                        <Flex flexDirection={"row"} flexWrap={"wrap"}>
+                                            {
+                                                this.state.previousRuns.items.slice(0, 5).map((file, idx) => (
+                                                    <Box mr={"0.8em"} key={idx}>
+                                                        <BaseLink
+                                                            href={"#"}
+                                                            onClick={async e => {
+                                                                e.preventDefault();
+
+                                                                try {
+                                                                    this.props.setLoading(true);
+                                                                    await this.fetchAndImportParameters(
+                                                                        {path: `${file.path}/JobParameters.json`}
+                                                                    );
+                                                                } catch (ex) {
+                                                                    snackbarStore.addFailure(
+                                                                        "Could not find a parameters file for this " +
+                                                                        "run. Try a different run."
+                                                                    );
+                                                                } finally {
+                                                                    this.props.setLoading(false);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {getFilenameFromPath(file.path)}
+                                                        </BaseLink>
+                                                    </Box>
+                                                ))
+                                            }
+                                        </Flex>
+                                    </RunSection>
+                                )}
+                            <RunSection>
+                                <JobSchedulingOptions
+                                    onChange={this.onJobSchedulingParamsChange}
+                                    options={schedulingOptions}
+                                    reservationRef={this.state.reservation}
+                                    app={application}
+                                />
+                            </RunSection>
+
+                            {mandatoryParams.length === 0 ? null : (
+                                <RunSection>
+                                    <Heading.h4>Mandatory Parameters ({mandatoryParams.length})</Heading.h4>
+                                    {mandatoryParams}
+                                </RunSection>
+                            )}
+
+                            {visibleParams.length <= 0 ? null : (
+                                <RunSection>
+                                    <Heading.h4>Additional Parameters Used</Heading.h4>
+                                    {visibleParams}
+                                </RunSection>
+                            )}
+
+                            {
+                                !application.invocation.shouldAllowAdditionalMounts ? null : (
+                                    <RunSection>
+                                        <Flex alignItems={"center"}>
+                                            <Box flexGrow={1}>
+                                                <Heading.h4>Select additional folders to use</Heading.h4>
+                                            </Box>
+
+                                            <Button
+                                                type="button"
+                                                ml="5px"
+                                                lineHeight={"16px"}
+                                                onClick={() => this.addFolder()}
+                                            >
+                                                Add folder
+                                            </Button>
+                                        </Flex>
+
+                                        <Box mb={8} mt={8}>
+                                            {this.state.mountedFolders.length !== 0 ? (
+                                                <>
+                                                    Your files will be available at <code>/work/</code>.
+                                                    You can view changes to your {" "}
+                                                    <Link
+                                                        to={fileTablePage(Cloud.homeFolder)}
+                                                        target={"_blank"}
+                                                    >
+                                                        files
+                                                    </Link> {" "}
+                                                    at the end of the job.
+                                                </>
+                                            ) : (
+                                                    <>
+                                                        If you need to use your {" "}
+                                                        <Link
+                                                            to={fileTablePage(Cloud.homeFolder)}
+                                                            target={"_blank"}
+                                                        >
+                                                            files
+                                                        </Link>
+                                                        {" "}
+                                                        in this job then click {" "}
+                                                        <BaseLink
+                                                            href={"#"}
+                                                            onClick={e => {
+                                                                e.preventDefault();
+                                                                this.addFolder();
+                                                            }}>
+                                                            "Add folder"
+                                                        </BaseLink>
+                                                        {" "}
+                                                        to select the relevant
+                                                        files.
+                                                </>
+                                                )}
+                                        </Box>
+
+                                        {this.state.mountedFolders.every(it => it.readOnly) ? "" :
+                                            "Note: Giving folders read/write access will make the startup and shutdown of the application longer."}
+
+                                        {this.state.mountedFolders.map((entry, i) => (
+                                            <Box key={i} mb="7px">
+                                                <InputDirectoryParameter
+                                                    application={application}
+                                                    defaultValue={entry.defaultValue}
+                                                    initialSubmit={false}
+                                                    parameterRef={entry.ref}
+                                                    unitWidth={"180px"}
+                                                    onRemove={() => {
+                                                        this.setState(s => ({
+                                                            mountedFolders: removeEntry(s.mountedFolders, i)
+                                                        }));
+                                                    }}
+                                                    parameter={{
+                                                        type: ParameterTypes.InputDirectory,
+                                                        name: "",
+                                                        optional: true,
+                                                        title: "",
+                                                        description: "",
+                                                        defaultValue: "",
+                                                        visible: true,
+                                                        unitName: (
+                                                            <ClickableDropdown
+                                                                chevron
+                                                                width="180px"
+                                                                onChange={key => {
+                                                                    const {mountedFolders} = this.state;
+                                                                    mountedFolders[i].readOnly = key === "READ";
+                                                                    this.setState(() => ({mountedFolders}));
+                                                                }}
+                                                                trigger={entry.readOnly ?
+                                                                    "Read only" : "Read/Write"
+                                                                }
+                                                                options={[
+                                                                    {text: "Read only", value: "READ"},
+                                                                    {text: "Read/Write", value: "READ/WRITE"}
+                                                                ]}
+                                                            />
+                                                        ),
+                                                    }}
+                                                />
+                                            </Box>
+                                        ))}
+                                    </RunSection>
+                                )}
+
+                            {!application.invocation.shouldAllowAdditionalPeers ? null : (
+                                <RunSection>
+                                    <Flex>
+                                        <Box flexGrow={1}>
+                                            <Heading.h4>Connect to other jobs</Heading.h4>
+                                        </Box>
+                                        <Button
+                                            type={"button"}
+                                            lineHeight={"16px"}
+                                            onClick={() => this.connectToJob()}
+                                        >
+                                            Connect to job
+                                        </Button>
+                                    </Flex>
+                                    <Box mb={8} mt={8}>
+                                        {this.state.additionalPeers.length !== 0 ? (
+                                            <>
+                                                You will be able contact the <b>job</b> using its <b>hostname</b>.
+                                                File systems used by the <b>job</b> are automatically added to this job.
+                                            </>
+                                        ) : (
+                                                <>
+                                                    If you need to use the services of another job click{" "}
+                                                    <BaseLink
+                                                        href={"#"}
+                                                        onClick={e => {
+                                                            e.preventDefault();
+                                                            this.connectToJob();
+                                                        }}>
+                                                        "Connect to job".
+                                                    </BaseLink>
+                                                    {" "}
+                                                    These services include networking and shared application file systems.
+                                            </>
+                                            )}
+                                    </Box>
+
+                                    {
+                                        this.state.additionalPeers.map((entry, i) => (
+                                            <AdditionalPeerParameter
+                                                jobIdRef={entry.jobIdRef}
+                                                nameRef={entry.nameRef}
+                                                onRemove={() => this.setState(s =>
+                                                    ({additionalPeers: removeEntry(s.additionalPeers, i)}))
+                                                }
+                                                hideLabels={i !== 0}
+                                                key={i}
+                                            />
+                                        ))
+                                    }
+                                </RunSection>
+                            )}
+
+                            <RunSection>
+                                {optional.length <= 0 ? null : (
+                                    <OptionalParameters
+                                        parameters={optional}
+                                        onUse={p => onParameterChange(p, true)}
+                                    />
+                                )}
+                            </RunSection>
+                        </form>
+                    </ContainerForText>
+                )}
+            />
+        );
+    }
+
+    private async fetchPreviousRuns() {
+        if (this.state.application === undefined) return;
+        try {
+            const previousRuns = await callAPI<Page<CloudFile>>(listDirectory({
+                path: Cloud.homeFolder + `Jobs/${this.state.application.metadata.title}`,
+                page: 0,
+                itemsPerPage: 25,
+                attrs: [FileResource.PATH],
+                order: SortOrder.DESCENDING,
+                sortBy: SortBy.CREATED_AT
+            }));
+            this.setState(s => ({previousRuns}));
+        } catch {
+            // Do nothing
+        }
     }
 
     private onJobSchedulingParamsChange = (field: string | number, value: number, timeField: string) => {
@@ -122,7 +471,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             schedulingOptions[field] = value;
         }
         this.setState(() => ({schedulingOptions}));
-    };
+    }
 
     private onSubmit = async (event: React.FormEvent) => {
         if (!this.state.application) return;
@@ -174,7 +523,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             }
         }
 
-        let peers = [] as { name: string, jobId: string }[];
+        const peers = [] as Array<{name: string, jobId: string}>;
         {
             // Validate additional mounts
             for (const peer of this.state.additionalPeers) {
@@ -183,10 +532,10 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 if (jobIdField === null || hostnameField === null) continue; // This should not happen
 
                 const jobId = jobIdField.value;
-                const name = hostnameField.value;
+                const hostname = hostnameField.value;
 
-                if (name === "" && jobId === "") continue;
-                if (name === "" || jobId === "") {
+                if (hostname === "" && jobId === "") continue;
+                if (hostname === "" || jobId === "") {
                     snackbarStore.addFailure(
                         "A connection is missing a job or hostname",
                         5000
@@ -195,22 +544,23 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                     return;
                 }
 
-                if (!hostnameRegex.test(name)) {
+                if (!hostnameRegex.test(hostname)) {
                     snackbarStore.addFailure(
-                        `The connection '${name}' has an invalid hostname.` +
+                        `The connection '${hostname}' has an invalid hostname.` +
                         `Hostnames cannot contain spaces or special characters.`,
                         5000
                     );
                     return;
                 }
 
-                peers.push({name, jobId});
+                peers.push({name: hostname, jobId});
             }
         }
 
-
         const {name} = this.state.schedulingOptions;
         const jobName = name.current && name.current.value;
+        let reservation = this.state.reservation.current ? this.state.reservation.current.value : null;
+        if (reservation === "") reservation = null;
 
         const job = {
             application: {
@@ -220,9 +570,10 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             parameters,
             numberOfNodes: this.state.schedulingOptions.numberOfNodes,
             tasksPerNode: this.state.schedulingOptions.tasksPerNode,
-            maxTime: maxTime,
+            maxTime,
             mounts,
             peers,
+            reservation,
             type: "start",
             name: !!jobName ? jobName : null
         };
@@ -238,7 +589,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         } finally {
             this.props.setLoading(false);
         }
-    };
+    }
 
     private async toggleFavorite() {
         if (!this.state.application) return;
@@ -248,13 +599,13 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             await this.state.promises.makeCancelable(Cloud.post(hpcFavoriteApp(name, version))).promise;
             this.setState(() => ({favorite: !this.state.favorite}));
         } catch (e) {
-            snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred"))
+            snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred"));
         } finally {
             this.setState(() => ({favoriteLoading: false}));
         }
     }
 
-    private async retrieveApplication(name: string, version: string) {
+    private async retrieveApplication(name: string, version: string): Promise<void> {
         try {
             this.props.setLoading(true);
             const {response} = await this.state.promises.makeCancelable(
@@ -262,13 +613,15 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             ).promise;
             const app = response;
             const toolDescription = app.invocation.tool.tool.description;
-            const parameterValues = new Map<string, React.RefObject<HTMLInputElement | HTMLSelectElement>>();
+            const parameterValues = new Map<string, React.RefObject<HTMLInputElement | HTMLSelectElement | RangeRef>>();
 
             app.invocation.parameters.forEach(it => {
                 if (Object.values(ParameterTypes).includes(it.type)) {
                     parameterValues.set(it.name, React.createRef<HTMLInputElement>());
                 } else if (it.type === "boolean") {
                     parameterValues.set(it.name, React.createRef<HTMLSelectElement>());
+                } else if (it.type === "range") {
+                    parameterValues.set(it.name, React.createRef<RangeRef>());
                 }
             });
             this.setState(() => ({
@@ -306,7 +659,6 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                     maxTime,
                     siteVersion
                 } = JSON.parse(rawInputFile);
-
                 // Verify metadata
                 if (application.name !== thisApp.metadata.name) {
                     snackbarStore.addSnack({
@@ -358,6 +710,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 {
                     // Verify and load additional mounts
                     const validMountFolders = [] as AdditionalMountedFolder[];
+                    // tslint:disable-next-line:prefer-for-of
                     for (let i = 0; i < mountedFolders.length; i++) {
                         if (await checkIfFileExists(expandHomeFolder(mountedFolders[i].ref, Cloud.homeFolder), Cloud)) {
                             const ref = React.createRef<HTMLInputElement>();
@@ -385,7 +738,8 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                         thisApp.invocation.parameters.find(it => it.name === key)!.visible = true;
                         const ref = this.state.parameterValues.get(key);
                         if (ref && ref.current) {
-                            ref.current.value = userInputValues[key];
+                            if ("value" in ref.current) ref.current.value = userInputValues[key];
+                            else (ref.current.setState(() => ({bounds: userInputValues[key] as any})));
                             this.state.parameterValues.set(key, ref);
                         }
                     });
@@ -408,7 +762,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         fileReader.readAsText(file);
     }
 
-    private onImportFileSelected(file: { path: string }) {
+    private onImportFileSelected(file: {path: string}) {
         if (!file.path.endsWith(".json")) {
             addStandardDialog({
                 title: "Continue?",
@@ -421,51 +775,14 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         this.fetchAndImportParameters(file);
     }
 
-    private fetchAndImportParameters = async (file: { path: string }) => {
+    private fetchAndImportParameters = async (file: {path: string}) => {
         const fileStat = await Cloud.get<CloudFile>(statFileQuery(file.path));
         if (fileStat.response.size! > 5_000_000) {
             snackbarStore.addFailure("File size exceeds 5 MB. This is not allowed not allowed.");
             return;
         }
         const response = await fetchFileContent(file.path, Cloud);
-        if (response.ok) this.importParameters(new File([await response.blob()], "params"))
-    };
-
-    private exportParameters() {
-        const {application, schedulingOptions, parameterValues, mountedFolders} = this.state;
-        const siteVersion = this.siteVersion;
-
-        if (!application) return;
-        const appInfo = application.metadata;
-
-        const jobInfo = extractJobInfo(schedulingOptions);
-        const element = document.createElement("a");
-
-        const values: { [key: string]: string } = {};
-
-        for (const [key, ref] of parameterValues[Symbol.iterator]()) {
-            if (ref && ref.current) values[key] = ref.current.value;
-        }
-
-        element.setAttribute("href", "data:application/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
-            siteVersion: siteVersion,
-            application: {
-                name: appInfo.name,
-                version: appInfo.version
-            },
-            parameters: values,
-            mountedFolders: mountedFolders.map(it =>
-                ({ref: it.ref.current && it.ref.current.value, readOnly: it.readOnly})).filter(it => it.ref),
-            numberOfNodes: jobInfo.numberOfNodes,
-            tasksPerNode: jobInfo.tasksPerNode,
-            maxTime: jobInfo.maxTime,
-        })));
-
-        element.setAttribute("download", `${application.metadata.name}-${application.metadata.version}-params.json`);
-        element.style.display = "none";
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
+        if (response.ok) this.importParameters(new File([await response.blob()], "params"));
     }
 
     private addFolder() {
@@ -485,271 +802,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 jobIdRef: React.createRef(),
                 nameRef: React.createRef()
             }])
-        }))
-    }
-
-    render() {
-        const {application, jobSubmitted, schedulingOptions, parameterValues} = this.state;
-        if (!application) return <MainContainer main={<LoadingIcon size={18}/>}/>;
-
-        const parameters = application.invocation.parameters;
-        const mandatory = parameters.filter(parameter => !parameter.optional);
-        const visible = parameters.filter(parameter =>
-            parameter.optional && (parameter.visible === true || parameterValues.get(parameter.name)!.current != null)
-        );
-        const optional = parameters.filter(parameter =>
-            parameter.optional && parameter.visible !== true && parameterValues.get(parameter.name)!.current == null);
-
-        const onParameterChange = (parameter: ApplicationParameter, visible: boolean) => {
-            parameter.visible = visible;
-            if (!visible) {
-                parameterValues.set(parameter.name, React.createRef<HTMLSelectElement | HTMLInputElement>());
-            }
-            this.setState(() => ({application: this.state.application}));
-        };
-
-        const mapParamToComponent = (parameter: ApplicationParameter) => {
-            let ref = parameterValues.get(parameter.name)!;
-
-            return (
-                <Parameter
-                    key={parameter.name}
-                    initialSubmit={this.state.initialSubmit}
-                    parameterRef={ref}
-                    parameter={parameter}
-                    onParamRemove={() => onParameterChange(parameter, false)}
-                    application={application}
-                />
-            );
-        };
-
-        let mandatoryParams = mandatory.map(mapParamToComponent);
-        let visibleParams = visible.map(mapParamToComponent);
-
-        return (
-            <MainContainer
-                headerSize={48}
-                header={
-                    <Flex ml="12%">
-                        <AppHeader slim application={application}/>
-                    </Flex>
-                }
-
-                sidebar={
-                    <VerticalButtonGroup>
-                        <OutlineButton
-                            fullWidth
-                            color="darkGreen"
-                            onClick={() => this.exportParameters()}>
-                            Export parameters
-                        </OutlineButton>
-                        <OutlineButton
-                            onClick={() => importParameterDialog(
-                                file => this.importParameters(file),
-                                () => this.setState(() => ({fsShown: true}))
-                            )}
-                            fullWidth
-                            color="darkGreen"
-                            as="label"
-                        >
-                            Import parameters
-                        </OutlineButton>
-                        <Button fullWidth disabled={this.state.favoriteLoading} onClick={() => this.toggleFavorite()}>
-                            {this.state.favorite ? "Remove from favorites" : "Add to favorites"}
-                        </Button>
-                        <Button type={"button"} onClick={this.onSubmit} disabled={jobSubmitted}
-                                color="blue">Submit</Button>
-                    </VerticalButtonGroup>
-                }
-
-                additional={
-                    <FileSelector
-                        onFileSelect={it => {
-                            if (!!it) this.onImportFileSelected(it);
-                            this.setState(() => ({fsShown: false}));
-                        }}
-                        trigger={null}
-                        visible={this.state.fsShown}
-                    />
-                }
-
-                main={
-                    <ContainerForText>
-                        <form onSubmit={this.onSubmit}>
-                            <RunSection>
-                                <JobSchedulingOptions
-                                    onChange={this.onJobSchedulingParamsChange}
-                                    options={schedulingOptions}
-                                    app={application}
-                                />
-                            </RunSection>
-
-                            {mandatoryParams.length === 0 ? null :
-                                <RunSection>
-                                    <Heading.h4>Mandatory Parameters ({mandatoryParams.length})</Heading.h4>
-                                    {mandatoryParams}
-                                </RunSection>
-                            }
-
-                            {visibleParams.length <= 0 ? null :
-                                <RunSection>
-                                    <Heading.h4>Additional Parameters Used</Heading.h4>
-                                    {visibleParams}
-                                </RunSection>
-                            }
-
-                            {
-                                !application.invocation.shouldAllowAdditionalMounts ? null :
-                                    <RunSection>
-                                        <Flex alignItems={"center"}>
-                                            <Box flexGrow={1}>
-                                                <Heading.h4>Select additional folders to use</Heading.h4>
-                                            </Box>
-
-                                            <Button type="button" ml="5px" onClick={() => this.addFolder()} height={35}>
-                                                Add folder
-                                            </Button>
-                                        </Flex>
-
-                                        <Box mb={8} mt={8}>
-                                            {this.state.mountedFolders.length !== 0 ?
-                                                <>
-                                                    Your files will be available at <code>/work/</code>.
-                                                    You can view changes to your {" "}
-                                                    <Link to={fileTablePage(Cloud.homeFolder)}
-                                                          target={"_blank"}>files</Link> {" "}
-                                                    at the end of the job.
-                                                </>
-                                                :
-                                                <>
-                                                    If you need to use your {" "}
-                                                    <Link
-                                                        to={fileTablePage(Cloud.homeFolder)}
-                                                        target={"_blank"}>
-                                                        files
-                                                    </Link>
-                                                    {" "}
-                                                    in this job then click {" "}
-                                                    <BaseLink
-                                                        href={"javascript:void(0)"}
-                                                        onClick={() => this.addFolder()}>
-                                                        "Add folder"
-                                                    </BaseLink>
-                                                    {" "}
-                                                    to select the relevant
-                                                    files.
-                                                </>
-                                            }
-                                        </Box>
-
-                                        {this.state.mountedFolders.every(it => it.readOnly) ? "" :
-                                            "Note: Giving folders read/write access will make the startup and shutdown of the application longer."}
-
-                                        {this.state.mountedFolders.map((entry, i) => (
-                                            <Box key={i} mb="7px">
-                                                <InputDirectoryParameter
-                                                    application={application}
-                                                    defaultValue={entry.defaultValue}
-                                                    initialSubmit={false}
-                                                    parameterRef={entry.ref}
-                                                    onRemove={() => {
-                                                        this.setState(s => ({mountedFolders: removeEntry(s.mountedFolders, i)}))
-                                                    }}
-                                                    parameter={{
-                                                        type: ParameterTypes.InputDirectory,
-                                                        name: "",
-                                                        optional: true,
-                                                        title: "",
-                                                        description: "",
-                                                        defaultValue: "",
-                                                        visible: true,
-                                                        unitName: (
-                                                            <Box width={"105px"} height={"37px"}>
-                                                                <ClickableDropdown
-                                                                    chevron
-                                                                    minWidth="150px"
-                                                                    onChange={key => {
-                                                                        const {mountedFolders} = this.state;
-                                                                        mountedFolders[i].readOnly = key === "READ";
-                                                                        this.setState(() => ({mountedFolders}));
-                                                                    }}
-                                                                    trigger={entry.readOnly ? "Read only" : "Read/Write"}
-                                                                    options={[
-                                                                        {text: "Read only", value: "READ"},
-                                                                        {text: "Read/Write", value: "READ/WRITE"}
-                                                                    ]}
-                                                                />
-                                                            </Box>
-                                                        ),
-                                                    }}
-                                                />
-                                            </Box>
-                                        ))}
-                                    </RunSection>
-                            }
-
-                            {!application.invocation.shouldAllowAdditionalPeers ? null :
-                                <RunSection>
-                                    <Flex>
-                                        <Box flexGrow={1}>
-                                            <Heading.h4>Connect to other jobs</Heading.h4>
-                                        </Box>
-                                        <Button
-                                            type={"button"}
-                                            height={35}
-                                            onClick={() => this.connectToJob()}
-                                        >
-                                            Connect to job
-                                        </Button>
-                                    </Flex>
-                                    <Box mb={8} mt={8}>
-                                        {this.state.additionalPeers.length !== 0 ?
-                                            <>
-                                                You will be able contact the <b>job</b> using its <b>hostname</b>.
-                                                File systems used by the <b>job</b> are automatically added to this job.
-                                            </>
-                                            :
-                                            <>
-                                                If you need to use the services of another job click{" "}
-                                                <BaseLink href={"javascript:void(0)"}
-                                                          onClick={() => this.connectToJob()}>
-                                                    "Connect to job".
-                                                </BaseLink>
-                                                {" "}
-                                                These services include networking and shared application file systems.
-                                            </>
-                                        }
-                                    </Box>
-
-                                    {
-                                        this.state.additionalPeers.map((entry, i) => (
-                                            <AdditionalPeerParameter
-                                                jobIdRef={entry.jobIdRef}
-                                                nameRef={entry.nameRef}
-                                                onRemove={() => this.setState(s =>
-                                                    ({additionalPeers: removeEntry(s.additionalPeers, i)}))
-                                                }
-                                                hideLabels={i !== 0}
-                                                key={i}
-                                            />
-                                        ))
-                                    }
-                                </RunSection>
-                            }
-
-                            <RunSection>
-                                {optional.length <= 0 ? null :
-                                    <OptionalParameters
-                                        parameters={optional}
-                                        onUse={p => onParameterChange(p, true)}
-                                    />
-                                }
-                            </RunSection>
-                        </form>
-                    </ContainerForText>
-                }
-            />
-        )
+        }));
     }
 }
 
@@ -792,17 +845,19 @@ interface JobSchedulingOptionsProps {
     onChange: (a, b, c) => void;
     options: JobSchedulingOptionsForInput;
     app: WithAppMetadata & WithAppInvocation;
+    reservationRef: React.RefObject<HTMLInputElement>;
 }
 
 const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
     if (!props.app) return null;
     const {maxTime, numberOfNodes, tasksPerNode, name} = props.options;
+
     return (
         <>
             <Flex mb="4px" mt="4px">
                 <Label>
                     Job name
-                    <Input ref={name} placeholder={"Example: Analysis with parameters XYZ"}/>
+                    <Input ref={name} placeholder={"Example: Analysis with parameters XYZ"} />
                 </Label>
             </Flex>
 
@@ -816,7 +871,7 @@ const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
                     value={maxTime.hours}
                     onChange={props.onChange}
                 />
-                <Box ml="4px"/>
+                <Box ml="4px" />
                 <SchedulingField
                     min={0}
                     max={59}
@@ -826,7 +881,7 @@ const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
                     value={maxTime.minutes}
                     onChange={props.onChange}
                 />
-                <Box ml="4px"/>
+                <Box ml="4px" />
                 <SchedulingField
                     min={0}
                     max={59}
@@ -838,7 +893,7 @@ const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
                 />
             </Flex>
 
-            {!props.app.invocation.allowMultiNode ? null :
+            {!props.app.invocation.allowMultiNode ? null : (
                 <Flex mb="1em">
                     <SchedulingField
                         min={1}
@@ -848,12 +903,18 @@ const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
                         onChange={props.onChange}
                     />
                 </Flex>
-            }
-        </>)
+            )}
+
+            <Box>
+                <Label>Machine type</Label>
+                <MachineTypes inputRef={props.reservationRef} />
+            </Box>
+        </>
+    );
 };
 
 function extractJobInfo(jobInfo: JobSchedulingOptionsForInput): JobSchedulingOptionsForInput {
-    let extractedJobInfo = {
+    const extractedJobInfo = {
         maxTime: {hours: 0, minutes: 0, seconds: 0},
         numberOfNodes: 1,
         tasksPerNode: 1,
@@ -876,30 +937,32 @@ const mapDispatchToProps = (dispatch: Dispatch): RunOperations => ({
 export default connect(null, mapDispatchToProps)(Run);
 
 export function importParameterDialog(importParameters: (file: File) => void, showFileSelector: () => void) {
-    dialogStore.addDialog(<Box>
+    dialogStore.addDialog((
         <Box>
-            <Button fullWidth as="label">
-                Upload file
+            <Box>
+                <Button fullWidth as="label">
+                    Upload file
                 <HiddenInputField
-                    type="file"
-                    onChange={e => {
-                        if (e.target.files) {
-                            const file = e.target.files[0];
-                            if (file.size > 10_000_000) {
-                                snackbarStore.addFailure("File exceeds 10 MB. Not allowed.");
-                            } else {
-                                importParameters(file);
+                        type="file"
+                        onChange={e => {
+                            if (e.target.files) {
+                                const file = e.target.files[0];
+                                if (file.size > 10_000_000) {
+                                    snackbarStore.addFailure("File exceeds 10 MB. Not allowed.");
+                                } else {
+                                    importParameters(file);
+                                }
+                                dialogStore.success();
                             }
-                            dialogStore.popDialog();
-                        }
-                    }}/>
+                        }} />
+                </Button>
+                <Button mt="6px" fullWidth onClick={() => (dialogStore.success(), showFileSelector())}>
+                    Select file from SDUCloud
             </Button>
-            <Button mt="6px" fullWidth onClick={() => (dialogStore.popDialog(), showFileSelector())}>
-                Select file from SDUCloud
-            </Button>
+            </Box>
+            <Flex mt="20px">
+                <Button onClick={() => dialogStore.success()} color="red" mr="5px">Cancel</Button>
+            </Flex>
         </Box>
-        <Flex mt="20px">
-            <Button onClick={() => dialogStore.popDialog()} color="red" mr="5px">Cancel</Button>
-        </Flex>
-    </Box>);
+    ), () => undefined);
 }

@@ -17,19 +17,28 @@ import dk.sdu.cloud.auth.api.AuthDescriptions
 import dk.sdu.cloud.file.api.FileDescriptions
 import dk.sdu.cloud.file.api.FindHomeFolderResponse
 import dk.sdu.cloud.file.api.MultiPartUploadDescriptions
+import dk.sdu.cloud.micro.BackgroundScopeFeature
+import dk.sdu.cloud.micro.DeinitFeature
 import dk.sdu.cloud.micro.HibernateFeature
+import dk.sdu.cloud.micro.Micro
+import dk.sdu.cloud.micro.backgroundScope
 import dk.sdu.cloud.micro.hibernateDatabase
 import dk.sdu.cloud.micro.install
 import dk.sdu.cloud.micro.tokenValidation
 import dk.sdu.cloud.service.TokenValidationJWT
 import dk.sdu.cloud.service.db.HibernateSession
-import dk.sdu.cloud.service.test.*
+import dk.sdu.cloud.service.test.ClientMock
+import dk.sdu.cloud.service.test.EventServiceMock
+import dk.sdu.cloud.service.test.TestUsers
+import dk.sdu.cloud.service.test.initializeMicro
+import dk.sdu.cloud.service.test.retrySection
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.io.ByteReadChannel
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
 
@@ -43,12 +52,13 @@ class JobOrchestratorTest {
     private lateinit var backend: NamedComputationBackendDescriptions
     private lateinit var orchestrator: JobOrchestrator<HibernateSession>
     private lateinit var streamFollowService: StreamFollowService<HibernateSession>
+    private lateinit var micro: Micro
 
     @BeforeTest
     fun init() {
-        OrchestrationScope.reset()
-        val micro = initializeMicro()
+        micro = initializeMicro()
         micro.install(HibernateFeature)
+        micro.install(BackgroundScopeFeature)
         val db = micro.hibernateDatabase
         val tokenValidation = micro.tokenValidation as TokenValidationJWT
 
@@ -67,7 +77,7 @@ class JobOrchestratorTest {
         coEvery { toolDao.findByNameAndVersion(normToolDesc.info.name, normToolDesc.info.version) } returns normTool
 
 
-        val jobFileService = JobFileService(client) { _, _ -> client}
+        val jobFileService = JobFileService(client, { _, _ -> client }, ParameterExportService())
         val orchestrator = JobOrchestrator(
             client,
             EventServiceMock.createProducer(AccountingEvents.jobCompleted),
@@ -76,7 +86,8 @@ class JobOrchestratorTest {
             compBackend,
             jobFileService,
             jobDao,
-            backendName
+            backendName,
+            micro.backgroundScope
         )
 
         backend = compBackend.getAndVerifyByName(backendName)
@@ -101,7 +112,13 @@ class JobOrchestratorTest {
         )
 
         this.orchestrator = orchestrator
-        this.streamFollowService = StreamFollowService(jobFileService, client, compBackend, db, jobDao)
+        this.streamFollowService =
+            StreamFollowService(jobFileService, client, client, compBackend, db, jobDao, micro.backgroundScope)
+    }
+
+    @AfterTest
+    fun deinit() {
+        micro.feature(DeinitFeature).runHandlers()
     }
 
     fun setup(): JobOrchestrator<HibernateSession> = orchestrator
@@ -306,36 +323,30 @@ class JobOrchestratorTest {
     }
 
     @Test
-    fun `Handle cancel of successful job test`() {
+    fun `Handle cancel of successful job test`() = runBlocking {
         val orchestrator = setup()
-        val returnedID = runBlocking {
-            orchestrator.startJob(startJobRequest, TestUsers.user.createToken(), "token", client)
+        val returnedID = orchestrator.startJob(startJobRequest, TestUsers.user.createToken(), "token", client)
+
+        retrySection {
+            assertEquals(JobState.PREPARED, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
         }
+        orchestrator.handleProposedStateChange(
+            JobStateChange(returnedID, JobState.SUCCESS),
+            null,
+            TestUsers.user
+        )
 
-        runBlocking {
-            assertEquals(JobState.VALIDATED, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
-
-            orchestrator.handleProposedStateChange(
-                JobStateChange(returnedID, JobState.SUCCESS),
-                null,
-                TestUsers.user
-            )
-        }
-
-        runBlocking {
-
-            assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
-
-            orchestrator.handleProposedStateChange(
-                JobStateChange(returnedID, JobState.CANCELING),
-                null,
-                TestUsers.user
-            )
-        }
-
-        runBlocking {
+        retrySection {
             assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
         }
+
+        orchestrator.handleProposedStateChange(
+            JobStateChange(returnedID, JobState.CANCELING),
+            null,
+            TestUsers.user
+        )
+
+        assertEquals(JobState.SUCCESS, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
     }
 
     @Test
@@ -359,7 +370,7 @@ class JobOrchestratorTest {
             )
         }
 
-       runBlocking {
+        runBlocking {
             assertEquals(JobState.FAILURE, orchestrator.lookupOwnJob(returnedID, TestUsers.user).currentState)
             assertEquals(JobState.PREPARED, orchestrator.lookupOwnJob(returnedID, TestUsers.user).failedState)
         }

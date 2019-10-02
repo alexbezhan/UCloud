@@ -1,40 +1,41 @@
+import {Cloud, WSFactory} from "Authentication/SDUCloudObject";
+import {formatDistance} from "date-fns/esm";
+import {NotificationsReduxObject, ReduxObject} from "DefaultObjects";
 import * as React from "react";
-import {Redirect, withRouter, RouteComponentProps} from "react-router";
-import * as moment from "moment";
 import {connect} from "react-redux";
+import {Redirect, useHistory} from "react-router";
+import {Dispatch} from "redux";
+import {Snack} from "Snackbar/Snackbars";
+import {snackbarStore} from "Snackbar/SnackbarStore";
+import styled from "styled-components";
+import {Absolute, Badge, Box, Button, Divider, Flex, Icon, Relative} from "ui-components";
+import ClickableDropdown from "ui-components/ClickableDropdown";
+import {IconName} from "ui-components/Icon";
+import {TextSpan} from "ui-components/Text";
+import {Theme} from "ui-components/theme";
+import {setUploaderVisible} from "Uploader/Redux/UploaderActions";
+import {replaceHomeFolder} from "Utilities/FileUtilities";
 import {
     fetchNotifications,
     notificationRead,
     readAllNotifications,
     receiveSingleNotification
 } from "./Redux/NotificationsActions";
-import {History} from "history";
-import {setUploaderVisible} from "Uploader/Redux/UploaderActions";
-import {Dispatch} from "redux";
-import {Absolute, Badge, Box, Button, Divider, Flex, Icon, Relative} from "ui-components";
-import ClickableDropdown from "ui-components/ClickableDropdown";
-import {TextSpan} from "ui-components/Text";
-import styled from "styled-components";
-import {IconName} from "ui-components/Icon";
-import {ReduxObject, NotificationsReduxObject} from "DefaultObjects";
-import {Cloud, WSFactory} from "Authentication/SDUCloudObject";
-import {replaceHomeFolder} from "Utilities/FileUtilities";
-import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Snack} from "Snackbar/Snackbars";
-import {Theme} from "ui-components/theme";
 
 interface NotificationProps {
-    items: Notification[]
-    redirectTo: string
-    fetchNotifications: Function,
-    notificationRead: (id: number | string) => void,
-    history: History
-    error?: string
+    items: Notification[];
+    redirectTo: string;
+    fetchNotifications: Function;
+    notificationRead: (id: number | string) => void;
+    error?: string;
 }
 
-type Notifications = NotificationProps & NotificationsOperations & RouteComponentProps;
+type Notifications = NotificationProps & NotificationsOperations;
 
 function Notifications(props: Notifications) {
+
+    const history = useHistory();
+
     React.useEffect(() => {
         reload();
         const conn = WSFactory.open("/notifications", {
@@ -76,11 +77,11 @@ function Notifications(props: Notifications) {
             case "APP_COMPLETE":
                 // TODO This is buggy! Doesn't update if already present on analyses page
                 // TODO Should refactor these URLs somewhere else
-                props.history.push(`/applications/results/${notification.meta.jobId}`);
+                history.push(`/applications/results/${notification.meta.jobId}`);
                 break;
             case "SHARE_REQUEST":
                 reload();
-                props.history.push("/shares");
+                history.push("/shares");
                 break;
         }
     }
@@ -95,7 +96,7 @@ function Notifications(props: Notifications) {
     );
 
     if (props.redirectTo) {
-        return <Redirect to={props.redirectTo} />
+        return <Redirect to={props.redirectTo} />;
     }
 
     const unreadLength = props.items.filter(e => !e.read).length;
@@ -135,21 +136,32 @@ const ContentWrapper = styled(Box)`
 const NoNotifications = () => <TextSpan>No notifications</TextSpan>;
 
 export interface Notification {
-    type: string
-    id: number
-    message: string
-    ts: number
-    read: boolean
-    meta: any
+    type: string;
+    id: number;
+    message: string;
+    ts: number;
+    read: boolean;
+    meta: any;
 }
 
 interface NotificationEntryProps {
-    notification: Notification
-    onMarkAsRead?: (notification: Notification) => void
-    onAction?: (notification: Notification) => void
+    notification: Notification;
+    onMarkAsRead?: (notification: Notification) => void;
+    onAction?: (notification: Notification) => void;
 }
 
 export class NotificationEntry extends React.Component<NotificationEntryProps> {
+
+    private static resolveEventIcon(eventType: string): IconName {
+        switch (eventType) {
+            case "APP_COMPLETE":
+                return "info";
+            case "SHARE_REQUEST":
+                return "share";
+            default:
+                return "warning";
+        }
+    }
 
     public render() {
         const {notification} = this.props;
@@ -158,7 +170,9 @@ export class NotificationEntry extends React.Component<NotificationEntryProps> {
                 onClick={() => this.handleAction()}>
                 <Box mr="0.4em" width="10%"><Icon name={NotificationEntry.resolveEventIcon(notification.type)} /></Box>
                 <Flex width="90%" flexDirection="column">
-                    <TextSpan color="grey" fontSize={1}>{moment(notification.ts.toString(), "x").fromNow()}</TextSpan>
+                    <TextSpan color="grey" fontSize={1}>
+                        {formatDistance(notification.ts, new Date(), {addSuffix: true})}
+                    </TextSpan>
                     <TextSpan fontSize={1}>{replaceHomeFolder(notification.message, Cloud.homeFolder)}</TextSpan>
                 </Flex>
             </NotificationWrapper>
@@ -172,17 +186,6 @@ export class NotificationEntry extends React.Component<NotificationEntryProps> {
     private handleAction() {
         this.handleRead();
         if (this.props.onAction) this.props.onAction(this.props.notification);
-    }
-
-    private static resolveEventIcon(eventType: string): IconName {
-        switch (eventType) {
-            case "APP_COMPLETE":
-                return "info";
-            case "SHARE_REQUEST":
-                return "share";
-            default:
-                return "warning";
-        }
     }
 }
 
@@ -206,11 +209,11 @@ const NotificationWrapper = styled(Flex) <{read: boolean}>`
 `;
 
 interface NotificationsOperations {
-    receiveNotification: (notification: Notification) => void
-    fetchNotifications: () => void
-    notificationRead: (id: number) => void
-    showUploader: () => void
-    readAll: () => void
+    receiveNotification: (notification: Notification) => void;
+    fetchNotifications: () => void;
+    notificationRead: (id: number) => void;
+    showUploader: () => void;
+    readAll: () => void;
 }
 
 const mapDispatchToProps = (dispatch: Dispatch): NotificationsOperations => ({
@@ -218,8 +221,8 @@ const mapDispatchToProps = (dispatch: Dispatch): NotificationsOperations => ({
     fetchNotifications: async () => dispatch(await fetchNotifications()),
     notificationRead: async id => dispatch(await notificationRead(id)),
     showUploader: () => dispatch(setUploaderVisible(true, Cloud.homeFolder)),
-    readAll: async () => dispatch(await readAllNotifications())    
+    readAll: async () => dispatch(await readAllNotifications())
 });
 const mapStateToProps = (state: ReduxObject): NotificationsReduxObject => state.notifications;
 
-export default connect<NotificationsReduxObject, NotificationsOperations>(mapStateToProps, mapDispatchToProps)(withRouter(Notifications));
+export default connect<NotificationsReduxObject, NotificationsOperations>(mapStateToProps, mapDispatchToProps)(Notifications);

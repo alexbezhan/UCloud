@@ -1,8 +1,8 @@
 package dk.sdu.cloud.file.services
 
 import dk.sdu.cloud.file.api.WriteConflictPolicy
+import dk.sdu.cloud.file.api.fileName
 import dk.sdu.cloud.file.api.joinPath
-import dk.sdu.cloud.file.services.background.BackgroundScope
 import dk.sdu.cloud.file.services.linuxfs.LinuxFSRunner
 import dk.sdu.cloud.file.services.linuxfs.LinuxFSRunnerFactory
 import dk.sdu.cloud.file.util.FSException
@@ -12,17 +12,29 @@ import dk.sdu.cloud.file.util.createDummyFS
 import dk.sdu.cloud.file.util.linuxFSWithRelaxedMocks
 import dk.sdu.cloud.file.util.mkdir
 import dk.sdu.cloud.file.util.touch
+import dk.sdu.cloud.micro.BackgroundScope
+import dk.sdu.cloud.service.test.assertThatInstance
 import io.mockk.mockk
 import org.junit.Assert
 import java.io.File
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
-class MoveTest {
+class MoveTest : WithBackgroundScope() {
     private fun createService(root: String): Pair<LinuxFSRunnerFactory, CoreFileSystemService<LinuxFSRunner>> {
         val (runner, fs) = linuxFSWithRelaxedMocks(root)
         val fileSensitivityService = mockk<FileSensitivityService<LinuxFSRunner>>()
-        return Pair(runner,
-            CoreFileSystemService(fs, mockk(relaxed = true), fileSensitivityService, ClientMock.authenticatedClient)
+        return Pair(
+            runner,
+            CoreFileSystemService(
+                fs,
+                mockk(relaxed = true),
+                fileSensitivityService,
+                ClientMock.authenticatedClient,
+                backgroundScope
+            )
         )
     }
 
@@ -34,17 +46,12 @@ class MoveTest {
     )
 
     private fun runTest(user: String = "user1", consumer: suspend TestContext.() -> Unit) {
-        BackgroundScope.reset()
-        try {
-            val fsRoot = createDummyFS()
-            val (runner, service) = createService(fsRoot.absolutePath)
+        val fsRoot = createDummyFS()
+        val (runner, service) = createService(fsRoot.absolutePath)
 
-            runner.withBlockingContext(user) {
-                val testContext = TestContext(fsRoot, runner, service, it)
-                testContext.consumer()
-            }
-        } finally {
-            BackgroundScope.stop()
+        runner.withBlockingContext(user) {
+            val testContext = TestContext(fsRoot, runner, service, it)
+            testContext.consumer()
         }
     }
 
@@ -165,7 +172,7 @@ class MoveTest {
         }
     }
 
-    @Test
+    @Test(expected = FSException.BadRequest::class)
     fun `test moving a non empty directory into an empty directory`() {
         runTest {
             val userRootPath = "/home/user1"
@@ -247,6 +254,93 @@ class MoveTest {
                 joinPath(userRootPath, wrapper, conflictFileName),
                 WriteConflictPolicy.OVERWRITE
             )
+        }
+    }
+
+    @Test
+    fun `test move (merge)`() {
+        runTest {
+            val userRootPath = "/home/user"
+
+            fsRoot.resolve(".$userRootPath").apply {
+                mkdir("one2") {
+                    touch("a")
+                    touch("b")
+                    touch("d")
+                    mkdir("second1") {
+                        touch("a")
+                    }
+                    mkdir("second2") {
+                        touch("a")
+                    }
+                    mkdir("second3") {
+                        touch("a")
+                    }
+                }
+                mkdir("one1") {
+                    touch("b")
+                    touch("c")
+                    mkdir("second1") {
+                        touch("a")
+                        touch("b")
+                    }
+                    mkdir("second2") {
+                        touch("b")
+                    }
+                }
+            }
+
+            runner.withBlockingContext("user") {
+                service.move(
+                    it,
+                    joinPath(userRootPath, "one1"),
+                    joinPath(userRootPath, "one2"),
+                    WriteConflictPolicy.MERGE
+                )
+            }
+
+            val mode = setOf(FileAttribute.PATH, FileAttribute.FILE_TYPE)
+            runner.withBlockingContext("user") {
+                val rootListing = service.listDirectory(it, "/home/user", mode)
+                assertThatInstance(rootListing) { it.any { it.path.fileName() == "one1" } }
+                assertThatInstance(rootListing) { it.any { it.path.fileName() == "one2" } }
+            }
+
+            runner.withBlockingContext("user") {
+                val listing = service.listDirectory(it, "/home/user/one2", mode)
+
+                assertEquals(7, listing.size)
+                assertThatInstance(listing) { it.any { it.path.fileName() == "a" } }
+                assertThatInstance(listing) { it.any { it.path.fileName() == "b" } }
+                assertThatInstance(listing) { it.any { it.path.fileName() == "c" } }
+                assertThatInstance(listing) { it.any { it.path.fileName() == "d" } }
+                assertThatInstance(listing) { it.any { it.path.fileName() == "second1" } }
+                assertThatInstance(listing) { it.any { it.path.fileName() == "second2" } }
+                assertThatInstance(listing) { it.any { it.path.fileName() == "second3" } }
+            }
+
+            runner.withBlockingContext("user") {
+                val listing2 = service.listDirectory(it, "/home/user/one2/second1", mode)
+
+                assertEquals(2, listing2.size)
+                assertThatInstance(listing2) { it.any { it.path.fileName() == "a" } }
+                assertThatInstance(listing2) { it.any { it.path.fileName() == "b" } }
+            }
+
+            runner.withBlockingContext("user") {
+                val listing3 = service.listDirectory(it, "/home/user/one2/second2", mode)
+
+                assertEquals(2, listing3.size)
+                assertThatInstance(listing3) { it.any { it.path.fileName() == "a" } }
+                assertThatInstance(listing3) { it.any { it.path.fileName() == "b" } }
+            }
+
+            runner.withBlockingContext("user") {
+                val listing4 = service.listDirectory(it, "/home/user/one2/second3", mode)
+
+                assertEquals(1, listing4.size)
+                assertThatInstance(listing4) { it.any { it.path.fileName() == "a" } }
+            }
         }
     }
 }

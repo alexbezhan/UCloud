@@ -1,26 +1,26 @@
-import {default as Avataaar} from "AvataaarLib";
-import * as React from "react";
-import * as Options from "./AvatarOptions";
-import {MainContainer} from "MainContainer/MainContainer";
-import {Select, Label, Box, Flex, OutlineButton} from "ui-components";
-import Spinner from "LoadingIcon/LoadingIcon";
-import {connect} from "react-redux";
-import {ReduxObject} from "DefaultObjects";
-import {Dispatch} from "redux";
-import {saveAvatar} from "./Redux/AvataaarActions";
-import PromiseKeeper from "PromiseKeeper";
-import {findAvatarQuery} from "Utilities/AvatarUtilities";
 import {Cloud} from "Authentication/SDUCloudObject";
+import {default as Avataaar} from "AvataaarLib";
+import {ReduxObject} from "DefaultObjects";
+import Spinner from "LoadingIcon/LoadingIcon";
+import {MainContainer} from "MainContainer/MainContainer";
 import {setActivePage} from "Navigation/Redux/StatusActions";
-import {SidebarPages} from "ui-components/Sidebar";
-import {errorMessageOrDefault} from "UtilityFunctions";
+import PromiseKeeper from "PromiseKeeper";
+import * as React from "react";
+import {connect} from "react-redux";
+import {Dispatch} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
+import {Box, Flex, Label, OutlineButton, Select} from "ui-components";
+import {SidebarPages} from "ui-components/Sidebar";
+import {findAvatarQuery} from "Utilities/AvatarUtilities";
+import {errorMessageOrDefault} from "UtilityFunctions";
+import * as Options from "./AvatarOptions";
+import {saveAvatar} from "./Redux/AvataaarActions";
 
 type AvataaarModificationStateProps = AvatarType;
 
 interface AvataaarModificationOperations {
-    save: (avatar: AvatarType) => void
-    setActivePage: () => void
+    save: (avatar: AvatarType) => void;
+    setActivePage: () => void;
 }
 
 function Modification(props: AvataaarModificationOperations) {
@@ -69,7 +69,7 @@ function Modification(props: AvataaarModificationOperations) {
                 </Flex></>}
 
             main={
-                loading ? (<Spinner size={24} />) : <>
+                loading ? (<Spinner />) : <>
                     <AvatarSelect
                         defaultValue={avatar.top}
                         update={value => setAvatar({...avatar, top: value})}
@@ -179,12 +179,12 @@ interface AvatarSelect<T1, T2> {
     disabled: boolean
 }
 
-function AvatarSelect<T1, T2>({update, options, title, disabled, defaultValue}: AvatarSelect<T1, T2>) {
+function AvatarSelect<T1 extends string, T2>({update, options, title, disabled, defaultValue}: AvatarSelect<T1, T2>) {
     if (disabled) return null;
     return (
         <Label mt="0.8em">{title}
             <Select defaultValue={defaultValue}
-                onChange={({target: {value}}: {target: {value: T1}}) => update(value)}>
+                onChange={({target: {value}}: {target: {value}}) => update(value as T1)}>
                 {Object.keys(options).map(it => <option key={it}>{it}</option>)}
             </Select>
         </Label>

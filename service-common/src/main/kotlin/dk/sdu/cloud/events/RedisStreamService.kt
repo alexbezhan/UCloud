@@ -11,9 +11,12 @@ import io.lettuce.core.XAddArgs
 import io.lettuce.core.XReadArgs
 import io.lettuce.core.api.async.RedisAsyncCommands
 import io.lettuce.core.api.sync.RedisCommands
+import io.lettuce.core.pubsub.StatefulRedisPubSubConnection
+import io.lettuce.core.pubsub.api.async.RedisPubSubAsyncCommands
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -104,6 +107,7 @@ class RedisStreamService(
                             try {
                                 if (consumer.accept(events)) {
                                     xackA(stream.name, group, ids.toSet())
+                                    Unit // I think this will fix a class cast exception
                                 }
                             } catch (ex: Throwable) {
                                 log.warn("Caught exception while consuming from $stream")
@@ -126,16 +130,15 @@ class RedisStreamService(
                 }
 
                 var nextClaim = 0L
-                fun setNextClaimTimer() = run { nextClaim = System.currentTimeMillis() + 30_000 }
+                fun setNextClaimTimer() = run { nextClaim = System.currentTimeMillis() + 5_000 }
                 setNextClaimTimer()
 
                 while (true) {
                     val redis = connManager.getConnection()
-                    val sync = connManager.getSync()
                     if (System.currentTimeMillis() >= nextClaim) {
                         // We reschedule messages that weren't acknowledged if they have been idle fore more than
                         // minimumIdleTime. It goes through the normal consumption mechanism.
-                        val pending = redis.xpendingA(stream.name, group)
+                        val pending = redis.xpendingA(stream.name, group, limit = 500)
                         val ids = pending.filter { it.msSinceLastAttempt >= rescheduleIdleJobsAfterMs }.map { it.id }
 
                         if (ids.isNotEmpty()) {
@@ -156,9 +159,11 @@ class RedisStreamService(
                             redis.xreadgroupA(
                                 group, consumerId,
                                 XReadArgs.StreamOffset.lastConsumed(stream.name),
-                                offset = XReadArgs.Builder.block(50).count(50)
+                                offset = XReadArgs.Builder.count(50)
                             )
                         )
+
+                        delay(50)
                     }
                 }
             }
@@ -202,6 +207,7 @@ class RedisConnectionManager(private val client: RedisClient) {
     private val mutex = Mutex()
     private var openConnection: RedisAsyncCommands<String, String>? = null
     private var syncConnection: RedisCommands<String, String>? = null
+    private var pubSubConnection: StatefulRedisPubSubConnection<String, String>? = null
 
     suspend fun getConnection(): RedisAsyncCommands<String, String> {
         run {
@@ -215,6 +221,22 @@ class RedisConnectionManager(private val client: RedisClient) {
 
             val newConnection = client.connect().async()
             openConnection = newConnection
+            return newConnection
+        }
+    }
+
+    suspend fun getPubSubConnection(): StatefulRedisPubSubConnection<String, String> {
+        run {
+            val conn = pubSubConnection
+            if (conn != null && conn.isOpen) return conn
+        }
+
+        mutex.withLock {
+            val conn = pubSubConnection
+            if (conn != null && conn.isOpen) return conn
+
+            val newConnection = client.connectPubSub()
+            pubSubConnection = newConnection
             return newConnection
         }
     }

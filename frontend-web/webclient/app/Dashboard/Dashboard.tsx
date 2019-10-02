@@ -1,13 +1,13 @@
 import * as Accounting from "Accounting";
 import {fetchUsage} from "Accounting/Redux/AccountingActions";
-import {Analysis, AppState} from "Applications";
-import {Cloud} from "Authentication/SDUCloudObject"
+import {JobState, JobWithStatus} from "Applications";
+import {Cloud} from "Authentication/SDUCloudObject";
+import {formatDistanceToNow} from "date-fns/esm";
 import {ReduxObject} from "DefaultObjects";
 import {File} from "Files";
 import {History} from "history";
 import Spinner from "LoadingIcon/LoadingIcon";
 import {MainContainer} from "MainContainer/MainContainer";
-import * as moment from "moment";
 import {setRefreshFunction} from "Navigation/Redux/HeaderActions";
 import {setActivePage, updatePageTitle} from "Navigation/Redux/StatusActions";
 import {Notification, NotificationEntry} from "Notifications";
@@ -21,6 +21,7 @@ import * as Heading from "ui-components/Heading";
 import List from "ui-components/List";
 import {SidebarPages} from "ui-components/Sidebar";
 import {EllipsedText} from "ui-components/Text";
+import {fileTablePage} from "Utilities/FileUtilities";
 import {
     favoriteFile,
     getFilenameFromPath,
@@ -28,7 +29,6 @@ import {
     isDirectory,
     replaceHomeFolder
 } from "Utilities/FileUtilities";
-import {fileTablePage} from "Utilities/FileUtilities";
 import {FileIcon} from "UtilityComponents";
 import * as UF from "UtilityFunctions";
 import {DashboardOperations, DashboardProps, DashboardStateProps} from ".";
@@ -46,7 +46,7 @@ const DashboardCard: React.FunctionComponent<{title: string, isLoading: boolean}
             <Heading.h4>{title}</Heading.h4>
         </Flex>
         <Box px={3} py={1}>
-            {isLoading && <Spinner size={24} />}
+            {isLoading && <Spinner />}
             <Box pb="0.5em" />
             {!isLoading ? children : null}
         </Box>
@@ -184,18 +184,20 @@ const DashboardRecentFiles = ({files, isLoading}: {files: File[], isLoading: boo
                 <Flex key={i} alignItems="center" pt="0.5em" pb="0.3em">
                     <ListFileContent file={file} pixelsWide={130} />
                     <Box ml="auto" />
-                    <Text fontSize={1} color="grey">{moment(new Date(file.modifiedAt!)).fromNow()}</Text>
+                    <Text fontSize={1} color="grey">{formatDistanceToNow(new Date(file.modifiedAt!), {
+                        addSuffix: true
+                    })}</Text>
                 </Flex>
             ))}
         </List>
     </DashboardCard>
 );
 
-const DashboardAnalyses = ({analyses, isLoading}: {analyses: Analysis[], isLoading: boolean}) => (
+const DashboardAnalyses = ({analyses, isLoading}: {analyses: JobWithStatus[], isLoading: boolean}) => (
     <DashboardCard title="Recent Jobs" isLoading={isLoading}>
         {isLoading || analyses.length ? null : (<Heading.h6>No results found</Heading.h6>)}
         <List>
-            {analyses.map((analysis: Analysis, index: number) =>
+            {analyses.map((analysis: JobWithStatus, index: number) =>
                 <Flex key={index} alignItems="center" pt="0.5em" pb="8.4px">
                     <Icon name={statusToIconName(analysis.state)}
                         color={statusToColor(analysis.state)}
@@ -208,7 +210,9 @@ const DashboardAnalyses = ({analyses, isLoading}: {analyses: Analysis[], isLoadi
                         </EllipsedText>
                     </Link>
                     <Box ml="auto" />
-                    <Text fontSize={1} color="grey">{moment(new Date(analysis.modifiedAt!)).fromNow()}</Text>
+                    <Text fontSize={1} color="grey">{formatDistanceToNow(new Date(analysis.modifiedAt!), {
+                        addSuffix: true
+                    })}</Text>
                 </Flex>
             )}
         </List>
@@ -246,24 +250,24 @@ const DashboardNotifications = ({notifications, readAll, onNotificationAction}: 
     </Card>
 );
 
-const statusToIconName = (status: AppState) => {
+const statusToIconName = (status: JobState) => {
     switch (status) {
-        case AppState.SUCCESS:
+        case JobState.SUCCESS:
             return "check";
-        case AppState.FAILURE:
+        case JobState.FAILURE:
             return "close";
-        case AppState.SCHEDULED:
+        case JobState.SCHEDULED:
             return "calendar";
-        case AppState.RUNNING:
+        case JobState.RUNNING:
             return "chrono";
-        case AppState.VALIDATED:
+        case JobState.VALIDATED:
             return "checkDouble";
         default:
             return "ellipsis";
     }
 };
 
-const statusToColor = (status: AppState) => status === AppState.FAILURE ? "red" : "green";
+const statusToColor = (status: JobState) => status === JobState.FAILURE ? "red" : "green";
 
 const mapDispatchToProps = (dispatch: Dispatch): DashboardOperations => ({
     onInit: () => {

@@ -144,8 +144,6 @@ function enumToLabel(value: SidebarPages): string {
             return "Files";
         case SidebarPages.Shares:
             return "Shares";
-        case SidebarPages.Favorites:
-            return "Favorites";
         case SidebarPages.AppStore:
             return "Apps";
         case SidebarPages.Runs:
@@ -190,8 +188,7 @@ export const sideBarMenuElements: {
         items: [
             {icon: "files", label: "Files", to: () => fileTablePage(Cloud.homeFolder)},
             {icon: "shareMenu", label: "Shares", to: "/shares/"},
-            {icon: "starFilled", label: "Favorites", to: "/favorites"},
-            {icon: "appStore", label: "Apps", to: "/applications/"},
+            {icon: "appStore", label: "Apps", to: "/applications/overview"},
             {icon: "results", label: "Runs", to: "/applications/results/"}
         ], predicate: () => Cloud.isLoggedIn
     },
@@ -220,11 +217,10 @@ const Sidebar = ({sideBarEntries = sideBarMenuElements, page, loggedIn}: Sidebar
                 <React.Fragment key={categoryIdx}>
                     {category.items.map(({icon, label, to}: MenuElement) => (
                         <React.Fragment key={label}>
-                            {categoryIdx === 0 ? <SidebarSpacer /> : null}
+                            <SidebarSpacer />
                             <SidebarElement icon={icon} activePage={page} label={label}
                                 to={typeof to === "function" ? to() : to} />
                         </React.Fragment>))}
-                    {categoryIdx !== sidebar.length - 1 ? (<Divider mt="6px" mb="6px" />) : null}
                 </React.Fragment>
             )}
             <SidebarPushToBottom />
@@ -274,7 +270,6 @@ const mapStateToProps = ({status, project}: ReduxObject): SidebarStateProps => (
 export const enum SidebarPages {
     Files,
     Shares,
-    Favorites,
     AppStore,
     Runs,
     Publish,

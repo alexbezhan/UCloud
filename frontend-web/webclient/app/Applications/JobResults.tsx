@@ -1,11 +1,11 @@
 import {getStartOfDay, getStartOfWeek} from "Activity/Page";
 import {Cloud} from "Authentication/SDUCloudObject";
+import {formatRelative} from "date-fns/esm";
+import {enGB} from "date-fns/locale";
 import {ReduxObject} from "DefaultObjects";
 import {SortOrder} from "Files";
 import {History} from "history";
 import {MainContainer} from "MainContainer/MainContainer";
-import * as moment from "moment";
-import "moment/locale/en-gb";
 import {setRefreshFunction} from "Navigation/Redux/HeaderActions";
 import {setActivePage, updatePageTitle} from "Navigation/Redux/StatusActions";
 import {EntriesPerPageSelector} from "Pagination";
@@ -16,7 +16,6 @@ import {Dispatch} from "redux";
 import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
-import {ContainerForText} from "ui-components";
 import Box from "ui-components/Box";
 import Button from "ui-components/Button";
 import Checkbox from "ui-components/Checkbox";
@@ -27,13 +26,13 @@ import InputGroup from "ui-components/InputGroup";
 import Label from "ui-components/Label";
 import {SidebarPages} from "ui-components/Sidebar";
 import {Spacer} from "ui-components/Spacer";
-import {Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow} from "ui-components/Table";
+import {Table, TableCell, TableHeader, TableHeaderCell, TableRow} from "ui-components/Table";
 import {TextSpan} from "ui-components/Text";
 import {cancelJob, cancelJobDialog, inCancelableState} from "Utilities/ApplicationUtilities";
 import {Arrow, MasterCheckbox} from "UtilityComponents";
-import {capitalized, errorMessageOrDefault, shortUUID} from "UtilityFunctions";
 import {prettierString} from "UtilityFunctions";
-import {AnalysesOperations, AnalysesProps, AnalysesStateProps, Analysis, AppState, RunsSortBy} from ".";
+import {capitalized, errorMessageOrDefault, shortUUID} from "UtilityFunctions";
+import {AnalysesOperations, AnalysesProps, AnalysesStateProps, JobState, JobWithStatus, RunsSortBy} from ".";
 import {JobStateIcon} from "./JobStateIcon";
 import {checkAllAnalyses, checkAnalysis, fetchAnalyses, setLoading} from "./Redux/AnalysesActions";
 
@@ -59,7 +58,6 @@ const JobResultsHeaderCell = styled(TableHeaderCell) <{pointer?: boolean}>`
 function JobResults(props: AnalysesProps & {history: History}) {
 
     React.useEffect(() => {
-        moment.locale("en-gb");
         props.onInit();
         fetchJobs();
         props.setRefresh(() => fetchJobs());
@@ -75,7 +73,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
         const sortBy = opts.sortBy != null ? opts.sortBy : props.sortBy;
         const minTimestamp = opts.minTimestamp != null ? opts.minTimestamp : undefined;
         const maxTimestamp = opts.maxTimestamp != null ? opts.maxTimestamp : undefined;
-        const filterValue = opts.filter && opts.filter !== "Don't filter" ? opts.filter as AppState : undefined;
+        const filterValue = opts.filter && opts.filter !== "Don't filter" ? opts.filter as JobState : undefined;
 
         setLoading(true);
         props.fetchJobs(itemsPerPage, pageNumber, sortOrder, sortBy, minTimestamp, maxTimestamp, filterValue);
@@ -92,16 +90,18 @@ function JobResults(props: AnalysesProps & {history: History}) {
 
     const hide = responsive.lessThan.lg;
     const masterCheckboxChecked = selectedAnalyses.length === page.items.length && page.items.length > 0;
-    const masterCheckbox = <MasterCheckbox
-        checked={masterCheckboxChecked}
-        onClick={checked => props.checkAllAnalyses(checked)}
-    />;
+    const masterCheckbox = (
+        <MasterCheckbox
+            checked={masterCheckboxChecked}
+            onClick={props.checkAllAnalyses}
+        />
+    );
 
-    const content = <List
-        customEmptyPage={<Heading.h1>No jobs found.</Heading.h1>}
-        loading={loading}
-        pageRenderer={page =>
-            <ContainerForText>
+    const content = (
+        <List
+            customEmptyPage={<Heading.h1>No jobs found.</Heading.h1>}
+            loading={loading}
+            pageRenderer={page => (
                 <Table>
                     <Header
                         hide={hide}
@@ -115,7 +115,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
                             sortBy
                         })}
                     />
-                    <TableBody>
+                    <tbody>
                         {page.items.map((a, i) =>
                             <Row
                                 hide={hide}
@@ -126,25 +126,24 @@ function JobResults(props: AnalysesProps & {history: History}) {
                                 <Box><Label>
                                     <Checkbox
                                         checked={a.checked}
-                                        onClick={(e: {target: {checked: boolean}}) =>
-                                            props.checkAnalysis(a.jobId, e.target.checked)}
+                                        onChange={e => props.checkAnalysis(a.jobId, e.target.checked)}
                                     />
                                 </Label></Box>
                             </Row>)}
-                    </TableBody>
+                    </tbody>
                 </Table>
-            </ContainerForText>
-        }
-        page={page}
-        onPageChanged={pageNumber => fetchJobs({pageNumber})}
-    />;
+            )}
+            page={page}
+            onPageChanged={pageNumber => fetchJobs({pageNumber})}
+        />
+    );
 
     const defaultFilter = {text: "Don't filter", value: "Don't filter"};
     const [filter, setFilter] = React.useState(defaultFilter);
     const [firstDate, setFirstDate] = React.useState<Date | null>(null);
     const [secondDate, setSecondDate] = React.useState<Date | null>(null);
 
-    const appStates = Object.keys(AppState).map(it => ({text: prettierString(it), value: it}));
+    const appStates = Object.keys(JobState).map(it => ({text: prettierString(it), value: it}));
     appStates.push(defaultFilter);
 
     function fetchJobsInRange(minDate: Date | null, maxDate: Date | null) {
@@ -171,7 +170,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
             pageNumber,
             sortBy,
             sortOrder,
-            filter: value === "Don't filter" ? undefined : value as AppState
+            filter: value === "Don't filter" ? undefined : value as JobState
         });
     }
     const sidebar = (<Box pt={48}>
@@ -209,7 +208,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
                     placeholderText="Don't filter"
                     isClearable
                     selectsStart
-                    showTimeSelect
+                    showTimeInput
                     startDate={firstDate}
                     endDate={secondDate}
                     selected={firstDate}
@@ -226,7 +225,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
                     placeholderText="Don't filter"
                     isClearable
                     selectsEnd
-                    showTimeSelect
+                    showTimeInput
                     startDate={firstDate}
                     endDate={secondDate}
                     selected={secondDate}
@@ -261,7 +260,7 @@ function JobResults(props: AnalysesProps & {history: History}) {
 }
 
 interface AnalysisOperationsProps {
-    cancelableAnalyses: Analysis[];
+    cancelableAnalyses: JobWithStatus[];
     onFinished: () => void;
 }
 
@@ -325,7 +324,7 @@ const Header = ({hide, sortBy, sortOrder, masterCheckbox, fetchJobs}: HeaderProp
 
 interface RowProps {
     hide: boolean;
-    analysis: Analysis;
+    analysis: JobWithStatus;
     to: () => void;
 }
 const Row: React.FunctionComponent<RowProps> = ({analysis, to, hide, children}) => {
@@ -340,10 +339,12 @@ const Row: React.FunctionComponent<RowProps> = ({analysis, to, hide, children}) 
             <TableCell onClick={to}><JobStateIcon state={analysis.state} mr={"8px"} /> {capitalized(analysis.state)}
             </TableCell>
             <TableCell onClick={to}>{metadata.title} v{metadata.version}</TableCell>
-            {hide ? null : <TableCell onClick={to}>{moment(analysis.createdAt).calendar()}</TableCell>}
+            {hide ? null : <TableCell onClick={to}>
+                {capitalized(formatRelative(analysis.createdAt, new Date(), {locale: enGB}))}
+            </TableCell>}
             <TableCell onClick={to}>
-                {!!analysis.expiresAt &&
-                     analysis.state === AppState.RUNNING ? moment(analysis.expiresAt).calendar() : "N/A"}
+                {!!analysis.expiresAt && analysis.state === JobState.RUNNING ?
+                    capitalized(formatRelative(analysis.expiresAt, new Date(), {locale: enGB})) : "N/A"}
             </TableCell>
         </TableRow>);
 };

@@ -4,7 +4,7 @@ import {Acl, File, FileType, SortBy} from "Files";
 import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {dateToString} from "Utilities/DateUtilities";
-import {getFilenameFromPath, isDirectory, replaceHomeFolder, sizeToString} from "Utilities/FileUtilities";
+import {getFilenameFromPath, replaceHomeFolder, sizeToString, isDirectory} from "Utilities/FileUtilities";
 import {HTTP_STATUS_CODES} from "Utilities/XHRUtils";
 
 /**
@@ -39,8 +39,7 @@ export const capitalized = (str: string): string => str.charAt(0).toUpperCase() 
  * @param {Acl[]} acls - the list of access controls
  * @return {string}
  */
-export const getMembersString = (acls?: Acl[]): string => {
-    if (acls === undefined) return "N/A";
+export const getMembersString = (acls: Acl[]): string => {
     const filteredAcl = acls.filter(it => it.entity !== currentCloud.activeUsername);
     if (filteredAcl.length > 0) {
         return `${acls.length + 1} members`;
@@ -60,7 +59,7 @@ export function sortingColumnToValue(sortBy: SortBy, file: File): string {
         case SortBy.MODIFIED_AT:
             return dateToString(file.modifiedAt!);
         case SortBy.SIZE:
-            return sizeToString(file.size!);
+            return isDirectory({fileType: file.fileType}) ? "" : sizeToString(file.size!);
         case SortBy.ACL:
             if (file.acl !== null)
                 return getMembersString(file.acl);
@@ -169,8 +168,11 @@ export const iconFromFilePath = (filePath: string, type: FileType, homeFolder: s
     const icon: FtIconProps = {type: "FILE"};
 
     switch (type) {
-        case "DIRECTORY":
         case "SHARED_FS":
+            icon.type = "SHARED_FS";
+            return icon;
+
+        case "DIRECTORY":
             const homeFolderReplaced = replaceHomeFolder(filePath, homeFolder);
             switch (homeFolderReplaced) {
                 case "Home/Jobs":
@@ -181,6 +183,9 @@ export const iconFromFilePath = (filePath: string, type: FileType, homeFolder: s
                     break;
                 case "Home/Shares":
                     icon.type = "SHARESFOLDER";
+                    break;
+                case "Home/App File Systems":
+                    icon.type = "FSFOLDER";
                     break;
                 case "Home/Trash":
                     icon.type = "TRASHFOLDER";
@@ -207,7 +212,7 @@ export const iconFromFilePath = (filePath: string, type: FileType, homeFolder: s
  *
  * @param params: { status, min, max } (both inclusive)
  */
-export const inRange = ({status, min, max}: { status: number, min: number, max: number }): boolean =>
+export const inRange = ({status, min, max}: {status: number, min: number, max: number}): boolean =>
     status >= min && status <= max;
 export const inSuccessRange = (status: number): boolean => inRange({status, min: 200, max: 299});
 export const removeTrailingSlash = (path: string) => path.endsWith("/") ? path.slice(0, path.length - 1) : path;
@@ -235,7 +240,7 @@ export const downloadAllowed = (files: File[]) =>
 export const prettierString = (str: string) => capitalized(str).replace(/_/g, " ");
 
 export function defaultErrorHandler(
-    error: { request: XMLHttpRequest, response: any }
+    error: {request: XMLHttpRequest, response: any}
 ): number {
     const request: XMLHttpRequest = error.request;
     // FIXME must be solvable more elegantly
@@ -296,9 +301,9 @@ export function requestFullScreen(el: Element, onFailure: () => void) {
 
 export function timestampUnixMs(): number {
     return window.performance &&
-    window.performance.now &&
-    window.performance.timing &&
-    window.performance.timing.navigationStart ?
+        window.performance.now &&
+        window.performance.timing &&
+        window.performance.timing.navigationStart ?
         window.performance.now() + window.performance.timing.navigationStart :
         Date.now();
 }
@@ -333,7 +338,7 @@ export function copyToClipboard({value, message}: CopyToClipboard) {
 }
 
 export function errorMessageOrDefault(
-    err: { request: XMLHttpRequest, response: any } | { status: number, response: string },
+    err: {request: XMLHttpRequest, response: any} | {status: number, response: string},
     defaultMessage: string
 ): string {
     try {

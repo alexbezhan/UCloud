@@ -4,6 +4,7 @@ import dk.sdu.cloud.SecurityPrincipalToken
 import dk.sdu.cloud.app.orchestrator.api.ApplicationPeer
 import dk.sdu.cloud.app.orchestrator.api.JobSortBy
 import dk.sdu.cloud.app.orchestrator.api.JobState
+import dk.sdu.cloud.app.orchestrator.api.MachineReservation
 import dk.sdu.cloud.app.orchestrator.api.SharedFileSystemMount
 import dk.sdu.cloud.app.orchestrator.api.SortOrder
 import dk.sdu.cloud.app.orchestrator.api.ValidatedFileForUpload
@@ -166,7 +167,11 @@ data class JobInformationEntity(
     var peers: List<ApplicationPeer>?,
 
     @Column(length = 1024)
-    var refreshToken: String?
+    var refreshToken: String?,
+
+    var reservedCpus: Int?,
+
+    var reservedMemoryInGigs: Int?
 ) : WithTimestamps {
 
     companion object : HibernateEntity<JobInformationEntity>, WithId<String>
@@ -200,13 +205,15 @@ class JobHibernateDao(
             job.workspace,
             job.backend,
             null,
-            Date(System.currentTimeMillis()),
-            Date(System.currentTimeMillis()),
+            Date(job.modifiedAt),
+            Date(job.createdAt),
             job.user,
             job.project,
             job.sharedFileSystemMounts,
             job.peers,
-            refreshToken
+            refreshToken,
+            job.reservation.cpu,
+            job.reservation.memoryInGigs
         )
 
         session.save(entity)
@@ -424,7 +431,8 @@ class JobHibernateDao(
                 user = username ?: owner,
                 project = project,
                 _sharedFileSystemMounts = sharedFileSystemMounts,
-                _peers = peers
+                _peers = peers,
+                reservation = MachineReservation("Machine", reservedCpus, reservedMemoryInGigs)
             ),
             accessToken,
             refreshToken

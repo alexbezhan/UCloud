@@ -1,29 +1,69 @@
+import {SharedFileSystemMount} from "Applications/FileSystems";
 import {AnalysisReduxObject, ResponsiveReduxObject} from "DefaultObjects";
-import {SortOrder} from "Files";
+import {File, SortOrder} from "Files";
 import {History} from "history";
 import {SetStatusLoading} from "Navigation/Redux/StatusActions";
 import PromiseKeeper from "PromiseKeeper";
 import * as React from "react";
-import {SharedFileSystemMount} from "Applications/FileSystems";
 import {match} from "react-router";
+import {Page} from "Types";
 import {ParameterValues} from "Utilities/ApplicationUtilities";
 
-export interface Analysis {
-    name: string;
-    checked?: boolean;
-    status: string;
-    state: AppState;
-    jobId: string;
-    appName: string;
-    appVersion: string;
-    createdAt: number;
-    modifiedAt: number;
-    expiresAt?: number;
-    owner: string;
-    metadata: ApplicationMetadata
+/** @deprecated */
+export type Analysis = JobWithStatus;
+
+/** @deprecated */
+export type AppState = JobState;
+
+export enum JobState {
+    VALIDATED = "VALIDATED",
+    PREPARED = "PREPARED",
+    SCHEDULED = "SCHEDULED",
+    RUNNING = "RUNNING",
+    TRANSFER_SUCCESS = "TRANSFER_SUCCESS",
+    SUCCESS = "SUCCESS",
+    FAILURE = "FAILURE",
+    CANCELLING = "CANCELLING"
 }
 
-export type AnalysesStateProps = AnalysisReduxObject & {responsive: ResponsiveReduxObject}
+export interface AdvancedSearchRequest {
+    name?: string;
+    version?: string;
+    versionRange?: [string, string];
+    description?: string;
+    tags?: string[];
+
+    // FIXME: replace with PaginationRequest
+    itemsPerPage: number;
+    page: number;
+}
+
+export function isJobStateFinal(state: JobState): boolean {
+    return state === JobState.SUCCESS || state === JobState.FAILURE;
+}
+
+export interface JobWithStatus {
+    jobId: string;
+    name: string | null;
+    owner: string;
+
+    state: JobState;
+    status: string;
+    failedState: JobState | null;
+
+    createdAt: number;
+    modifiedAt: number;
+    expiresAt: number | null;
+    maxTime: number | null;
+    outputFolder: string | null;
+
+    metadata: ApplicationMetadata;
+
+    // Fake props used only for the frontend
+    checked?: boolean;
+}
+
+export type AnalysesStateProps = AnalysisReduxObject & {responsive: ResponsiveReduxObject};
 export type AnalysesProps = AnalysesStateProps & AnalysesOperations;
 
 type FetchJobsOperation = (
@@ -45,16 +85,6 @@ export interface AnalysesOperations {
     checkAllAnalyses: (checked: boolean) => void;
 }
 
-export interface DetailedResultOperations {
-    setPageTitle: (jobId: string) => void;
-    setLoading: (loading: boolean) => void;
-    setRefresh: (refresh?: () => void) => void;
-}
-
-export interface DetailedResultProps extends DetailedResultOperations {
-    match: match<{jobId: string}>;
-    history: History;
-}
 
 export interface Application {
     favorite: boolean;
@@ -104,38 +134,6 @@ export interface ApplicationDescription {
     tags: string[];
 }
 
-export enum AppState {
-    VALIDATED = "VALIDATED",
-    PREPARED = "PREPARED",
-    SCHEDULED = "SCHEDULED",
-    RUNNING = "RUNNING",
-    TRANSFER_SUCCESS = "TRANSFER_SUCCESS",
-    SUCCESS = "SUCCESS",
-    FAILURE = "FAILURE",
-    CANCELLING = "CANCELLING"
-}
-
-export interface DetailedResultState {
-    name: string;
-    complete: boolean;
-    appState: AppState;
-    failedState?: AppState;
-    status: string;
-    app?: ApplicationMetadata;
-    stdout: string;
-    stderr: string;
-    stdoutLine: number;
-    stderrLine: number;
-    reloadIntervalId: number;
-    promises: PromiseKeeper;
-    outputFolder?: string;
-    appType?: ApplicationType;
-    webLink?: string;
-    timeLeft: number | null;
-}
-
-export type StdElement = {scrollTop: number, scrollHeight: number} | null
-
 export interface MaxTime {
     hours: number;
     minutes: number;
@@ -178,7 +176,9 @@ export interface RunAppState {
     mountedFolders: AdditionalMountedFolder[];
     additionalPeers: AdditionalPeer[];
     fsShown: boolean;
-    sharedFileSystems: { mounts: SharedFileSystemMount[] };
+    sharedFileSystems: {mounts: SharedFileSystemMount[]};
+    previousRuns: Page<File>;
+    reservation: React.RefObject<HTMLInputElement>;
 }
 
 export interface RunOperations extends SetStatusLoading {
@@ -221,16 +221,23 @@ export interface TextParameter extends BaseParameter {
     type: ParameterTypes.Text;
 }
 
+export interface RangeParameter extends BaseParameter {
+    type: ParameterTypes.Range;
+    defaultValue: {min: number; max: number;};
+    min: number;
+    max: number;
+}
+
 export interface PeerParameter extends BaseParameter {
-    suggestedApplication: string | null
-    type: ParameterTypes.Peer
+    suggestedApplication: string | null;
+    type: ParameterTypes.Peer;
 }
 
 export interface SharedFileSystemParameter extends BaseParameter {
-    fsType: "EPHEMERAL" | "PERSISTENT"
-    mountLocation: string
-    exportToPeers: boolean
-    type: ParameterTypes.SharedFileSystem
+    fsType: "EPHEMERAL" | "PERSISTENT";
+    mountLocation: string;
+    exportToPeers: boolean;
+    type: ParameterTypes.SharedFileSystem;
 }
 
 interface BaseParameter {
@@ -243,13 +250,14 @@ interface BaseParameter {
     visible?: boolean;
 }
 
-export type ApplicationParameter = 
-	InputFileParameter | 
-	InputDirectoryParameter | 
-	NumberParameter | 
-	BooleanParameter |
-    TextParameter | 
-    PeerParameter | 
+export type ApplicationParameter =
+    InputFileParameter |
+    InputDirectoryParameter |
+    NumberParameter |
+    BooleanParameter |
+    TextParameter |
+    RangeParameter |
+    PeerParameter |
     SharedFileSystemParameter;
 
 type Invocation = WordInvocation | VarInvocation;
@@ -269,19 +277,6 @@ interface VarInvocation {
     variableSeparator: string;
 }
 
-interface Info {name: string; version: string;}
-export interface Description {
-    info: Info;
-    tool: Info;
-    authors: string[];
-    title: string;
-    description: string;
-    invocation: Invocation[];
-    parameters: ApplicationParameter[];
-    outputFileGlobs: [string, string];
-    tags: string[];
-}
-
 export enum ParameterTypes {
     InputFile = "input_file",
     InputDirectory = "input_directory",
@@ -289,24 +284,16 @@ export enum ParameterTypes {
     FloatingPoint = "floating_point",
     Text = "text",
     Boolean = "boolean",
+    Range = "range",
     Peer = "peer",
     SharedFileSystem = "shared_file_system"
-}
-
-export interface SearchFieldProps {
-    onSubmit: () => void;
-    icon: string;
-    placeholder: string;
-    value: string;
-    loading: boolean;
-    onValueChange: (value: string) => void;
 }
 
 export interface DetailedApplicationSearchReduxState {
     hidden: boolean;
     appName: string;
     appVersion: string;
-    tags: string;
+    tags: Set<string>;
     error?: string;
     loading: boolean;
 }
@@ -314,11 +301,12 @@ export interface DetailedApplicationSearchReduxState {
 export interface DetailedApplicationOperations {
     setAppName: (n: string) => void;
     setVersionName: (v: string) => void;
-    fetchApplicationsFromName: (q: string, i: number, p: number, c?: Function) => void;
-    fetchApplicationsFromTag: (t: string, i: number, p: number, c?: Function) => void;
+    addTag: (tag: string) => void;
+    removeTag: (tag: string) => void;
+    clearTags: () => void;
+    // tslint:disable-next-line:ban-types
+    fetchApplications: (b: AdvancedSearchRequest, c?: Function) => void;
 }
-
-
 
 // New interfaces
 export interface ApplicationMetadata {
@@ -327,11 +315,14 @@ export interface ApplicationMetadata {
     authors: string[];
     title: string;
     description: string;
-    tags: string[];
     website?: string;
 }
 
-type ApplicationType = "BATCH" | "VNC" | "WEB"
+export enum ApplicationType {
+    BATCH = "BATCH",
+    VNC = "VNC",
+    WEB = "WEB"
+}
 
 export interface ApplicationInvocationDescription {
     tool: Tool;
@@ -339,27 +330,18 @@ export interface ApplicationInvocationDescription {
     parameters: ApplicationParameter[];
     outputFileGlobs: string[];
     applicationType: ApplicationType;
-    shouldAllowAdditionalMounts: boolean
-    shouldAllowAdditionalPeers: boolean
-    allowMultiNode: boolean
+    shouldAllowAdditionalMounts: boolean;
+    shouldAllowAdditionalPeers: boolean;
+    allowMultiNode: boolean;
 }
 
-interface Resources {
-    multiNodeSupport: boolean;
-    coreRequirements: number;
-    memoryRequirementsMb: number;
-    gpuRequirements: number;
-    tempStorageRequirementsGb: number;
-    persistentStorageRequirementsGb: number;
-}
-
-interface Tool {
+export interface Tool {
     name: string;
     version: string;
     tool: ToolReference;
 }
 
-interface ToolReference {
+export interface ToolReference {
     owner: string;
     createdAt: number;
     modifiedAt: number;
@@ -371,7 +353,7 @@ interface NameAndVersion {
     version: string;
 }
 
-interface ToolDescription {
+export interface ToolDescription {
     info: NameAndVersion;
     container: string;
     defaultNumberOfNodes: number;
@@ -405,8 +387,17 @@ export enum RunsSortBy {
     createdAt = "CREATED_AT",
     name = "NAME"
 }
+
 export interface WithAllAppTags {
     tags: string[];
+}
+
+export interface FollowStdStreamResponse {
+    failedState: AppState | null;
+    state: AppState | null;
+    status: string | null;
+    stdout: string | null;
+    stderr: string | null;
 }
 
 export type FullAppInfo = WithAppFavorite & WithAppInvocation & WithAppMetadata & WithAllAppTags;

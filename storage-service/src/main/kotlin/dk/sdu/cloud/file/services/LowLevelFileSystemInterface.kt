@@ -1,12 +1,11 @@
 package dk.sdu.cloud.file.services
 
-import dk.sdu.cloud.file.api.FileSortBy
-import dk.sdu.cloud.file.api.FileType
-import dk.sdu.cloud.file.api.SortOrder
-import dk.sdu.cloud.file.api.StorageEvent
+import dk.sdu.cloud.file.api.*
 import dk.sdu.cloud.file.util.FSException
 import dk.sdu.cloud.service.NormalizedPaginationRequest
 import dk.sdu.cloud.service.Page
+import dk.sdu.cloud.task.api.DiscardingTaskContext
+import dk.sdu.cloud.task.api.TaskContext
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -39,7 +38,8 @@ interface LowLevelFileSystemInterface<in Ctx : CommandRunner> {
         ctx: Ctx,
         from: String,
         to: String,
-        allowOverwrite: Boolean
+        writeConflictPolicy: WriteConflictPolicy,
+        task: TaskContext = DiscardingTaskContext
     ): FSResult<List<StorageEvent.CreatedOrRefreshed>>
 
     /**
@@ -55,7 +55,8 @@ interface LowLevelFileSystemInterface<in Ctx : CommandRunner> {
         ctx: Ctx,
         from: String,
         to: String,
-        allowOverwrite: Boolean
+        writeConflictPolicy: WriteConflictPolicy,
+        task: TaskContext = DiscardingTaskContext
     ): FSResult<List<StorageEvent.Moved>>
 
     /**
@@ -103,9 +104,9 @@ interface LowLevelFileSystemInterface<in Ctx : CommandRunner> {
      */
     suspend fun delete(
         ctx: Ctx,
-        path: String
+        path: String,
+        task: TaskContext = DiscardingTaskContext
     ): FSResult<List<StorageEvent.Deleted>>
-
 
     /**
      * Opens a file for writing. The contents of [path] will be truncated immediately.

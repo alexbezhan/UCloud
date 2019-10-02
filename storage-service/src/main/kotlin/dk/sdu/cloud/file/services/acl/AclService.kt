@@ -18,7 +18,7 @@ import dk.sdu.cloud.service.db.withTransaction
  * The permissions that a user can be granted for a single file is documented in [AccessRight].
  *
  * The ACLs of SDUCloud apply to _all_ children of a file. This means that a user do not need permissions on a
- * specfic file but can instead rely on permissions given by a parent. Consider the following example:
+ * specific file but can instead rely on permissions given by a parent. Consider the following example:
  *
  * Alice is the owner of /home/alice/shared and shares it with Bob by granting Bob [AccessRight.READ] to
  * /home/alice/shared.
@@ -47,9 +47,9 @@ class AclService<Session>(
 
     private suspend fun internalIsOwner(normalizedPath: String, username: String): Boolean {
         val homeFolder = homeFolderService.findHomeFolder(username).normalize()
-        log.debug("user is '$username' requesting path '$normalizedPath' and home is '$homeFolder'")
+        log.trace("user is '$username' requesting path '$normalizedPath' and home is '$homeFolder'")
         if (normalizedPath == homeFolder || normalizedPath.startsWith("$homeFolder/")) {
-            log.debug("We are the owner")
+            log.trace("We are the owner")
             return true
         }
 
@@ -98,7 +98,7 @@ class AclService<Session>(
         }.toMap()
     }
 
-   suspend fun revokePermission(path: String, username: String) {
+    suspend fun revokePermission(path: String, username: String) {
         val normalizedPath = pathNormalizer(path) ?: throw FSException.NotFound()
 
         db.withTransaction {

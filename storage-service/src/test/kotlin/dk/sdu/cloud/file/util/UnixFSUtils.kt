@@ -45,7 +45,7 @@ fun linuxFSWithRelaxedMocks(
             LookupUsersResponse(it.users.map { it to UserLookup(it, it.hashCode().toLong(), Role.USER) }.toMap())
         )
     }
-    val aclService = AclService(db, AclHibernateDao(), homeFolderService, { it.normalize() })
+    val aclService = AclService(db, AclHibernateDao(), homeFolderService) { it.normalize() }
     return LinuxTestFS(
         commandRunner,
         LinuxFS(
@@ -105,6 +105,10 @@ fun File.createDummyFSInRoot() {
                 touch("c", "File C")
                 touch("d", "File E")
                 touch("e", "File F")
+                mkdir("subfolder") {
+                    touch("f", "File F")
+                    touch("g", "File G")
+                }
 
             }
 

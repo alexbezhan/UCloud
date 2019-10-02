@@ -1,12 +1,10 @@
 package dk.sdu.cloud.file.services
 
-import dk.sdu.cloud.file.api.StorageEvents
-import dk.sdu.cloud.file.api.WorkspaceMount
-import dk.sdu.cloud.file.api.normalize
+import dk.sdu.cloud.file.api.*
 import dk.sdu.cloud.file.services.acl.AccessRights
 import dk.sdu.cloud.file.services.acl.AclHibernateDao
 import dk.sdu.cloud.file.services.acl.AclService
-import dk.sdu.cloud.file.services.background.BackgroundScope
+import dk.sdu.cloud.file.services.linuxfs.LinuxFSRunner
 import dk.sdu.cloud.file.util.FSException
 import dk.sdu.cloud.file.util.createDummyFS
 import dk.sdu.cloud.file.util.linuxFSWithRelaxedMocks
@@ -22,11 +20,12 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertFalse
 
-class WorkspaceTest {
+class WorkspaceTest : WithBackgroundScope() {
     private lateinit var micro: Micro
     private lateinit var aclService: AclService<*>
-    private lateinit var workspaceService: WorkspaceService
+    private lateinit var workspaceService: WorkspaceService<LinuxFSRunner>
     private lateinit var fsRoot: File
 
     @BeforeTest
@@ -34,25 +33,29 @@ class WorkspaceTest {
         micro = initializeMicro()
         micro.install(HibernateFeature)
 
-        BackgroundScope.init()
         aclService = AclService(micro.hibernateDatabase, AclHibernateDao(), MockedHomeFolderService, { it.normalize() })
         fsRoot = createDummyFS()
         val (runner, fs) = linuxFSWithRelaxedMocks(fsRoot.absolutePath)
 
-        val eventProducer = StorageEventProducer(EventServiceMock.createProducer(StorageEvents.events), { throw it })
-        val fileScanner = FileScanner(
-            runner,
-            CoreFileSystemService(
-                fs,
-                eventProducer,
-                FileSensitivityService(fs, eventProducer),
-                ClientMock.authenticatedClient
-            ),
-            eventProducer
+        val eventProducer =
+            StorageEventProducer(EventServiceMock.createProducer(StorageEvents.events), backgroundScope, { throw it })
+
+        val coreFileSystem = CoreFileSystemService(
+            fs,
+            eventProducer,
+            FileSensitivityService(fs, eventProducer),
+            ClientMock.authenticatedClient,
+            backgroundScope
         )
 
-        workspaceService = WorkspaceService(fsRoot, fileScanner, aclService)
-        BackgroundScope.stop()
+        val fileScanner = FileScanner(
+            runner,
+            coreFileSystem,
+            eventProducer,
+            backgroundScope
+        )
+
+        workspaceService = WorkspaceService(fsRoot, fileScanner, aclService, coreFileSystem, runner)
     }
 
     @Test
@@ -199,5 +202,65 @@ class WorkspaceTest {
             workspaceService.transfer(creationResponse.workspaceId, listOf("*"), "/home/user/files", true),
             matcher = { it.size == 1 }
         )
+    }
+
+    @Test
+    fun `test workspace transfer of deleted file on root`() = runBlocking {
+        val path = "/home/user/folder"
+        val fileToDeleteName = "fileToDelete"
+        val fileToDelete = "/home/user/folder/$fileToDeleteName"
+        val mountPath = "mount"
+        File(fsRoot, ".$fileToDelete").writeText("This will be deleted")
+
+        val creationResponse = workspaceService.create(
+            "user",
+            listOf(
+                WorkspaceMount(path, mountPath, readOnly = false)
+            ),
+            false,
+            "/input"
+        )
+
+
+        // We keep permissions in the foo mount but not in the destination dir. The result should be a single file
+        // transferred.
+        val workspaceRoot = File(fsRoot, "workspace/${creationResponse.workspaceId}/output/$mountPath")
+        File(workspaceRoot, "qwe").writeText("Hello!")
+        File(workspaceRoot, fileToDeleteName).delete()
+
+        workspaceService.transfer(creationResponse.workspaceId, listOf("*"), path, true)
+
+        // Check if the files were deleted correctly from the cloud
+
+        assertFalse(File(fsRoot, fileToDelete).exists())
+    }
+
+    @Test
+    fun `test workspace transfer of deleted file in folder`() = runBlocking {
+        val path = "/home/user/folder"
+        val fileToDeleteName = "fileToDelete"
+        val fileToDelete = "/home/user/folder/subfolder/$fileToDeleteName"
+        val mountPath = "mount"
+        File(fsRoot, ".$fileToDelete").writeText("This will be deleted")
+
+        val creationResponse = workspaceService.create(
+            "user",
+            listOf(
+                WorkspaceMount(path, mountPath, readOnly = false)
+            ),
+            false,
+            "/input"
+        )
+
+        // We keep permissions in the foo mount but not in the destination dir. The result should be a single file
+        // transferred.
+        val workspaceRoot = File(fsRoot, "workspace/${creationResponse.workspaceId}/output/$mountPath")
+        File(workspaceRoot, "qwe").writeText("Hello!")
+        File(workspaceRoot, "subfolder/$fileToDeleteName").delete()
+
+        workspaceService.transfer(creationResponse.workspaceId, listOf("*"), path, true)
+
+        // Check if the file was deleted correctly from the cloud
+        assertFalse(File(fsRoot, fileToDelete).exists())
     }
 }

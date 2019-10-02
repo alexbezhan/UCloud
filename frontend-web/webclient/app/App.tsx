@@ -5,6 +5,7 @@ import analyses from "Applications/Redux/AnalysesReducer";
 import applications from "Applications/Redux/BrowseReducer";
 import detailedApplicationSearch from "Applications/Redux/DetailedApplicationSearchReducer";
 import {Cloud} from "Authentication/SDUCloudObject";
+import * as TaskRedux from "BackgroundTasks/redux";
 import Core from "Core";
 import dashboard from "Dashboard/Redux/DashboardReducer";
 import {initObject} from "DefaultObjects";
@@ -51,6 +52,7 @@ const store = configureStore(initObject(), {
     ...AccountingRedux.reducers,
     avatar,
     loading,
+    tasks: TaskRedux.reducer,
     project: ProjectRedux.reducer,
     responsive: createResponsiveStateReducer(
         responsiveBP,
@@ -86,12 +88,17 @@ Cloud.initializeStore(store);
 function App({children}) {
     const [isLightTheme, setTheme] = React.useState(isLightThemeStored());
     const setAndStoreTheme = (isLight: boolean) => (setSiteTheme(isLight), setTheme(isLight));
+
+    function toggle() {
+        setAndStoreTheme(!isLightTheme);
+    }
+
     return (
         <ThemeProvider theme={isLightTheme ? theme : {...theme, colors: invertedColors}}>
             <>
-                <GlobalStyle/>
+                <GlobalStyle />
                 <BrowserRouter basename="app">
-                    <Header toggleTheme={() => isLightTheme ? setAndStoreTheme(false) : setAndStoreTheme(true)}/>
+                    <Header toggleTheme={toggle} />
                     {children}
                 </BrowserRouter>
             </>
@@ -100,10 +107,12 @@ function App({children}) {
 }
 
 ReactDOM.render(
-    <Provider store={store}>
-        <App>
-            <Core/>
-        </App>
-    </Provider>,
+    (
+        <Provider store={store}>
+            <App>
+                <Core />
+            </App>
+        </Provider>
+    ),
     document.getElementById("app")
 );

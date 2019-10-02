@@ -1,14 +1,30 @@
-import * as React from "react";
-import {PP, FileIcon, Arrow} from "../app/UtilityComponents";
-import {iconFromFilePath} from "../app/UtilityFunctions"
-import {mockFile} from "../app/Utilities/FileUtilities"
 import {configure, shallow} from "enzyme";
-import {create} from "react-test-renderer";
 import * as Adapter from "enzyme-adapter-react-16";
 import "jest-styled-components";
-import {theme} from "../app/ui-components";
+import * as React from "react";
+import {Provider} from "react-redux";
+import {create} from "react-test-renderer";
 import {ThemeProvider} from "styled-components";
+import {Cloud} from "../app/Authentication/SDUCloudObject";
+import dashboard from "../app/Dashboard/Redux/DashboardReducer"
+import {initDashboard} from "../app/DefaultObjects";
+import {dialogStore} from "../app/Dialog/DialogStore";
 import {SortBy, SortOrder} from "../app/Files";
+import {theme} from "../app/ui-components";
+import {mockFile} from "../app/Utilities/FileUtilities";
+import {configureStore} from "../app/Utilities/ReduxUtilities";
+import {
+    addStandardDialog,
+    Arrow,
+    FileIcon,
+    overwriteDialog,
+    PP,
+    rewritePolicyDialog,
+    sensitivityDialog,
+    shareDialog,
+    SharePrompt
+} from "../app/UtilityComponents";
+import {iconFromFilePath} from "../app/UtilityFunctions";
 
 configure({adapter: new Adapter()});
 
@@ -69,4 +85,85 @@ describe("Arrow", () => {
             <Arrow activeSortBy={SortBy.PATH} sortBy={SortBy.FILE_TYPE} order={SortOrder.ASCENDING} />)
         ).toMatchSnapshot();
     });
-})
+});
+
+
+describe("Dialogs", () => {
+    test("Add standard dialog", () => {
+        let dialogCount = 0;
+        dialogStore.subscribe(dialogs => dialogCount = dialogs.length);
+        addStandardDialog({
+            title: "Title",
+            message: "Message",
+            onConfirm: () => undefined
+        });
+        expect(dialogCount).toBe(1);
+        dialogStore.failure();
+        expect(dialogCount).toBe(0);
+    });
+
+    test("Add sensitivity dialog", () => {
+        let dialogCount = 0;
+        dialogStore.subscribe(dialogs => dialogCount = dialogs.length);
+        sensitivityDialog();
+        expect(dialogCount).toBe(1);
+        dialogStore.failure();
+        expect(dialogCount).toBe(0);
+    });
+
+    test("Add share dialog", () => {
+        let dialogCount = 0;
+        dialogStore.subscribe(dialogs => dialogCount = dialogs.length);
+        shareDialog([], Cloud);
+        expect(dialogCount).toBe(1);
+        dialogStore.failure();
+        expect(dialogCount).toBe(0);
+    });
+
+    test("Add overwrite dialog", () => {
+        let dialogCount = 0;
+        dialogStore.subscribe(dialogs => dialogCount = dialogs.length);
+        overwriteDialog();
+        expect(dialogCount).toBe(1);
+        dialogStore.failure();
+        expect(dialogCount).toBe(0);
+    });
+
+    test("Add rewritePolicy dialog, no overwrite", () => {
+        let dialogCount = 0;
+        dialogStore.subscribe(dialogs => dialogCount = dialogs.length);
+        rewritePolicyDialog({
+            allowOverwrite: false,
+            filesRemaining: 0,
+            homeFolder: "home",
+            path: "path"
+        });
+        expect(dialogCount).toBe(1);
+        dialogStore.failure();
+        expect(dialogCount).toBe(0);
+    });
+
+    test("Add rewritePolicy dialog, no overwrite", () => {
+        let dialogCount = 0;
+        dialogStore.subscribe(dialogs => dialogCount = dialogs.length);
+        rewritePolicyDialog({
+            allowOverwrite: true,
+            filesRemaining: 0,
+            homeFolder: "home",
+            path: "path"
+        });
+        expect(dialogCount).toBe(1);
+        dialogStore.failure();
+        expect(dialogCount).toBe(0);
+    });
+});
+
+test("Share prompt", () => {
+    expect(create(
+        <Provider store={configureStore({dashboard: initDashboard()}, {dashboard})}>
+            <ThemeProvider theme={theme}>
+                <SharePrompt paths={[""]} cloud={Cloud} />
+            </ThemeProvider>
+        </Provider>
+    ).toJSON()).toMatchSnapshot();
+});

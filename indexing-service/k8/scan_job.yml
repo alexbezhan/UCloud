@@ -13,19 +13,23 @@ spec:
 
           containers:
           - name: indexing-service
-            image: registry.cloud.sdu.dk/sdu-cloud/indexing-service:1.14.7
+            image: registry.cloud.sdu.dk/sdu-cloud/indexing-service:1.14.8
             command:
             - /opt/service/bin/service
             - --config-dir
             - /etc/refresh-token
             - --config-dir
             - /etc/token-validation
+            - --config-dir
+            - /etc/elasticsearch-credentials
             - --scan
             volumeMounts:
             - mountPath: /etc/refresh-token
               name: refresh-token
             - mountPath: /etc/token-validation
               name: token-validation
+            - mountPath: /etc/elasticsearch-credentials
+              name: elasticsearch-credentials
 
           volumes:
           - name: refresh-token
@@ -35,6 +39,10 @@ spec:
           - name: token-validation
             configMap:
               name: token-validation
+          - name: elasticsearch-credentials
+            secret:
+              optional: false
+              secretName: elasticsearch-credentials
 
           imagePullSecrets:
             - name: esci-docker

@@ -1,33 +1,34 @@
-import {BaseParameter, MandatoryField, ParameterProps} from "Applications/Widgets/BaseParameter";
 import * as Types from "Applications";
-import * as React from "react";
-import Input from "ui-components/Input";
-import styled from "styled-components";
-import Flex from "ui-components/Flex";
-import Text from "ui-components/Text";
-import {Link} from "react-router-dom";
-import {RefObject, useState} from "react";
-import {useCloudAPI} from "Authentication/DataHook";
-import {Analysis, Application, AppState, RunAppState, WithAppMetadata} from "Applications";
-import {Page} from "Types";
+import {JobState, JobWithStatus, WithAppMetadata} from "Applications";
 import {listByName, listJobs, ListJobsProps} from "Applications/api";
-import {emptyPage} from "DefaultObjects";
 import {runApplication, viewApplication} from "Applications/Pages";
+import {BaseParameter, MandatoryField, ParameterProps} from "Applications/Widgets/BaseParameter";
+import {useCloudAPI} from "Authentication/DataHook";
+import {emptyPage} from "DefaultObjects";
+import {Refresh} from "Navigation/Header";
+import * as Pagination from "Pagination";
+import * as React from "react";
+import {RefObject, useState} from "react";
 import * as ReactModal from "react-modal";
-import {defaultModalStyle} from "Utilities/ModalUtilities";
-import * as Heading from "ui-components/Heading";
-import Divider from "ui-components/Divider";
+import {Link} from "react-router-dom";
+import styled from "styled-components";
+import {Page} from "Types";
 import Box from "ui-components/Box";
 import Button from "ui-components/Button";
-import * as Pagination from "Pagination";
-import {shortUUID} from "UtilityFunctions";
-import {dateToString} from "Utilities/DateUtilities";
-import OutlineButton from "ui-components/OutlineButton";
-import {Refresh} from "Navigation/Header";
+import Divider from "ui-components/Divider";
+import Flex from "ui-components/Flex";
+import * as Heading from "ui-components/Heading";
+import Input from "ui-components/Input";
 import Label from "ui-components/Label";
+import Icon from "ui-components/Icon";
+import OutlineButton from "ui-components/OutlineButton";
+import Text from "ui-components/Text";
+import {dateToString} from "Utilities/DateUtilities";
+import {defaultModalStyle} from "Utilities/ModalUtilities";
+import {shortUUID} from "UtilityFunctions";
 
 interface PeerParameterProps extends ParameterProps {
-    parameter: Types.PeerParameter
+    parameter: Types.PeerParameter;
 }
 
 export const PeerParameter: React.FunctionComponent<PeerParameterProps> = props => {
@@ -40,10 +41,10 @@ export const PeerParameter: React.FunctionComponent<PeerParameterProps> = props 
 };
 
 interface AdditionalPeerParameterProps {
-    jobIdRef: RefObject<HTMLInputElement>
-    nameRef: RefObject<HTMLInputElement>
-    onRemove: () => void
-    hideLabels?: boolean
+    jobIdRef: RefObject<HTMLInputElement>;
+    nameRef: RefObject<HTMLInputElement>;
+    onRemove: () => void;
+    hideLabels?: boolean;
 }
 
 export const AdditionalPeerParameter: React.FunctionComponent<AdditionalPeerParameterProps> = props => {
@@ -51,29 +52,29 @@ export const AdditionalPeerParameter: React.FunctionComponent<AdditionalPeerPara
         <Box>
             <Label>
                 {props.hideLabels ? null : <>Hostname <MandatoryField/></>}
-                <Input placeholder={"Example: spark-cluster"} ref={props.nameRef}/>
             </Label>
+            <Input placeholder={"Example: spark-cluster"} ref={props.nameRef}/>
         </Box>
 
         <Box flexGrow={1} ml={2}>
             <Label>
                 {props.hideLabels ? null : <>Job <MandatoryField/></>}
-                <JobSelector parameterRef={props.jobIdRef} suggestedApplication={null}/>
             </Label>
+            <JobSelector parameterRef={props.jobIdRef} suggestedApplication={null}/>
         </Box>
 
         <Box ml={2}>
             <Label>
                 {props.hideLabels ? null : <br/>}
-                <Button type={"button"} height={"35px"} onClick={() => props.onRemove()}>✗</Button>
             </Label>
+            <Button color={"red"} height={"42px"} onClick={() => props.onRemove()}><Icon name="close" size="1em"/></Button>
         </Box>
     </Flex>;
 };
 
 interface JobSelectorProps {
-    parameterRef: RefObject<HTMLInputElement>
-    suggestedApplication: string | null
+    parameterRef: RefObject<HTMLInputElement>;
+    suggestedApplication: string | null;
 }
 
 const JobSelector: React.FunctionComponent<JobSelectorProps> = props => {
@@ -89,7 +90,7 @@ const JobSelector: React.FunctionComponent<JobSelectorProps> = props => {
         {...emptyPage, itemsPerPage: -1}
     );
 
-    const [availablePeers, fetchAvailablePeers, peerParams] = useCloudAPI<Page<Analysis>, ListJobsProps>(
+    const [availablePeers, fetchAvailablePeers, peerParams] = useCloudAPI<Page<JobWithStatus>, ListJobsProps>(
         {noop: true},
         {...emptyPage, itemsPerPage: -1}
     );
@@ -109,8 +110,8 @@ const JobSelector: React.FunctionComponent<JobSelectorProps> = props => {
             itemsPerPage: 50,
             page: 0,
             application: name,
-            version: version,
-            filter: AppState.RUNNING
+            version,
+            filter: JobState.RUNNING
         }));
     }
 
@@ -170,7 +171,7 @@ const JobSelector: React.FunctionComponent<JobSelectorProps> = props => {
                                         ...(peerParams.parameters!),
                                         application: undefined,
                                         version: undefined
-                                    }))
+                                    }));
                                 }}
                             >
                                 Show all

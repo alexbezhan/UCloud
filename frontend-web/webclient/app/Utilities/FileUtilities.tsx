@@ -11,6 +11,7 @@ import {addStandardDialog, rewritePolicyDialog, sensitivityDialog, shareDialog} 
 import * as UF from "UtilityFunctions";
 import {defaultErrorHandler} from "UtilityFunctions";
 import {ErrorMessage, isError, unwrap} from "./XHRUtils";
+import {size} from "styled-system";
 
 function getNewPath(newParentPath: string, currentPath: string): string {
     return `${UF.removeTrailingSlash(resolvePath(newParentPath))}/${getFilenameFromPath(resolvePath(currentPath))}`;
@@ -372,15 +373,14 @@ export const clearTrash = ({cloud, callback}: { cloud: SDUCloud, callback: () =>
         onConfirm: async () => {
             await cloud.post("/files/trash/clear", {});
             callback();
-            dialogStore.popDialog();
-        },
-        onCancel: () => dialogStore.popDialog()
+            dialogStore.success();
+        }
     });
 
 export const getParentPath = (path: string): string => {
     if (path.length === 0) return path;
     let splitPath = path.split("/");
-    splitPath = splitPath.filter(path => path);
+    splitPath = splitPath.filter(p => p);
     let parentPath = "/";
     for (let i = 0; i < splitPath.length - 1; i++) {
         parentPath += splitPath[i] + "/";
@@ -388,7 +388,10 @@ export const getParentPath = (path: string): string => {
     return parentPath;
 };
 
-const goUpDirectory = (count: number, path: string): string => count ? goUpDirectory(count - 1, getParentPath(path)) : path;
+const goUpDirectory = (
+    count: number,
+    path: string
+): string => count ? goUpDirectory(count - 1, getParentPath(path)) : path;
 
 const toFileName = (path: string): string => {
     const lastSlash = path.lastIndexOf("/");
@@ -411,7 +414,13 @@ export function downloadFiles(files: File[], setLoading: () => void, cloud: SDUC
     files.map(f => f.path).forEach(p =>
         cloud.createOneTimeTokenWithPermission("files.download:read").then((token: string) => {
             const element = document.createElement("a");
-            element.setAttribute("href", `/api/files/download?path=${encodeURIComponent(p)}&token=${encodeURIComponent(token)}`);
+            element.setAttribute(
+                "href",
+                Cloud.computeURL(
+                    "/api",
+                    `/files/download?path=${encodeURIComponent(p)}&token=${encodeURIComponent(token)}`
+                )
+            );
             element.style.display = "none";
             document.body.appendChild(element);
             element.click();
@@ -442,28 +451,49 @@ export async function updateSensitivity({files, cloud, onSensitivityChange}: Upd
 
 export const fetchFileContent = async (path: string, cloud: SDUCloud): Promise<Response> => {
     const token = await cloud.createOneTimeTokenWithPermission("files.download:read");
-    return fetch(`/api/files/download?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`);
+    return fetch(Cloud.computeURL(
+        "/api",
+        `/files/download?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`)
+    );
 };
+
+function isInt(value: number) {
+    if (isNaN(value)) {
+        return false;
+    }
+    return (value | 0) === value;
+}
 
 export const sizeToString = (bytes: number | null): string => {
     if (bytes === null) return "";
     if (bytes < 0) return "Invalid size";
-    if (bytes < 1000) {
-        return `${bytes} B`;
-    } else if (bytes < 1000 ** 2) {
-        return `${(bytes / 1000).toFixed(2)} KB`;
-    } else if (bytes < 1000 ** 3) {
-        return `${(bytes / 1000 ** 2).toFixed(2)} MB`;
-    } else if (bytes < 1000 ** 4) {
-        return `${(bytes / 1000 ** 3).toFixed(2)} GB`;
-    } else if (bytes < 1000 ** 5) {
-        return `${(bytes / 1000 ** 4).toFixed(2)} TB`;
-    } else if (bytes < 1000 ** 6) {
-        return `${(bytes / 1000 ** 5).toFixed(2)} PB`;
+    const {size, unit} = sizeToHumanReadableWithUnit(bytes);
+
+    if (isInt(size)) {
+        return `${size} ${unit}`;
     } else {
-        return `${(bytes / 1000 ** 6).toFixed(2)} EB`;
+        return `${size.toFixed(2)} ${unit}`;
     }
 };
+
+export function sizeToHumanReadableWithUnit(bytes: number): { size: number, unit: string } {
+    if (bytes < 1000) {
+        return {size: bytes, unit: "B"};
+    } else if (bytes < 1000 ** 2) {
+        return {size: (bytes / 1000), unit: "KB"};
+    } else if (bytes < 1000 ** 3) {
+        return {size: (bytes / 1000 ** 2), unit: "MB"};
+    } else if (bytes < 1000 ** 4) {
+        return {size: (bytes / 1000 ** 3), unit: "GB"};
+    } else if (bytes < 1000 ** 5) {
+        return {size: (bytes / 1000 ** 4), unit: "TB"};
+    } else if (bytes < 1000 ** 6) {
+        return {size: (bytes / 1000 ** 5), unit: "PB"};
+    } else {
+        return {size: (bytes / 1000 ** 6), unit: "EB"};
+    }
+}
+
 
 export const directorySizeQuery = "/files/stats/directory-sizes";
 
@@ -473,31 +503,10 @@ interface ShareFiles {
 }
 
 export const shareFiles = async ({files, cloud}: ShareFiles) => {
-    const input = await shareDialog();
-    if ("cancelled" in input) return;
-    const rights: string[] = [];
-    if (input.access.includes("read")) rights.push("READ");
-    if (input.access.includes("read_edit")) rights.push("WRITE");
-    let iteration = 0;
-    // Replace with Promise.all
-    files.map(f => f.path).forEach((path, _, paths) => {
-        const body = {
-            sharedWith: input.username,
-            path,
-            rights
-        };
-        cloud.put(`/shares/`, body)
-            .then(() => {
-                if (++iteration === paths.length) snackbarStore.addSnack({
-                    message: "Files shared successfully",
-                    type: SnackType.Success
-                });
-            })
-            .catch(({response}) => snackbarStore.addSnack({message: `${response.why}`, type: SnackType.Failure}));
-    });
+    shareDialog(files.map(it => it.path), cloud);
 };
 
-const moveToTrashDialog = ({filePaths, onCancel, onConfirm}: { onConfirm: () => void, onCancel: () => void, filePaths: string[] }): void => {
+const moveToTrashDialog = ({filePaths, onConfirm}: { onConfirm: () => void, filePaths: string[] }): void => {
     const message = filePaths.length > 1 ? `Move ${filePaths.length} files to trash?` :
         `Move file ${getFilenameFromPath(filePaths[0])} to trash?`;
 
@@ -509,7 +518,7 @@ const moveToTrashDialog = ({filePaths, onCancel, onConfirm}: { onConfirm: () => 
     });
 };
 
-export function clearTrashDialog({onConfirm, onCancel}: { onConfirm: () => void, onCancel: () => void }): void {
+export function clearTrashDialog({onConfirm}: { onConfirm: () => void }): void {
     addStandardDialog({
         title: "Empty trash?",
         message: "",
@@ -547,7 +556,9 @@ const successResponse = (paths: string[], homeFolder: string) =>
         `${paths.length} files moved to trash.` :
         `${replaceHomeFolder(paths[0], homeFolder)} moved to trash`;
 
-interface Failures { failures: string[]; }
+interface Failures {
+    failures: string[];
+}
 
 interface MoveToTrash {
     files: File[];
@@ -569,8 +580,7 @@ export const moveToTrash = ({files, cloud, setLoading, callback}: MoveToTrash) =
                 snackbarStore.addSnack({message: e.why, type: SnackType.Failure});
                 callback();
             }
-        },
-        onCancel: () => undefined
+        }
     });
 };
 

@@ -13,13 +13,15 @@ spec:
 
           containers:
           - name: elastic-management
-            image: registry.cloud.sdu.dk/sdu-cloud/elastic-management:1.0.9
+            image: registry.cloud.sdu.dk/sdu-cloud/elastic-management:1.0.18
             command:
             - /opt/service/bin/service
             - --config-dir
             - /etc/refresh-token
             - --config-dir
             - /etc/token-validation
+            - --config-dir
+            - /etc/elasticsearch-credentials
             - --config-dir
             - /etc/elasticmanagement
             - --cleanup
@@ -30,6 +32,8 @@ spec:
               name: token-validation
             - mountPath: /etc/elasticmanagement
               name: elasticmanagement
+            - mountPath: /etc/elasticsearch-credentials
+              name: elasticsearch-credentials
             env:
             - name: POD_IP
               valueFrom:
@@ -48,6 +52,10 @@ spec:
             secret:
               optional: false
               secretName: elasticmanagement-tokens
+          - name: elasticsearch-credentials
+            secret:
+              optional: false
+              secretName: elasticsearch-credentials
 
           imagePullSecrets:
             - name: esci-docker

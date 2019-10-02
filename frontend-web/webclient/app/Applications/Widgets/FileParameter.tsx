@@ -1,13 +1,15 @@
 import {BaseParameter, ParameterProps} from "Applications/Widgets/BaseParameter";
-import {FileInputSelector} from "Files/FileInputSelector";
-import {addTrailingSlash} from "UtilityFunctions";
-import {replaceHomeFolder, resolvePath} from "Utilities/FileUtilities";
 import {Cloud} from "Authentication/SDUCloudObject";
+import {FileInputSelector} from "Files/FileInputSelector";
 import * as React from "react";
+import {replaceHomeFolder, resolvePath} from "Utilities/FileUtilities";
+import {addTrailingSlash} from "UtilityFunctions";
 
 interface InputFileParameterProps extends ParameterProps {
-    onRemove?: () => void
-    defaultValue?: string
+    onRemove?: () => void;
+    defaultValue?: string;
+    unitWidth?: string | number;
+    parameterRef: React.RefObject<HTMLInputElement>;
 }
 
 export const InputFileParameter = (props: InputFileParameterProps) => (
@@ -22,6 +24,7 @@ export const InputFileParameter = (props: InputFileParameterProps) => (
             inputRef={props.parameterRef as React.RefObject<HTMLInputElement>}
             isRequired={!props.parameter.optional}
             unitName={props.parameter.unitName}
+            unitWidth={props.unitWidth}
         />
     </BaseParameter>
 );
@@ -40,6 +43,7 @@ export const InputDirectoryParameter = (props: InputFileParameterProps) => (
             onlyAllowFolders
             isRequired={!props.parameter.optional}
             unitName={props.parameter.unitName}
+            unitWidth={props.unitWidth}
             remove={props.onRemove}
         />
     </BaseParameter>

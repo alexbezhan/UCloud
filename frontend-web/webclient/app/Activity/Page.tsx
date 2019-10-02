@@ -1,21 +1,21 @@
-import * as React from "react";
-import {connect} from "react-redux";
-import {ActivityProps, ActivityDispatchProps, ActivityFilter} from "Activity";
+import {ActivityDispatchProps, ActivityFilter, ActivityProps} from "Activity";
 import * as Module from "Activity";
 import {ActivityReduxObject, ReduxObject} from "DefaultObjects";
-import {resetActivity, fetchActivity, setLoading, updateActivityFilter} from "./Redux/ActivityActions";
-import {updatePageTitle, setActivePage} from "Navigation/Redux/StatusActions";
-import {Dispatch} from "redux";
-import {Box, Label, InputGroup} from "ui-components";
 import {MainContainer} from "MainContainer/MainContainer";
-import {SidebarPages} from "ui-components/Sidebar";
 import {setRefreshFunction} from "Navigation/Redux/HeaderActions";
+import {setActivePage, updatePageTitle} from "Navigation/Redux/StatusActions";
+import * as React from "react";
+import {connect} from "react-redux";
+import {Dispatch} from "redux";
 import * as Scroll from "Scroll";
+import {Box, InputGroup, Label} from "ui-components";
+import BaseLink from "ui-components/BaseLink";
+import ClickableDropdown from "ui-components/ClickableDropdown";
 import {DatePicker} from "ui-components/DatePicker";
 import * as Heading from "ui-components/Heading";
-import BaseLink from "ui-components/BaseLink";
+import {SidebarPages} from "ui-components/Sidebar";
 import {ActivityFeedFrame, ActivityFeedItem, ActivityFeedSpacer} from "./Feed";
-import ClickableDropdown from "ui-components/ClickableDropdown";
+import {fetchActivity, resetActivity, setLoading, updateActivityFilter} from "./Redux/ActivityActions";
 
 const scrollSize = 250;
 
@@ -54,8 +54,8 @@ function Activity(props: ActivityProps) {
             onNextScrollRequested={req => fetchActivity(req, props)}
             loading={loading}
             frame={(ref, children) => <ActivityFeedFrame containerRef={ref}>{children}</ActivityFeedFrame>}
-            renderer={(props) => <ActivityFeedItem activity={props.item} />}
-            spacer={height => <ActivityFeedSpacer height={height} />}
+            renderer={props => <ActivityFeedItem activity={props.item} />}
+            spacer={height => <ActivityFeedSpacer key={`spacer${height}`} height={height} />}
         />;
     }
 
@@ -109,8 +109,11 @@ function Activity(props: ActivityProps) {
     function filter(title: string, filter: Partial<ActivityFilter>) {
         return <BaseLink
             style={{display: "block"}}
-            href={"javascript:void(0)"}
-            onClick={() => applyFilter(filter)}>{title}</BaseLink>
+            href={"#"}
+            onClick={e => {
+                e.preventDefault();
+                applyFilter(filter);
+            }}>{title}</BaseLink>;
     }
 
     function applyFilter(filter: Partial<ActivityFilter>) {
@@ -156,7 +159,7 @@ export const TimeFilter = (props: {text: string, onChange: (ts?: Date) => void, 
         <Label>{props.text}</Label>
         <InputGroup>
             <DatePicker
-                showTimeSelect
+                showTimeInput
                 placeholderText={"Don't filter"}
                 selected={props.selected}
                 onChange={ts => props.onChange(ts || undefined)}

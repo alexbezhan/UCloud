@@ -3,26 +3,18 @@ package dk.sdu.cloud.app.orchestrator
 import dk.sdu.cloud.app.orchestrator.api.AccountingEvents
 import dk.sdu.cloud.app.orchestrator.rpc.CallbackController
 import dk.sdu.cloud.app.orchestrator.rpc.JobController
-import dk.sdu.cloud.app.orchestrator.services.AppStoreService
-import dk.sdu.cloud.app.orchestrator.services.ComputationBackendService
-import dk.sdu.cloud.app.orchestrator.services.JobFileService
-import dk.sdu.cloud.app.orchestrator.services.JobHibernateDao
-import dk.sdu.cloud.app.orchestrator.services.JobOrchestrator
-import dk.sdu.cloud.app.orchestrator.services.JobVerificationService
-import dk.sdu.cloud.app.orchestrator.services.OrchestrationScope
-import dk.sdu.cloud.app.orchestrator.services.SharedMountVerificationService
-import dk.sdu.cloud.app.orchestrator.services.StreamFollowService
-import dk.sdu.cloud.app.orchestrator.services.ToolStoreService
-import dk.sdu.cloud.app.orchestrator.services.VncService
-import dk.sdu.cloud.app.orchestrator.services.WebService
+import dk.sdu.cloud.app.orchestrator.services.*
 import dk.sdu.cloud.auth.api.RefreshingJWTAuthenticator
 import dk.sdu.cloud.auth.api.authenticator
 import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.calls.client.OutgoingHttpCall
+import dk.sdu.cloud.calls.client.OutgoingWSCall
 import dk.sdu.cloud.calls.client.bearerAuth
 import dk.sdu.cloud.calls.client.withoutAuthentication
+import dk.sdu.cloud.calls.server.WSCall
 import dk.sdu.cloud.micro.Micro
 import dk.sdu.cloud.micro.ServerFeature
+import dk.sdu.cloud.micro.backgroundScope
 import dk.sdu.cloud.micro.developmentModeEnabled
 import dk.sdu.cloud.micro.eventStreamService
 import dk.sdu.cloud.micro.hibernateDatabase
@@ -40,10 +32,9 @@ class Server(override val micro: Micro, val config: Configuration) : CommonServe
     override val log = logger()
 
     override fun start() {
-        OrchestrationScope.init()
-
         val db = micro.hibernateDatabase
         val serviceClient = micro.authenticator.authenticateClient(OutgoingHttpCall)
+        val serviceClientWS = micro.authenticator.authenticateClient(OutgoingWSCall)
         val appStoreService = AppStoreService(serviceClient)
         val toolStoreService = ToolStoreService(serviceClient)
         val jobHibernateDao = JobHibernateDao(appStoreService, toolStoreService)
@@ -69,7 +60,8 @@ class Server(override val micro: Micro, val config: Configuration) : CommonServe
             }
         }
 
-        val jobFileService = JobFileService(serviceClient, userClientFactory)
+        val parameterExportService = ParameterExportService()
+        val jobFileService = JobFileService(serviceClient, userClientFactory, parameterExportService)
 
         val vncService = VncService(computationBackendService, db, jobHibernateDao, serviceClient)
         val webService = WebService(computationBackendService, db, jobHibernateDao, serviceClient)
@@ -80,9 +72,9 @@ class Server(override val micro: Micro, val config: Configuration) : CommonServe
             config.defaultBackend,
             sharedMountVerificationService,
             db,
-            jobHibernateDao
+            jobHibernateDao,
+            config.machines
         )
-
 
         val jobOrchestrator =
             JobOrchestrator(
@@ -93,34 +85,40 @@ class Server(override val micro: Micro, val config: Configuration) : CommonServe
                 computationBackendService,
                 jobFileService,
                 jobHibernateDao,
-                config.defaultBackend
+                config.defaultBackend,
+                micro.backgroundScope
             )
 
         val streamFollowService =
             StreamFollowService(
                 jobFileService,
                 serviceClient,
+                serviceClientWS,
                 computationBackendService,
                 db,
-                jobHibernateDao
+                jobHibernateDao,
+                micro.backgroundScope
             )
+
+        val jobQueryService = JobQueryService(db, jobHibernateDao, jobFileService)
 
         with(micro.server) {
             configureControllers(
                 JobController(
-                    db,
+                    jobQueryService,
                     jobOrchestrator,
-                    jobHibernateDao,
                     streamFollowService,
                     userClientFactory,
                     serviceClient,
                     vncService,
-                    webService
+                    webService,
+                    config.machines
                 ),
                 CallbackController(jobOrchestrator)
             )
         }
 
+        /*
         log.info("Replaying lost jobs")
         @Suppress("TooGenericExceptionCaught")
         try {
@@ -130,13 +128,9 @@ class Server(override val micro: Micro, val config: Configuration) : CommonServe
             log.warn(ex.stackTraceToString())
             log.warn("Caught exception while replaying lost jobs. These are ignored!")
         }
+         */
 
         log.info("Starting application services")
         startServices()
-    }
-
-    override fun stop() {
-        super.stop()
-        OrchestrationScope.stop()
     }
 }

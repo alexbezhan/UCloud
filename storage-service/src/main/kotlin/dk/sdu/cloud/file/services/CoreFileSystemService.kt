@@ -1,7 +1,6 @@
 package dk.sdu.cloud.file.services
 
 import dk.sdu.cloud.calls.client.AuthenticatedClient
-import dk.sdu.cloud.calls.client.call
 import dk.sdu.cloud.file.api.FileSortBy
 import dk.sdu.cloud.file.api.FileType
 import dk.sdu.cloud.file.api.SensitivityLevel
@@ -16,14 +15,18 @@ import dk.sdu.cloud.file.api.relativize
 import dk.sdu.cloud.file.util.FSException
 import dk.sdu.cloud.file.util.retryWithCatch
 import dk.sdu.cloud.file.util.throwExceptionBasedOnStatus
-import dk.sdu.cloud.notification.api.CreateNotification
-import dk.sdu.cloud.notification.api.Notification
-import dk.sdu.cloud.notification.api.NotificationDescriptions
+import dk.sdu.cloud.micro.BackgroundScope
 import dk.sdu.cloud.service.Loggable
 import dk.sdu.cloud.service.NormalizedPaginationRequest
 import dk.sdu.cloud.service.Page
+import dk.sdu.cloud.task.api.MeasuredSpeedInteger
+import dk.sdu.cloud.task.api.Progress
+import dk.sdu.cloud.task.api.SimpleSpeed
+import dk.sdu.cloud.task.api.runTask
+import kotlinx.coroutines.delay
 import java.io.InputStream
 import java.io.OutputStream
+import kotlin.random.Random
 
 const val XATTR_BIRTH = "birth"
 
@@ -31,7 +34,8 @@ class CoreFileSystemService<Ctx : FSUserContext>(
     private val fs: LowLevelFileSystemInterface<Ctx>,
     private val eventProducer: StorageEventProducer,
     private val sensitivityService: FileSensitivityService<Ctx>,
-    private val cloud: AuthenticatedClient
+    private val wsServiceClient: AuthenticatedClient,
+    private val backgroundScope: BackgroundScope
 ) {
     private suspend fun writeTimeOfBirth(
         ctx: Ctx,
@@ -83,59 +87,57 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         val normalizedFrom = from.normalize()
         val fromStat = stat(ctx, from, setOf(FileAttribute.FILE_TYPE, FileAttribute.SIZE))
         if (fromStat.fileType != FileType.DIRECTORY) {
-            if (fromStat.size > 10000000000) {
-                sendNotification(
-                    ctx.user,
-                    "Copying $from to $to.",
-                    "file_copy",
-                    mapOf("Destination" to to, "original" to from)
-                )
-            }
-            val targetPath = renameAccordingToPolicy(ctx, to, conflictPolicy)
-            fs.copy(ctx, from, targetPath, conflictPolicy.allowsOverwrite()).emitAll()
-            writeTimeOfBirth(ctx, targetPath)
-            setSensitivity(ctx, targetPath, sensitivityLevel)
-            if (fromStat.size > 10000000000) {
-                sendNotification(
-                    ctx.user,
-                    "Done copying $from to $to.",
-                    "file_copy",
-                    mapOf("Destination" to to, "original" to from)
-                )
-            }
-            return targetPath
-        } else {
-            sendNotification(
-                ctx.user,
-                "Copying $from to $to.",
-                "dir_copy",
-                mapOf("Destination" to to, "original" to from)
-            )
-            val newRoot = renameAccordingToPolicy(ctx, to, conflictPolicy).normalize()
-            fs.makeDirectory(ctx, newRoot).emitAll()
+            runTask(wsServiceClient, backgroundScope, "File copy", ctx.user) {
+                status = "Copying file from '$from' to '$to'"
 
-            tree(ctx, from, setOf(FileAttribute.PATH)).forEach { currentFile ->
-                val currentPath = currentFile.path.normalize()
-                retryWithCatch(
-                    retryDelayInMs = 0L,
-                    exceptionFilter = { it is FSException.AlreadyExists },
-                    body = {
-                        val desired = joinPath(newRoot, relativize(normalizedFrom, currentPath)).normalize()
-                        if (desired == newRoot) return@forEach
-                        val targetPath = renameAccordingToPolicy(ctx, desired, conflictPolicy)
-                        fs.copy(ctx, currentPath, targetPath, conflictPolicy.allowsOverwrite()).emitAll()
-                        writeTimeOfBirth(ctx, targetPath)
-                    }
-                )
+                val targetPath = renameAccordingToPolicy(ctx, to, conflictPolicy)
+                fs.copy(ctx, from, targetPath, conflictPolicy, this).emitAll()
+                writeTimeOfBirth(ctx, targetPath)
+                setSensitivity(ctx, targetPath, sensitivityLevel)
+
+                return targetPath
             }
-            setSensitivity(ctx, newRoot, sensitivityLevel)
-            sendNotification(
-                ctx.user,
-                "Done copying $from to $to.",
-                "dir_copy",
-                mapOf("Destination" to to, "original" to from)
-            )
-            return newRoot
+        } else {
+            runTask(wsServiceClient, backgroundScope, "File copy", ctx.user) {
+                status = "Copying files from '$from' to '$to'"
+                val filesPerSecond = MeasuredSpeedInteger("Files copied per second", "Files/s")
+                this.speeds = listOf(filesPerSecond)
+
+                val newRoot = renameAccordingToPolicy(ctx, to, conflictPolicy).normalize()
+                status = "Copying files from '$from' to '$newRoot'"
+                if (!exists(ctx, newRoot)) {
+                    fs.makeDirectory(ctx, newRoot).emitAll()
+                }
+
+                val tree = tree(ctx, from, setOf(FileAttribute.PATH, FileAttribute.SIZE))
+                val progress = Progress("Number of files", 0, tree.size)
+                this.progress = progress
+
+                tree.forEach { currentFile ->
+                    val currentPath = currentFile.path.normalize()
+                    val relativeFile = relativize(normalizedFrom, currentPath)
+
+                    writeln("Copying file '$relativeFile' (${currentFile.size} bytes)")
+                    retryWithCatch(
+                        retryDelayInMs = 0L,
+                        exceptionFilter = { it is FSException.AlreadyExists },
+                        body = {
+                            val desired = joinPath(newRoot, relativeFile).normalize()
+                            if (desired == newRoot) return@forEach
+                            val targetPath = renameAccordingToPolicy(ctx, desired, conflictPolicy)
+                            fs.copy(ctx, currentPath, targetPath, conflictPolicy, this).emitAll()
+
+                            writeTimeOfBirth(ctx, targetPath)
+                        }
+                    )
+
+                    progress.current++
+                    filesPerSecond.increment(1)
+                }
+
+                setSensitivity(ctx, newRoot, sensitivityLevel)
+                return newRoot
+            }
         }
     }
 
@@ -215,10 +217,10 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         ctx: Ctx,
         from: String,
         to: String,
-        conflictPolicy: WriteConflictPolicy
+        writeConflictPolicy: WriteConflictPolicy
     ): String {
-        val targetPath = renameAccordingToPolicy(ctx, to, conflictPolicy)
-        fs.move(ctx, from, targetPath, conflictPolicy.allowsOverwrite()).emitAll()
+        val targetPath = renameAccordingToPolicy(ctx, to, writeConflictPolicy)
+        fs.move(ctx, from, targetPath, writeConflictPolicy).emitAll()
         return targetPath
     }
 
@@ -247,6 +249,8 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         return when (conflictPolicy) {
             WriteConflictPolicy.OVERWRITE -> desiredTargetPath
 
+            WriteConflictPolicy.MERGE -> desiredTargetPath
+
             WriteConflictPolicy.RENAME -> {
                 if (targetExists) findFreeNameForNewFile(ctx, desiredTargetPath)
                 else desiredTargetPath
@@ -255,6 +259,31 @@ class CoreFileSystemService<Ctx : FSUserContext>(
             WriteConflictPolicy.REJECT -> {
                 if (targetExists) throw FSException.AlreadyExists()
                 else desiredTargetPath
+            }
+        }
+    }
+
+    suspend fun dummyTask(ctx: Ctx) {
+        val range = 0 until 100
+
+        runTask(wsServiceClient, backgroundScope, "Storage Test", ctx.user, updateFrequencyMs = 50) {
+            val progress = Progress("Progress", 0, range.last)
+            val taskSpeed = SimpleSpeed("Speeed!", 0.0, "Foo")
+            val tasksPerSecond = MeasuredSpeedInteger("Tasks", "T/s")
+
+            speeds = listOf(taskSpeed, tasksPerSecond)
+            this.progress = progress
+
+            for (iteration in range) {
+                status = "Working on step $iteration"
+                if (iteration % 10 == 0) {
+                    taskSpeed.speed = Random.nextDouble()
+                }
+                progress.current = iteration
+                writeln("Started work on $iteration")
+                delay(100)
+                tasksPerSecond.increment(1)
+                writeln("Work on $iteration complete!")
             }
         }
     }
@@ -322,25 +351,10 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         }
     }
 
-    private suspend fun sendNotification(user: String, message: String, type: String, notificationMeta: Map<String,Any>) {
-        NotificationDescriptions.create.call(
-            CreateNotification(
-                user,
-                Notification(
-                    type,
-                    message,
-                    meta = notificationMeta
-                )
-            ),
-            cloud
-        )
-    }
-
-    private fun <T : StorageEvent> FSResult<List<T>>.emitAll(): List<T> {
+    private suspend fun <T : StorageEvent> FSResult<List<T>>.emitAll(): List<T> {
         val result = unwrap()
 
-        log.debug("Emitting storage ${result.size} events: ${result.take(5)}")
-        eventProducer.produceInBackground(result)
+        eventProducer.produce(result)
         return result
     }
 
