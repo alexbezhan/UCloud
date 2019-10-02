@@ -1,5 +1,5 @@
 properties([
-    buildDiscarder(logRotator(numToKeepStr: '30')),
+    buildDiscarder(logRotator(numToKeepStr: '20')),
 ])
 
 def label = "worker-${UUID.randomUUID().toString()}"
