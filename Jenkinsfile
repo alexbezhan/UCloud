@@ -1,5 +1,5 @@
 properties([
-    buildDiscarder(name: 'buildDiscard', logRotator(numToKeepStr: '30')),
+    buildDiscarder(logRotator(numToKeepStr: '30')),
 ])
 
 def label = "worker-${UUID.randomUUID().toString()}"
@@ -129,7 +129,6 @@ volumes: [
                 exclusionPattern: '**/src/test/**/*.class,**/AuthMockingKt.class,**/DatabaseSetupKt.class',
                 sourcePattern: '**/src/main/kotlin/**'
             )
-            param.buildDiscard
         }
     }
 }
