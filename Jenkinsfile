@@ -56,10 +56,11 @@ def sendAlert(String alertMessage) {
     withCredentials(
         [string(credentialsId: "slackToken", variable: "slackToken")]
     ) {
-        slackSend(
-            baseUrl: 'https://sdu-escience.slack.com/services/hooks/jenkins-ci/',
-            message: alertMessage,
-            token: "$slackToken"
-        )
+        slackSend channel: 'devalerts', message: 'test', tokenCredentialId: 'slackToken'
+        //slackSend(
+        //    baseUrl: 'https://sdu-escience.slack.com/services/hooks/jenkins-ci/',
+        //    message: alertMessage,
+        //    token: "$slackToken"
+        //)
     }
 }
