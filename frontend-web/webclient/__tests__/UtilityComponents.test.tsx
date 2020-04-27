@@ -1,18 +1,15 @@
 import {configure, shallow} from "enzyme";
 import * as Adapter from "enzyme-adapter-react-16";
-import "jest-styled-components";
 import * as React from "react";
 import {Provider} from "react-redux";
 import {create} from "react-test-renderer";
 import {ThemeProvider} from "styled-components";
-import {Cloud} from "../app/Authentication/SDUCloudObject";
-import dashboard from "../app/Dashboard/Redux/DashboardReducer"
-import {initDashboard} from "../app/DefaultObjects";
+import {Client} from "../app/Authentication/HttpClientInstance";
 import {dialogStore} from "../app/Dialog/DialogStore";
 import {SortBy, SortOrder} from "../app/Files";
 import {theme} from "../app/ui-components";
 import {mockFile} from "../app/Utilities/FileUtilities";
-import {configureStore} from "../app/Utilities/ReduxUtilities";
+import {store} from "../app/Utilities/ReduxUtilities";
 import {
     addStandardDialog,
     Arrow,
@@ -41,7 +38,7 @@ describe("PP", () => {
     test.skip("Change PP-value", () => {
         const pP = shallow(<PP visible />);
         pP.findWhere(it => !!it.props().type().range).simulate("change", {target: {value: "500"}});
-        expect(pP.state()["duration"]).toBe(500);
+        expect((pP.state() as {duration: number}).duration).toBe(500);
     });
 });
 
@@ -49,21 +46,24 @@ describe("FileIcon", () => {
 
     test("FileIcon, not shared", () => {
         const mFile = mockFile({path: "path", type: "DIRECTORY"});
-        const iconType = iconFromFilePath(mFile.path, mFile.fileType, "/home/mail@mailhost.dk");
-        expect(create(<FileIcon
-            fileIcon={iconType}
-        />)).toMatchSnapshot();
+        const iconType = iconFromFilePath(mFile.path, mFile.fileType, Client);
+        expect(create(
+            <ThemeProvider theme={theme}>
+                <FileIcon fileIcon={iconType} />
+            </ThemeProvider>
+        )).toMatchSnapshot();
     });
     test("FileIcon, shared", () => {
         const mFile = mockFile({path: "path", type: "DIRECTORY"});
-        const iconType = iconFromFilePath(mFile.path, mFile.fileType, "/home/mail@mailhost.dk");
+        const iconType = iconFromFilePath(mFile.path, mFile.fileType, Client);
         expect(create(
             <ThemeProvider theme={theme}>
                 <FileIcon
                     fileIcon={iconType}
                     shared
                 />
-            </ThemeProvider>)).toMatchSnapshot();
+            </ThemeProvider>
+        )).toMatchSnapshot();
     });
 });
 
@@ -114,7 +114,7 @@ describe("Dialogs", () => {
     test("Add share dialog", () => {
         let dialogCount = 0;
         dialogStore.subscribe(dialogs => dialogCount = dialogs.length);
-        shareDialog([], Cloud);
+        shareDialog([], Client);
         expect(dialogCount).toBe(1);
         dialogStore.failure();
         expect(dialogCount).toBe(0);
@@ -135,7 +135,7 @@ describe("Dialogs", () => {
         rewritePolicyDialog({
             allowOverwrite: false,
             filesRemaining: 0,
-            homeFolder: "home",
+            client: Client,
             path: "path"
         });
         expect(dialogCount).toBe(1);
@@ -149,7 +149,7 @@ describe("Dialogs", () => {
         rewritePolicyDialog({
             allowOverwrite: true,
             filesRemaining: 0,
-            homeFolder: "home",
+            client: Client,
             path: "path"
         });
         expect(dialogCount).toBe(1);
@@ -160,9 +160,9 @@ describe("Dialogs", () => {
 
 test("Share prompt", () => {
     expect(create(
-        <Provider store={configureStore({dashboard: initDashboard()}, {dashboard})}>
+        <Provider store={store}>
             <ThemeProvider theme={theme}>
-                <SharePrompt paths={[""]} cloud={Cloud} />
+                <SharePrompt paths={[""]} client={Client} />
             </ThemeProvider>
         </Provider>
     ).toJSON()).toMatchSnapshot();

@@ -1,8 +1,8 @@
 import styled from "styled-components";
 import Box, {BoxProps} from "./Box";
-import theme, {Theme} from "./theme";
+import {Theme} from "./theme";
 
-const getMaxWidth = (px: string) => (parseInt(px, 10) - 1) + "px";
+const getMaxWidth = (px: string): string => (parseInt(px, 10) - 1) + "px";
 
 
 // TODO: cleanup the media selectors below (maybe put in theme.tsx ?)
@@ -15,7 +15,9 @@ const breakpoints = (props: {theme: Theme}) => ({
   xxl: `@media screen and (min-width: ${props.theme.breakpoints[4]})`
 });
 
-export const hidden = (key: any) => (props: any) =>
+type Sizes = "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
+
+export const hidden = (key: Sizes) => (props: any) =>
   props[key]
     ? {
       [breakpoints(props)[key]]: {
@@ -41,10 +43,6 @@ const Hide = styled(Box) <HideProps>`
   ${hidden("xl")}
   ${hidden("xxl")}
 `;
-
-Hide.defaultProps = {
-  theme
-};
 
 Hide.displayName = "Hide";
 

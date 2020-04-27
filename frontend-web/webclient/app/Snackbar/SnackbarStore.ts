@@ -8,31 +8,47 @@ class SnackbarStore {
     private snackQueue: Snack[] = [];
     private activeExpiresAt: number = -1;
 
-    public subscribe(subscriber: SnackbarSubscriber) {
+    public subscribe(subscriber: SnackbarSubscriber): void {
         this.subscribers.push(subscriber);
     }
 
-    public unsubscribe(subscriber: SnackbarSubscriber) {
+    public unsubscribe(subscriber: SnackbarSubscriber): void {
         this.subscribers = this.subscribers.filter(it => it !== subscriber);
     }
 
-    public addSnack(snack: Snack) {
+    public addSnack(snack: Snack): void {
         this.snackQueue.push(snack);
 
-        if (this.activeExpiresAt == -1) {
+        if (this.activeExpiresAt === -1) {
             this.process();
         }
     }
 
-    public addFailure(message: string, lifetime?: number) {
+    public addFailure(message: string, lifetime?: number): void {
         this.addSnack({
             message,
             type: SnackType.Failure,
             lifetime
-        })
+        });
     }
 
-    requestCancellation() {
+    public addSuccess(message: string, lifetime?: number): void {
+        this.addSnack({
+            message,
+            type: SnackType.Success,
+            lifetime
+        });
+    }
+
+    public addInformation(message: string, lifetime?: number): void {
+        this.addSnack({
+            message,
+            type: SnackType.Success,
+            lifetime
+        });
+    }
+
+    public requestCancellation(): void {
         if (this.activeExpiresAt !== -1) {
             // Setting this to 0 will cause the invariant (-1 means no active) to still be true while still cancelling
             // in next loop.
@@ -40,7 +56,7 @@ class SnackbarStore {
         }
     }
 
-    process() {
+    private process(): void {
         setTimeout(() => {
             const now = timestampUnixMs();
             const deadline = this.activeExpiresAt;
@@ -55,7 +71,7 @@ class SnackbarStore {
                     return;
                 }
 
-                const lifetime = next.lifetime || 3000;
+                const lifetime = next.lifetime ?? 3000;
                 this.activeExpiresAt = now + lifetime;
                 this.subscribers.forEach(it => it(next));
             }

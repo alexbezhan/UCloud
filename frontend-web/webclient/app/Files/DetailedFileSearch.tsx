@@ -4,13 +4,15 @@ import * as React from "react";
 import {connect} from "react-redux";
 import {useHistory} from "react-router";
 import {Dispatch} from "redux";
+import {setSearch} from "Search/Redux/SearchActions";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Button, Checkbox, Flex, Input, InputGroup, Label, OutlineButton, Stamp} from "ui-components";
+import {Button, Checkbox, Flex, Hide, Input, InputGroup, Label, OutlineButton, Stamp} from "ui-components";
 import Box from "ui-components/Box";
 import ClickableDropdown from "ui-components/ClickableDropdown";
 import {DatePicker} from "ui-components/DatePicker";
 import * as Heading from "ui-components/Heading";
 import {searchPage} from "Utilities/SearchUtilities";
+import {stopPropagation} from "UtilityFunctions";
 import {
     DetailedFileSearchOperations,
     DetailedFileSearchReduxState,
@@ -30,68 +32,53 @@ interface DetailedFileSearchGivenProps {
     defaultFilename?: string;
     cantHide?: boolean;
     omitFileName?: boolean;
-    onSearch: () => void;
+    search: string;
 }
 
 type DetailedFileSearchProps = DetailedFileSearchStateProps & DetailedFileSearchGivenProps;
 
-function DetailedFileSearch(props: DetailedFileSearchProps) {
+function DetailedFileSearch(props: DetailedFileSearchProps): JSX.Element {
     const extensionsInput = React.useRef<HTMLInputElement>(null);
     const history = useHistory();
 
     React.useEffect(() => {
         if (!!props.defaultFilename) props.setFilename(props.defaultFilename);
-        return () => {if (!props.hidden) props.toggleHidden();}
-    });
+        return () => {if (!props.hidden) props.toggleHidden();};
+    }, []);
 
     const {hidden, cantHide, extensions, allowFiles, allowFolders, includeShares} = props;
     if (hidden && !cantHide) {
-        return (<OutlineButton fullWidth color="darkGreen" onClick={props.toggleHidden}>Advanced
-                Search</OutlineButton>);
+        return (
+            <OutlineButton fullWidth color="darkGreen" onClick={props.toggleHidden}>
+                Advanced
+                Search
+            </OutlineButton>
+        );
+    }
+
+    function onSubmit(event: React.FormEvent<HTMLFormElement>): void {
+        event.preventDefault();
+        onSearch();
     }
 
     return (
         <>
-            {!cantHide ? <OutlineButton fullWidth color="darkGreen" onClick={props.toggleHidden}>Hide Advanced
-                    Search</OutlineButton> : null}
+            {cantHide ? null : (
+                <OutlineButton
+                    fullWidth
+                    color="darkGreen"
+                    onClick={props.toggleHidden}
+                >
+                    Hide Advanced Search
+                </OutlineButton>
+            )}
             <Flex flexDirection="column" pl="0.5em" pr="0.5em">
                 <Box mt="0.5em">
-                    <form onSubmit={e => (e.preventDefault(), onSearch())}>
-                        <Heading.h5 pb="0.3em" pt="0.5em">Created at</Heading.h5>
-                        <InputGroup>
-                            <DatePicker
-                                pb="6px"
-                                pt="8px"
-                                mt="-2px"
-                                placeholderText="After"
-                                selected={props.createdAfter}
-                                startDate={props.createdAfter}
-                                endDate={props.createdBefore}
-                                onChange={d => validateAndSetDate(d, "createdAfter")}
-                                showTimeSelect
-                                timeIntervals={15}
-                                isClearable
-                                selectsStart
-                                timeFormat="HH:mm"
-                                dateFormat="dd/MM/yy HH:mm"
-                            />
-                            <DatePicker
-                                pb="6px"
-                                pt="8px"
-                                mt="-2px"
-                                selectsEnd
-                                placeholderText="Before"
-                                selected={props.createdBefore}
-                                startDate={props.createdAfter}
-                                endDate={props.createdBefore}
-                                onChange={d => validateAndSetDate(d, "createdBefore")}
-                                showTimeSelect
-                                timeIntervals={15}
-                                isClearable
-                                timeFormat="HH:mm"
-                                dateFormat="dd/MM/yy HH:mm"
-                            />
-                        </InputGroup>
+                    <form onSubmit={onSubmit}>
+                        <Hide lg xl xxl>
+                            <Heading.h5 pb="0.3em" pt="0.5em">Filename</Heading.h5>
+                            <Input value={props.search} onChange={e => props.setSearch(e.target.value)} />
+                        </Hide>
                         <Heading.h5 pb="0.3em" pt="0.5em">Modified at</Heading.h5>
                         <InputGroup>
                             <DatePicker
@@ -132,16 +119,16 @@ function DetailedFileSearch(props: DetailedFileSearchProps) {
                             <Label fontSize={1} color="black">
                                 <Checkbox
                                     checked={allowFolders}
-                                    onChange={(e: React.SyntheticEvent) => e.stopPropagation()}
-                                    onClick={() => props.toggleFolderAllowed()}
+                                    onChange={stopPropagation}
+                                    onClick={props.toggleFolderAllowed}
                                 />
                                 Folders
                                 </Label>
                             <Label fontSize={1} color="black">
                                 <Checkbox
                                     checked={allowFiles}
-                                    onChange={(e: React.SyntheticEvent) => e.stopPropagation()}
-                                    onClick={() => props.toggleFilesAllowed()}
+                                    onChange={stopPropagation}
+                                    onClick={props.toggleFilesAllowed}
                                 />
                                 Files
                                 </Label>
@@ -151,7 +138,7 @@ function DetailedFileSearch(props: DetailedFileSearchProps) {
                             <Label fontSize={1} color="black">
                                 <Checkbox
                                     checked={(includeShares)}
-                                    onChange={(e: React.SyntheticEvent) => e.stopPropagation()}
+                                    onChange={stopPropagation}
                                     onClick={props.toggleIncludeShares}
                                 />
                             </Label>
@@ -179,8 +166,8 @@ function DetailedFileSearch(props: DetailedFileSearchProps) {
                         <ClickableDropdown
                             width="100%"
                             chevron
-                            trigger={"Extension presets"}
-                            onChange={val => onAddPresets(val)}
+                            trigger="Extension presets"
+                            onChange={onAddPresets}
                             options={extensionPresets}
                         />
                         <Button
@@ -189,14 +176,16 @@ function DetailedFileSearch(props: DetailedFileSearchProps) {
                             disabled={props.loading}
                             mt="1em"
                             color="blue"
-                        >Search</Button>
+                        >
+                            Search
+                        </Button>
                     </form>
                 </Box>
             </Flex>
         </>
     );
 
-    function onAddExtension() {
+    function onAddExtension(): void {
         const extensions = extensionsInput.current;
         if (!extensions || !extensions.value) return;
         const newExtensions = extensions.value.trim().split(" ").filter(it => it);
@@ -204,62 +193,41 @@ function DetailedFileSearch(props: DetailedFileSearchProps) {
         extensions.value = "";
     }
 
-    function onAddPresets(presetExtensions: string) {
+    function onAddPresets(presetExtensions: string): void {
         const ext = presetExtensions.trim().split(" ").filter(it => it);
         props.addExtensions(ext);
     }
 
-    function validateAndSetDate(m: Date | null, property: PossibleTime) {
-        const {setTimes, createdBefore, modifiedBefore, createdAfter, modifiedAfter} = props;
+    function validateAndSetDate(m: Date | null, property: PossibleTime): void {
+        const {setTimes, modifiedBefore, modifiedAfter} = props;
         if (m == null) {
             setTimes({[property]: undefined});
             return;
         }
         const before = property.includes("Before");
-        if (property.includes("created")) {
-            if (before && createdAfter) {
-                if (m.getTime() > createdAfter.getTime()) {
-                    setTimes({createdBefore: m});
-                    return;
-                } else {
-                    snackbarStore.addFailure("Invalid date range");
-                    return;
-                }
-            } else if (!before && createdBefore) {
-                if (m.getTime() < createdBefore.getTime()) {
-                    setTimes({createdAfter: m});
-                    return;
-                } else {
-                    snackbarStore.addFailure("Invalid date range");
-                    return;
-                }
+        if (before && modifiedAfter) {
+            if (m.getTime() > modifiedAfter.getTime()) {
+                setTimes({modifiedBefore: m});
+                return;
+            } else {
+                snackbarStore.addFailure("Invalid date range");
+                return;
             }
-        } else { // includes Modified
-            if (before && modifiedAfter) {
-                if (m.getTime() > modifiedAfter.getTime()) {
-                    setTimes({modifiedBefore: m});
-                    return;
-                } else {
-                    snackbarStore.addFailure("Invalid date range");
-                    return;
-                }
-            } else if (!before && modifiedBefore) {
-                if (m.getTime() < modifiedBefore.getTime()) {
-                    setTimes({modifiedAfter: m});
-                    return;
-                } else {
-                    snackbarStore.addFailure("Invalid date range");
-                    return;
-                }
+        } else if (!before && modifiedBefore) {
+            if (m.getTime() < modifiedBefore.getTime()) {
+                setTimes({modifiedAfter: m});
+                return;
+            } else {
+                snackbarStore.addFailure("Invalid date range");
+                return;
             }
         }
         setTimes({[property]: m});
     }
 
-    function onSearch() {
+    function onSearch(): void {
         onAddExtension();
-        history.push(searchPage("files", props.fileName));
-        props.onSearch();
+        history.push(searchPage("files", props.search));
     }
 }
 
@@ -269,7 +237,7 @@ interface SearchStampsProps {
     clearAll: () => void;
 }
 
-export const SearchStamps = ({stamps, onStampRemove, clearAll}: SearchStampsProps) => (
+export const SearchStamps = ({stamps, onStampRemove, clearAll}: SearchStampsProps): JSX.Element => (
     <Box pb="5px">
         {[...stamps].map(l => (
             <Stamp onClick={() => onStampRemove(l)} ml="2px" mt="2px" color="blue" key={l} text={l} />))}
@@ -284,8 +252,12 @@ const extensionPresets = [
     {text: "Compressed files", value: ".zip .tar.gz"}
 ];
 
-const mapStateToProps = ({detailedFileSearch}: ReduxObject): DetailedFileSearchReduxState & {sizeCount: number} => ({
+const mapStateToProps = ({
+    detailedFileSearch,
+    simpleSearch
+}: ReduxObject): DetailedFileSearchReduxState & {search: string; sizeCount: number} => ({
     ...detailedFileSearch,
+    search: simpleSearch.search,
     sizeCount: detailedFileSearch.extensions.size + detailedFileSearch.tags.size + detailedFileSearch.sensitivities.size
 });
 
@@ -304,6 +276,7 @@ const mapDispatchToProps = (dispatch: Dispatch): DetailedFileSearchOperations =>
     setFilename: filename => dispatch(DFSActions.setFilename(filename)),
     setLoading: loading => dispatch(DFSActions.setFilesSearchLoading(loading)),
     setTimes: times => dispatch(DFSActions.setTime(times)),
+    setSearch: search => dispatch(setSearch(search))
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(DetailedFileSearch);

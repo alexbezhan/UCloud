@@ -1,26 +1,22 @@
 import * as React from "react";
-import {create} from "react-test-renderer";
-import {Uploader} from "../../app/Uploader";
-import {configureStore} from "../../app/Utilities/ReduxUtilities";
-import {initUploads, SensitivityLevelMap} from "../../app/DefaultObjects";
-import uploader from "../../app/Uploader/Redux/UploaderReducer";
 import {Provider} from "react-redux";
 import {MemoryRouter} from "react-router";
-import * as UploaderActions from "../../app/Uploader/Redux/UploaderActions";
-import "jest-styled-components";
-import {UploadPolicy} from "../../app/Uploader/api";
+import {create} from "react-test-renderer";
 import {AnyAction} from "redux";
+import {SensitivityLevelMap} from "../../app/DefaultObjects";
+import {Uploader} from "../../app/Uploader";
+import {UploadPolicy} from "../../app/Uploader/api";
+import * as UploaderActions from "../../app/Uploader/Redux/UploaderActions";
+import {store} from "../../app/Utilities/ReduxUtilities";
 
 
 // configure({ adapter: new Adapter() });
 
 describe("Uploader", () => {
     test("Closed Uploader component", () => {
-        const store = configureStore({
-            uploader: initUploads()
-        }, {uploader});
+        const storeCopy = {...store};
         expect(create(
-            <Provider store={store}>
+            <Provider store={storeCopy}>
                 <MemoryRouter>
                     <Uploader />
                 </MemoryRouter>
@@ -30,12 +26,10 @@ describe("Uploader", () => {
 
     // FIXME Tests modal, which requires accessing the portal it is being rendered in?
     test.skip("Open Uploader component", () => {
-        const store = configureStore({
-            uploader: initUploads()
-        }, {uploader});
-        store.dispatch(UploaderActions.setUploaderVisible(true, "") as AnyAction);
+        const storeCopy = {...store};
+        storeCopy.dispatch(UploaderActions.setUploaderVisible(true, "") as AnyAction);
         expect(create(
-            <Provider store={store}>
+            <Provider store={storeCopy}>
                 <MemoryRouter>
                     <Uploader />
                 </MemoryRouter>
@@ -44,11 +38,9 @@ describe("Uploader", () => {
     });
 
     test.skip("Render Uploader component with files", () => {
-        const store = configureStore({
-            uploader: initUploads()
-        }, {uploader});
-        store.dispatch(UploaderActions.setUploaderVisible(false, "") as AnyAction);
-        store.dispatch(UploaderActions.setUploads([{
+        const storeCopy = {...store};
+        storeCopy.dispatch(UploaderActions.setUploaderVisible(false, "") as AnyAction);
+        storeCopy.dispatch(UploaderActions.setUploads([{
             file: new File([], "file"),
             isUploading: false,
             sensitivity: SensitivityLevelMap.PRIVATE,
@@ -58,11 +50,11 @@ describe("Uploader", () => {
             extractArchive: false,
             uploadXHR: undefined,
             isPending: false,
-            parentPath: "",
+            path: "",
             uploadSize: 1
         }]) as AnyAction);
         expect(create(
-            <Provider store={store}>
+            <Provider store={storeCopy}>
                 <MemoryRouter>
                     <Uploader />
                 </MemoryRouter>

@@ -18,16 +18,13 @@ const simpleSearch = (
         case SET_SIMPLE_APPLICATIONS_LOADING:
         case SET_SIMPLE_FILES_LOADING:
         case SET_SIMPLE_PROJECTS_LOADING:
-        case SET_SIMPLE_FILES_LOADING:
-        case SET_SIMPLE_APPLICATIONS_LOADING:
-        case SET_SIMPLE_PROJECTS_LOADING:
         case RECEIVE_SIMPLE_FILES_PAGE:
         case RECEIVE_SIMPLE_APPLICATIONS_PAGE:
         case SET_SIMPLE_SEARCH_SEARCH:
             return {...state, ...action.payload};
         case SET_SIMPLE_SEARCH_ERROR:
             if (!!action.payload.error) {
-                return {...state, ...action.payload, errors: state.errors.concat([action.payload.error])}
+                return {...state, ...action.payload, errors: state.errors.concat([action.payload.error])};
             }
             return {...state, ...action.payload, errors: []};
         default:

@@ -1,4 +1,4 @@
-import {Cloud, WSFactory} from "Authentication/SDUCloudObject";
+import {Client, WSFactory} from "Authentication/HttpClientInstance";
 import {Progress, Speed, Task, TaskUpdate} from "BackgroundTasks/api";
 import DetailedTask from "BackgroundTasks/DetailedTask";
 import {taskLoadAction, taskUpdateAction} from "BackgroundTasks/redux";
@@ -8,6 +8,7 @@ import {useCallback, useEffect, useState} from "react";
 import * as ReactModal from "react-modal";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
+import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
 import {Dictionary, Page} from "Types";
 import {Icon} from "ui-components";
@@ -22,6 +23,7 @@ import {calculateUploadSpeed} from "Uploader/Uploader";
 import {sizeToHumanReadableWithUnit} from "Utilities/FileUtilities";
 import {defaultModalStyle} from "Utilities/ModalUtilities";
 import {buildQueryString} from "Utilities/URIUtilities";
+import {errorMessageOrDefault} from "UtilityFunctions";
 
 interface BackgroundTaskProps {
     activeUploads: number;
@@ -32,7 +34,7 @@ interface BackgroundTaskProps {
     loadInitialTasks: () => void;
 }
 
-const BackgroundTasks = (props: BackgroundTaskProps) => {
+const BackgroundTasks = (props: BackgroundTaskProps): JSX.Element | null => {
     const [taskInFocus, setTaskInFocus] = useState<string | null>(null);
 
     useEffect(() => {
@@ -62,35 +64,51 @@ const BackgroundTasks = (props: BackgroundTaskProps) => {
         setTaskInFocus(null);
     }, []);
 
-    let speedSum = 0;
-    let uploadedSize = 0;
-    let targetUploadSize = 0;
+    const [uploadInterval, setUploadInterval] = React.useState(-1);
+    const [uploadTask, setUploadTask] = React.useState<TaskComponentProps>(calculateUploadTask());
 
-    props.uploads.forEach(upload => {
-        if (upload.isUploading) {
-            speedSum += calculateUploadSpeed(upload);
-            targetUploadSize += upload.uploadSize;
-            if (upload.uploadEvents.length > 0) {
-                uploadedSize += upload.uploadEvents[upload.uploadEvents.length - 1].progressInBytes;
+    useEffect(() => {
+        if (props.activeUploads > 0 && uploadInterval === -1) {
+            setUploadInterval(setInterval(() => setUploadTask(calculateUploadTask()), 500));
+        } else if (props.activeUploads === 0 && uploadInterval !== -1) {
+            clearInterval(uploadInterval);
+            setUploadInterval(-1);
+        }
+    }, [props.activeUploads]);
+
+    function calculateUploadTask(): TaskComponentProps {
+        let speedSum = 0;
+        let uploadedSize = 0;
+        let targetUploadSize = 0;
+
+        props.uploads.forEach(upload => {
+            if (upload.isUploading) {
+                speedSum += calculateUploadSpeed(upload);
+                targetUploadSize += upload.uploadSize;
+                if (upload.uploadEvents.length > 0) {
+                    uploadedSize += upload.uploadEvents[upload.uploadEvents.length - 1].progressInBytes;
+                }
             }
-        }
-    });
+        });
 
-    const humanReadable = sizeToHumanReadableWithUnit(speedSum);
-    const uploadTask: TaskComponentProps = {
-        title: "File uploads",
-        progress: {
-            title: "Bytes uploaded",
-            maximum: targetUploadSize,
-            current: uploadedSize
-        },
-        speed: {
-            title: "Transfer speed",
-            speed: humanReadable.size,
-            unit: humanReadable.unit + "/s",
-            asText: `${humanReadable.size} ${humanReadable.unit}/s`
-        }
-    };
+        const humanReadable = sizeToHumanReadableWithUnit(speedSum);
+
+        return {
+            title: "File uploads",
+            progress: {
+                title: "Bytes uploaded",
+                maximum: targetUploadSize,
+                current: uploadedSize
+            },
+            jobId: "upload-task",
+            speed: {
+                title: "Transfer speed",
+                speed: humanReadable.size,
+                unit: humanReadable.unit + "/s",
+                asText: `${(humanReadable.size).toFixed(2)} ${humanReadable.unit}/s`
+            }
+        };
+    }
 
     if (props.activeUploads <= 0 && (props.tasks === undefined || (Object.keys(props.tasks).length === 0))) {
         return null;
@@ -100,25 +118,23 @@ const BackgroundTasks = (props: BackgroundTaskProps) => {
     return (
         <>
             <ClickableDropdown
-                width={"600px"}
-                left={"-400px"}
-                top={"37px"}
+                width="600px"
+                left="-400px"
+                top="37px"
                 trigger={<TasksIcon />}
             >
-                {props.activeUploads <= 0 ? null : <TaskComponent {...uploadTask} />}
+                {props.activeUploads <= 0 ? null : <TaskComponent onClick={props.showUploader} {...uploadTask} />}
                 {!props.tasks ? null :
-                    Object.values(props.tasks).map(update => {
-                        return (
-                            <TaskComponent
-                                key={update.jobId}
-                                jobId={update.jobId}
-                                onClick={setTaskInFocus}
-                                title={update.newTitle || ""}
-                                speed={!!update.speeds ? update.speeds[update.speeds.length - 1] : undefined}
-                                progress={update.progress ? update.progress : undefined}
-                            />
-                        );
-                    })
+                    Object.values(props.tasks).map(update => (
+                        <TaskComponent
+                            key={update.jobId}
+                            jobId={update.jobId}
+                            onClick={setTaskInFocus}
+                            title={update.newTitle ?? ""}
+                            speed={!!update.speeds ? update.speeds[update.speeds.length - 1] : undefined}
+                            progress={update.progress ? update.progress : undefined}
+                        />
+                    ))
                 }
             </ClickableDropdown>
 
@@ -143,7 +159,7 @@ interface TaskComponentProps {
 }
 
 const TaskComponent: React.FunctionComponent<TaskComponentProps> = props => {
-    const label = !props.speed ? "" : props.speed.asText;
+    const label = props.speed?.asText ?? "";
     const onClickHandler = useCallback(
         () => {
             if (props.onClick && props.jobId) {
@@ -161,12 +177,12 @@ const TaskComponent: React.FunctionComponent<TaskComponentProps> = props => {
 
             <Box flexGrow={1}>
                 {!props.progress ?
-                    <IndeterminateProgressBar color={"green"} label={label} /> :
+                    <IndeterminateProgressBar color="green" label={label} /> :
 
                     (
                         <ProgressBar
                             active={true}
-                            color={"green"}
+                            color="green"
                             label={label}
                             percent={(props.progress.current / props.progress.maximum) * 100}
                         />
@@ -204,11 +220,17 @@ const mapStateToProps = (state: ReduxObject) => ({
 });
 
 const mapDispatchToProps = (dispatch: Dispatch) => ({
-    showUploader: () => dispatch(setUploaderVisible(true, Cloud.homeFolder)),
+    showUploader: () => dispatch(setUploaderVisible(true, Client.homeFolder)),
     onTaskUpdate: (update: TaskUpdate) => dispatch(taskUpdateAction(update)),
     loadInitialTasks: async () => {
-        const result: Page<Task> = (await Cloud.get(buildQueryString("/tasks", {itemsPerPage: 100, page: 0}))).response;
-        dispatch(taskLoadAction(result));
+        try {
+            const result = (await Client.get<Page<Task>>(
+                buildQueryString("/tasks", {itemsPerPage: 100, page: 0}))
+            ).response;
+            dispatch(taskLoadAction(result));
+        } catch (err) {
+            snackbarStore.addFailure(errorMessageOrDefault(err, "Could not fetch background tasks."));
+        }
     }
 });
 

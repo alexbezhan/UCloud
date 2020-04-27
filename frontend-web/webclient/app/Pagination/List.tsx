@@ -21,11 +21,7 @@ interface ListProps<T> {
 }
 
 export class List<T> extends React.PureComponent<ListProps<T>> {
-    constructor(props: ListProps<T>) {
-        super(props);
-    }
-
-    public render() {
+    public render(): JSX.Element {
         const {props} = this;
         const body = this.renderBody();
 
@@ -45,20 +41,16 @@ export class List<T> extends React.PureComponent<ListProps<T>> {
     private renderBody(): React.ReactNode {
         const {props} = this;
         if (props.loading && props.page.itemsInTotal === 0) {
-            return (<Spinner />)
+            return (<Spinner />);
         } else {
-            if (props.page == null || props.page.items.length == 0) {
+            if (props.page == null || props.page.items.length === 0) {
                 if (!props.customEmptyPage) {
-                    return <div>
-                        <Heading.h2>
-                            No results.
-                        </Heading.h2>
-                    </div>;
+                    return <div><Heading.h2>No results.</Heading.h2></div>;
                 } else {
-                    return props.customEmptyPage
+                    return props.customEmptyPage;
                 }
             } else {
-                return props.pageRenderer(props.page)
+                return props.pageRenderer(props.page);
             }
         }
     }

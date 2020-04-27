@@ -6,20 +6,23 @@ import {
     useAsyncCommand,
     useCloudAPI
 } from "Authentication/DataHook";
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {UserAvatar} from "AvataaarLib/UserAvatar";
 import {emptyPage} from "DefaultObjects";
+import {File, FileType} from "Files";
 import {loadingAction} from "Loading";
 import {MainContainer} from "MainContainer/MainContainer";
 import {setRefreshFunction} from "Navigation/Redux/HeaderActions";
 import {setActivePage, updatePageTitle} from "Navigation/Redux/StatusActions";
 import {PaginationButtons} from "Pagination";
 import * as Pagination from "Pagination";
+import {usePromiseKeeper} from "PromiseKeeper";
 import * as React from "react";
 import {useEffect, useRef, useState} from "react";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
+import styled from "styled-components";
 import {AccessRight, AccessRights, Dictionary, Page, singletonToPage} from "Types";
 import {Box, Card, Flex, Icon, SelectableText, SelectableTextWrapper, Text} from "ui-components";
 import Button from "ui-components/Button";
@@ -32,18 +35,19 @@ import {Spacer} from "ui-components/Spacer";
 import {TextSpan} from "ui-components/Text";
 import {colors} from "ui-components/theme";
 import {AvatarType, defaultAvatar} from "UserSettings/Avataaar";
-import {fileTablePage, getFilenameFromPath} from "Utilities/FileUtilities";
+import {fileTablePage, getFilenameFromPath, getParentPath, isDirectory, statFileQuery} from "Utilities/FileUtilities";
 import {addStandardDialog, FileIcon} from "UtilityComponents";
 import {defaultErrorHandler, iconFromFilePath} from "UtilityFunctions";
-import {ListProps, ListSharesParams, loadAvatars, Share, SharesByPath, ShareState} from ".";
+import {ListProps, ListSharesParams, loadAvatars, MinimalShare, SharesByPath, ShareState} from ".";
 import {acceptShare, createShare, findShare, listShares, revokeShare, updateShare} from "./index";
+import Warning from "ui-components/Warning";
 
 export const List: React.FunctionComponent<ListProps & ListOperations> = props => {
     const initialFetchParams = props.byPath === undefined ?
         listShares({sharedByMe: false, itemsPerPage: 25, page: 0}) : findShare(props.byPath);
 
-    const [avatars, setAvatarParams, avatarParams] = useCloudAPI<Dictionary<AvatarType>>(
-        loadAvatars({usernames: new Set([])}), {}
+    const [avatars, setAvatarParams, avatarParams] = useCloudAPI<{avatars: Dictionary<AvatarType>}>(
+        loadAvatars({usernames: new Set([])}), {avatars: {}}
     );
 
     let sharedByMe = false;
@@ -72,9 +76,11 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
         }
     }
 
-    props.setGlobalLoading(page.loading);
+    React.useEffect(() => {
+        props.setGlobalLoading(page.loading);
+    }, [page.loading]);
 
-    const refresh = () => setFetchParams({...params, reloadId: Math.random()});
+    const refresh = (): void => setFetchParams({...params, reloadId: Math.random()});
 
     useEffect(() => {
         if (!props.innerComponent) {
@@ -90,7 +96,7 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
                 props.setRefresh(undefined);
             }
         };
-    });
+    }, [params]);
 
     useEffect(() => {
         const usernames: Set<string> = new Set(page.data.items.map(group =>
@@ -102,67 +108,30 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
         }
     }, [page]);
 
-    const AvatarComponent = (props: {username: string}) => {
-        let avatar = defaultAvatar;
-        const loadedAvatar =
-            !!avatars.data && !!avatars.data.avatars ? avatars.data.avatars[props.username] : undefined;
-        if (!!loadedAvatar) avatar = loadedAvatar;
-        return <UserAvatar avatar={avatar} mr={"10px"} />;
-    };
-
-    const GroupedShareCardWrapper = (props: {shareByPath: SharesByPath; simple: boolean;}) => {
-        const [page, setPage] = useState(0);
-        const pageSize = 5;
-        return (
-            <GroupedShareCard
-                simple={props.simple}
-                onUpdate={refresh}
-                groupedShare={props.shareByPath}
-                key={props.shareByPath.path}
-            >
-                {props.shareByPath.shares.slice(pageSize * page, pageSize * page + pageSize).map(share => (
-                    <ShareRow
-                        simple={props.simple}
-                        key={share.id}
-                        sharedBy={props.shareByPath.sharedBy}
-                        onUpdate={refresh}
-                        share={share}
-                        sharedByMe={sharedByMe}
-                    >
-                        <AvatarComponent username={sharedByMe ? share.sharedWith : props.shareByPath.sharedBy} />
-                    </ShareRow>
-                ))}
-                <PaginationButtons
-                    totalPages={Math.floor(props.shareByPath.shares.length / pageSize)}
-                    currentPage={page}
-                    toPage={setPage}
-                />
-            </GroupedShareCard>
-        );
-    };
-
-    const header = props.byPath !== undefined ? null : (
-        <SelectableTextWrapper>
-            <SelectableText
-                mr="1em"
-                cursor="pointer"
-                fontSize={3}
-                selected={!sharedByMe}
-                onClick={() => setFetchParams(listShares({sharedByMe: false, itemsPerPage: 25, page: 0}))}
-            >
-                Shared with Me
+    const header = props.byPath !== undefined ? <ProjectSharesWarning /> : (
+        <>
+            <ProjectSharesWarning />
+            <SelectableTextWrapper>
+                <SelectableText
+                    mr="1em"
+                    cursor="pointer"
+                    fontSize={3}
+                    selected={!sharedByMe}
+                    onClick={() => setFetchParams(listShares({sharedByMe: false, itemsPerPage: 25, page: 0}))}
+                >
+                    Shared with Me
             </SelectableText>
-
-            <SelectableText
-                mr="1em"
-                cursor="pointer"
-                selected={sharedByMe}
-                fontSize={3}
-                onClick={() => setFetchParams(listShares({sharedByMe: true, itemsPerPage: 25, page: 0}))}
-            >
-                Shared by Me
-            </SelectableText>
-        </SelectableTextWrapper>
+                <SelectableText
+                    mr="1em"
+                    cursor="pointer"
+                    selected={sharedByMe}
+                    fontSize={3}
+                    onClick={() => setFetchParams(listShares({sharedByMe: true, itemsPerPage: 25, page: 0}))}
+                >
+                    Shared by Me
+                </SelectableText>
+            </SelectableTextWrapper>
+        </>
     );
 
     const shares = page.data.items.filter(it => it.sharedByMe === sharedByMe || props.byPath !== undefined);
@@ -172,19 +141,28 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
             loading={page.loading}
             page={page.data}
             customEmptyPage={simple ? (
-                <Box>
+                <div>
                     No shares for <b>{getFilenameFromPath(props.byPath!)}</b>
-                </Box>
+                </div>
             ) : <NoShares sharedByMe={sharedByMe} />}
-            onPageChanged={(pageNumber, page) => setFetchParams(listShares({
-                sharedByMe,
+            onPageChanged={(pageNumber, {itemsPerPage}) => setFetchParams(listShares({
                 page: pageNumber,
-                itemsPerPage: page.itemsPerPage
+                sharedByMe,
+                itemsPerPage
             }))}
             pageRenderer={() => (
                 <>
                     {props.innerComponent ? header : null}
-                    {shares.map(it => <GroupedShareCardWrapper key={it.path} shareByPath={it} simple={simple} />)}
+                    {shares.map(it => (
+                        <GroupedShareCardWrapper
+                            key={it.path}
+                            refresh={refresh}
+                            sharedByMe={sharedByMe}
+                            avatars={avatars.data.avatars}
+                            shareByPath={it}
+                            simple={simple}
+                        />
+                    ))}
                 </>
             )}
         />
@@ -194,7 +172,7 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
 
     return (
         <MainContainer
-            headerSize={55}
+            headerSize={55 + (Client.hasActiveProject ? 65 : 0)}
             header={props.innerComponent ? null : header}
             main={main}
             sidebar={null}
@@ -202,7 +180,53 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
     );
 };
 
-const NoShares = ({sharedByMe}: {sharedByMe: boolean}) => (
+function AvatarComponent(p: {username: string; avatars: Dictionary<AvatarType>}): JSX.Element {
+    const avatar = p.avatars[p.username] ?? defaultAvatar;
+    return <UserAvatar avatar={avatar} mr="10px" />;
+}
+
+function GroupedShareCardWrapper(p: {
+    shareByPath: SharesByPath;
+    simple: boolean;
+    refresh: () => void;
+    sharedByMe: boolean;
+    avatars: Dictionary<AvatarType>;
+}): JSX.Element {
+    const [pageNumber, setPage] = useState(0);
+    const pageSize = 5;
+    return (
+        <GroupedShareCard
+            simple={p.simple}
+            onUpdate={p.refresh}
+            groupedShare={p.shareByPath}
+            key={p.shareByPath.path}
+        >
+            {p.shareByPath.shares.slice(pageSize * pageNumber, pageSize * pageNumber + pageSize).map(share => (
+                <ShareRow
+                    path={p.shareByPath.path}
+                    simple={p.simple}
+                    key={share.sharedWith}
+                    sharedBy={p.shareByPath.sharedBy}
+                    onUpdate={p.refresh}
+                    share={share}
+                    sharedByMe={p.sharedByMe}
+                >
+                    <AvatarComponent
+                        avatars={p.avatars}
+                        username={p.sharedByMe ? share.sharedWith : p.shareByPath.sharedBy}
+                    />
+                </ShareRow>
+            ))}
+            <PaginationButtons
+                totalPages={Math.floor(p.shareByPath.shares.length / pageSize)}
+                currentPage={pageNumber}
+                toPage={setPage}
+            />
+        </GroupedShareCard>
+    );
+}
+
+const NoShares = ({sharedByMe}: {sharedByMe: boolean}): JSX.Element => (
     <Heading.h3 textAlign="center">
         No shares
         <br />
@@ -213,6 +237,11 @@ const NoShares = ({sharedByMe}: {sharedByMe: boolean}) => (
     </Heading.h3>
 );
 
+
+function guessFileType(path: string): FileType {
+    if (!path.includes(".")) return "DIRECTORY";
+    else return "FILE";
+}
 
 interface ListEntryProperties {
     groupedShare: SharesByPath;
@@ -225,9 +254,19 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
 
     const [isCreatingShare, setIsCreatingShare] = useState(false);
     const [newShareRights, setNewShareRights] = useState(AccessRights.READ_RIGHTS);
+    const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
+    const [fileType, setFileType] = useState<FileType>("DIRECTORY");
+
+    const promises = usePromiseKeeper();
     const newShareUsername = useRef<HTMLInputElement>(null);
 
-    const doCreateShare = async (event: React.FormEvent<HTMLFormElement>) => {
+    React.useEffect(() => {
+        Client.get<File>(statFileQuery(groupedShare.path))
+            .then(({response}) => setFileType(response.fileType))
+            .catch(() => setFileType(guessFileType(groupedShare.path)));
+    }, []);
+
+    const doCreateShare = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
         if (!isCreatingShare) {
             event.preventDefault();
 
@@ -239,58 +278,73 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
 
             try {
                 setIsCreatingShare(true);
-                await callAPI(createShare(groupedShare.path, username, newShareRights));
+                await promises.makeCancelable(
+                    callAPI(createShare(groupedShare.path, username, newShareRights))
+                ).promise;
                 newShareUsername.current!.value = "";
                 props.onUpdate();
             } catch (e) {
                 defaultErrorHandler(e);
             } finally {
-                setIsCreatingShare(false);
+                if (!promises.canceledKeeper) setIsCreatingShare(false);
             }
         }
     };
 
     const [isLoading, sendCommand] = useAsyncCommand();
 
-    const revokeAll = async () => {
-        addStandardDialog({
-            title: "Revoke?",
-            message: `Remove all shares for ${getFilenameFromPath(groupedShare.path)}?`,
-            onConfirm: () => groupedShare.shares.filter(it => inCancelableState(it.state))
-                .forEach(({id}) => sendCommand(revokeShare(id)))
-        });
+    const revokeAll = async (): Promise<void> => {
+        const revoke = async (): Promise<void> => {
+            await Promise.all(groupedShare.shares.filter(it => inCancelableState(it.state))
+                .map(async ({sharedWith}) => await sendCommand(revokeShare({path: groupedShare.path, sharedWith}))));
+            props.onUpdate();
+        };
+        if (!props.simple) {
+            addStandardDialog({
+                title: "Revoke?",
+                message: `Remove all shares for ${getFilenameFromPath(groupedShare.path)}?`,
+                onConfirm: revoke
+            });
+        } else {
+            revoke();
+            setConfirmRevokeAll(false);
+        }
     };
 
-    const folderLink = (groupedShare.shares[0].state === ShareState.ACCEPTED) || groupedShare.sharedByMe ?
-        <Link to={fileTablePage(groupedShare.path)}>{getFilenameFromPath(groupedShare.path)}</Link> :
-        <Text>{getFilenameFromPath(groupedShare.path)}</Text>;
+    const {path} = groupedShare;
+    const sharedByMe = groupedShare.sharedByMe;
+    const folderLink = (groupedShare.shares[0].state === ShareState.ACCEPTED) || sharedByMe ? (
+        <Link to={fileTablePage(!sharedByMe ? Client.sharesFolder : (isDirectory({fileType}) ? path : getParentPath(path)))}>
+            {getFilenameFromPath(path)}
+        </Link>
+    ) : <Text>{getFilenameFromPath(groupedShare.path)}</Text>;
     return (
-        <Card height="auto" width={1} boxShadow="sm" borderWidth={1} borderRadius={6} mb={12}>
-            <Flex
+        <Card overflow="hidden" height="auto" width={1} boxShadow="sm" borderWidth={1} borderRadius={6} mb={12}>
+            <BorderedFlex
                 bg="lightGray"
                 color="darkGray"
                 px={3}
                 py={2}
                 alignItems="center"
-                style={{
-                    borderRadius: "6px 6px 0px 0px"
-                }}
             >
                 <Box ml="3px" mr="10px">
-                    <FileIcon fileIcon={iconFromFilePath(groupedShare.path, "DIRECTORY", Cloud.homeFolder)} />
+                    <FileIcon
+                        key={fileType}
+                        fileIcon={iconFromFilePath(groupedShare.path, fileType, Client)}
+                    />
                 </Box>
                 <Heading.h4> {folderLink} </Heading.h4>
                 <Box ml="auto" />
                 {groupedShare.sharedByMe ?
                     `${groupedShare.shares.length} ${groupedShare.shares.length > 1 ?
                         "collaborators" : "collaborator"}` : sharePermissionsToText(groupedShare.shares[0].rights)}
-            </Flex>
+            </BorderedFlex>
             <Box px={3} pt={3}>
                 {!groupedShare.sharedByMe || props.simple ? null : (
                     <form onSubmit={doCreateShare}>
-                        <Flex mb={"16px"} alignItems={"center"}>
+                        <Flex mb="16px" alignItems="center">
                             <Flex flex="1 0 auto">
-                                <Flex flex="1 0 auto" style={{zIndex: 1}}>
+                                <Flex flex="1 0 auto" zIndex={1}>
                                     <Input
                                         disabled={isCreatingShare}
                                         rightLabel
@@ -320,7 +374,7 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
                                 <Button fullWidth type="submit">
                                     <Icon name="share" size="1em" mr=".7em" />
                                     Share
-                            </Button>
+                                </Button>
                             </Box>
                         </Flex>
                     </form>
@@ -332,57 +386,65 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
                 groupedShare.shares.length > 1) ? null : (
                     <Spacer
                         left={<Box />}
-                        right={<Button onClick={revokeAll} disabled={isLoading} mb="8px" mr="16px">Remove all</Button>}
+                        right={(
+                            <Button
+                                type="button"
+                                onClick={() => props.simple && !confirmRevokeAll ?
+                                    setConfirmRevokeAll(true) : revokeAll()}
+                                disabled={isLoading}
+                                color={confirmRevokeAll ? "red" : "blue"}
+                                mb="8px"
+                                mr="16px"
+                            >
+                                {!confirmRevokeAll ? "Remove all" : "Confirm remove all"}
+                            </Button>
+                        )}
                     />
                 )}
         </Card>
     );
 };
 
-function inCancelableState(state: ShareState) {
+const BorderedFlex = styled(Flex)`
+    borderRadius: 6px 6px 0px 0px;
+`;
+
+function inCancelableState(state: ShareState): boolean {
     return state !== ShareState.UPDATING;
 }
 
 export const ShareRow: React.FunctionComponent<{
-    share: Share,
-    sharedByMe: boolean,
-    sharedBy: string,
-    onUpdate: () => void,
-    revokeAsIcon?: boolean,
-    simple: boolean
-}> = ({share, sharedByMe, onUpdate, sharedBy, ...props}) => {
+    share: MinimalShare;
+    path: string,
+    sharedByMe: boolean;
+    sharedBy: string;
+    onUpdate: () => void;
+    revokeAsIcon?: boolean;
+    simple: boolean;
+}> = ({share, sharedByMe, onUpdate, path, sharedBy, ...props}) => {
     const [isLoading, sendCommand] = useAsyncCommand();
 
-    const sendCommandAndUpdate = async (call: APICallParameters) => {
+    const sendCommandAndUpdate = async (call: APICallParameters): Promise<void> => {
         await sendCommand(call);
         onUpdate();
     };
 
-    const doAccept = () => sendCommandAndUpdate(acceptShare(share.id));
-    const doRevoke = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    const doAccept = (): Promise<void> => sendCommandAndUpdate(acceptShare(path));
+    const doRevoke = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>): void => {
         e.preventDefault();
-        if (props.simple) sendCommandAndUpdate(revokeShare(share.id));
+        if (props.simple) sendCommandAndUpdate(revokeShare({path: path, sharedWith: share.sharedWith}));
         else addStandardDialog({
             title: "Revoke?",
             message: "Remove share?",
-            onConfirm: () => sendCommandAndUpdate(revokeShare(share.id))
+            onConfirm: () => sendCommandAndUpdate(revokeShare({path: path, sharedWith: share.sharedWith}))
         });
     };
-    const doUpdate = (newRights: AccessRight[]) => sendCommandAndUpdate(updateShare(share.id, newRights));
+    const doUpdate = (newRights: AccessRight[]): Promise<void> =>
+        sendCommandAndUpdate(updateShare({path: path, rights: newRights, sharedWith: share.sharedWith}));
 
     let permissionsBlock: JSX.Element | string | null = null;
 
-    if (share.state === ShareState.FAILURE) {
-        permissionsBlock = (
-            <Button
-                color={"red"}
-                disabled={isLoading}
-                onClick={doRevoke}
-            >
-                <Icon name="close" size="1em" mr=".7em" />Remove
-            </Button>
-        );
-    } else if (share.state === ShareState.UPDATING || isLoading) {
+    if (share.state === ShareState.UPDATING || isLoading) {
         permissionsBlock = null;
     } else if (!sharedByMe) {
         if (share.state === ShareState.REQUEST_SENT) {
@@ -418,7 +480,7 @@ export const ShareRow: React.FunctionComponent<{
         permissionsBlock = (
             <>
                 <ClickableDropdown
-                    right={"0px"}
+                    right="0px"
                     chevron
                     width="100px"
                     trigger={sharePermissionsToText(share.rights)}
@@ -436,12 +498,15 @@ export const ShareRow: React.FunctionComponent<{
                         ml=".7em"
                         color="red"
                         cursor="pointer"
-                        onClick={() => sendCommandAndUpdate(revokeShare(share.id))}
+                        onClick={() => sendCommandAndUpdate(revokeShare({
+                            path: path,
+                            sharedWith: share.sharedWith
+                        }))}
                     />
                 ) : (
-                        <Button color={"red"} ml={"16px"} onClick={doRevoke}>
+                        <Button color="red" ml="16px" onClick={doRevoke}>
                             <Icon name="close" size="1em" mr=".7em" />
-                            Revoke
+                        Revoke
                         </Button>
                     )}
             </>
@@ -449,13 +514,13 @@ export const ShareRow: React.FunctionComponent<{
     }
 
     return (
-        <Flex alignItems={"center"} mb={"16px"}>
+        <Flex alignItems="center" mb="16px">
             {props.children}
 
-            <Box>
+            <div>
                 <Text bold>{sharedByMe ? share.sharedWith : sharedBy}</Text>
                 <ShareStateRow state={share.state} />
-            </Box>
+            </div>
 
             <Box flexGrow={1} />
 
@@ -464,7 +529,7 @@ export const ShareRow: React.FunctionComponent<{
     );
 };
 
-const OptionItem: React.FunctionComponent<{onClick: () => void, text: string, color?: string}> = (props) => (
+const OptionItem: React.FunctionComponent<{onClick: () => void; text: string; color?: string}> = props => (
     <Box cursor="pointer" width="auto" ml="-17px" pl="15px" mr="-17px" onClick={props.onClick}>
         <TextSpan color={props.color}>{props.text}</TextSpan>
     </Box>
@@ -476,14 +541,6 @@ const ShareStateRow: React.FunctionComponent<{state: ShareState}> = props => {
     switch (props.state) {
         case ShareState.ACCEPTED:
             body = <><Icon size={20} color={colors.green} name={"check"} /> The share has been accepted.</>;
-            break;
-        case ShareState.FAILURE:
-            body = (
-                <>
-                    <Icon size={20} color={colors.red} name={"close"} /> An error has occurred. The share is no longer
-                    valid.
-                </>
-            );
             break;
         case ShareState.UPDATING:
             body = <><Icon size={20} color={colors.blue} name={"refresh"} /> The share is currently updating.</>;
@@ -505,6 +562,11 @@ function sharePermissionsToText(rights: AccessRight[]): string {
     else return "No permissions";
 }
 
+function ProjectSharesWarning(): JSX.Element | null {
+    if (!Client.hasActiveProject) return null;
+    return <Box mb="10px"><Warning warning="All shares are personal and not related to your active project." /></Box>;
+}
+
 const receiveDummyShares = (itemsPerPage: number, page: number) => {
     const payload = [...Array(itemsPerPage).keys()].map(i => {
         const extension = Math.floor(Math.random() * 2) === 0 ? ".png" : "";
@@ -512,14 +574,17 @@ const receiveDummyShares = (itemsPerPage: number, page: number) => {
         const sharedBy = "user";
         const sharedByMe = Math.floor(Math.random() * 2) === 0;
 
-        const shares: Share[] = [...Array(1 + Math.floor(Math.random() * 6))].map(j => {
+        const shares: MinimalShare[] = [...Array(1 + Math.floor(Math.random() * 6))].map(() => {
             const states = Object.keys(ShareState);
             const state = ShareState[states[(Math.floor(Math.random() * states.length))]];
             return {
                 state,
                 rights: AccessRights.WRITE_RIGHTS,
-                id: (Math.random() * 100000000).toString(),
-                sharedWith: "user"
+                path: "/home/foo/" + (Math.random() * 100000000).toString(),
+                sharedWith: "user",
+                owner: sharedBy,
+                createdAt: 0,
+                modifiedAt: 0,
             };
         });
 

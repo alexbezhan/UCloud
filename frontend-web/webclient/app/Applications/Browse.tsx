@@ -1,4 +1,4 @@
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {ReduxObject} from "DefaultObjects";
 import {loadingEvent} from "LoadableContent";
 import {LoadableMainContainer} from "MainContainer/MainContainer";
@@ -8,16 +8,14 @@ import * as Pagination from "Pagination";
 import * as React from "react";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
-import styled from "styled-components";
 import {Page} from "Types";
-import {GridCardGroup} from "ui-components/Grid";
 import * as Heading from "ui-components/Heading";
 import {SidebarPages} from "ui-components/Sidebar";
 import {Spacer} from "ui-components/Spacer";
 import {favoriteApplicationFromPage} from "Utilities/ApplicationUtilities";
 import {getQueryParam, getQueryParamOrElse, RouterLocationProps} from "Utilities/URIUtilities";
-import {FullAppInfo, WithAppMetadata} from ".";
-import {ApplicationCard} from "./Card";
+import {FullAppInfo} from ".";
+import {ApplicationPage} from "./Installed";
 import * as Pages from "./Pages";
 import * as Actions from "./Redux/BrowseActions";
 import {Type as ReduxType} from "./Redux/BrowseObject";
@@ -33,7 +31,7 @@ export interface ApplicationsOperations {
 export type ApplicationsProps = ReduxType & ApplicationsOperations & RouterLocationProps;
 
 class Applications extends React.Component<ApplicationsProps> {
-    public componentDidMount() {
+    public componentDidMount(): void {
         const {props} = this;
         props.onInit();
 
@@ -41,57 +39,57 @@ class Applications extends React.Component<ApplicationsProps> {
         props.setRefresh(() => this.fetch());
     }
 
-    public componentDidUpdate(prevProps: ApplicationsProps) {
+    public componentDidUpdate(prevProps: ApplicationsProps): void {
         if (prevProps.location !== this.props.location) {
             this.fetch();
         }
     }
 
-    public componentWillUnmount() {
+    public componentWillUnmount(): void {
         this.props.setRefresh();
     }
 
-    public render() {
+    public render(): JSX.Element {
         const main = (
             <Pagination.List
                 loading={this.props.applicationsPage.loading}
-                pageRenderer={(page: Page<FullAppInfo>) =>
-                    <GridCardGroup>
-                        {page.items.map((app, index) =>
-                            <ApplicationCard
-                                key={index}
-                                onFavorite={async () =>
-                                    this.props.receiveApplications(await favoriteApplicationFromPage({
-                                        name: app.metadata.name,
-                                        version: app.metadata.version, page, cloud: Cloud,
-                                    }))
-                                }
-                                app={app}
-                                isFavorite={app.favorite}
-                                tags={app.tags}
-                            />
-                        )}
-                    </GridCardGroup>
-                }
-                page={this.props.applicationsPage.content as Page<WithAppMetadata>}
+                pageRenderer={this.renderPage}
+                page={this.props.applicationsPage.content as Page<FullAppInfo>}
                 onPageChanged={pageNumber => this.props.history.push(this.updatePage(pageNumber))}
             />
         );
 
         return (
             <LoadableMainContainer
-                header={<Spacer left={<Heading.h1>{getQueryParam(this.props, "tag")}</Heading.h1>} right={
-                    <Pagination.EntriesPerPageSelector
-                        content="Apps per page"
-                        entriesPerPage={this.itemsPerPage()}
-                        onChange={itemsPerPage => this.props.history.push(this.updateItemsPerPage(itemsPerPage))}
+                header={(
+                    <Spacer
+                        left={(<Heading.h1>{getQueryParam(this.props, "tag")}</Heading.h1>)}
+                        right={(
+                            <Pagination.EntriesPerPageSelector
+                                content="Apps per page"
+                                entriesPerPage={this.itemsPerPage()}
+                                onChange={itemsPerPage => this.props.history.push(this.updateItemsPerPage(itemsPerPage))}
+                            />
+                        )}
                     />
-                } />}
+                )}
                 loadable={this.props.applicationsPage}
                 main={main}
             />
         );
     }
+
+    private renderPage = (page: Page<FullAppInfo>): JSX.Element => (<ApplicationPage onFavorite={this.onFavorite} page={page} />);
+
+    private onFavorite = async (name: string, version: string): Promise<void> => {
+        const page = this.props.applicationsPage.content as Page<FullAppInfo>;
+        this.props.receiveApplications(await favoriteApplicationFromPage({
+            client: Client,
+            name,
+            version,
+            page
+        }));
+    };
 
     private pageNumber(props: ApplicationsProps = this.props): number {
         return parseInt(getQueryParamOrElse(props, "page", "0"), 10);
@@ -123,7 +121,7 @@ class Applications extends React.Component<ApplicationsProps> {
         }
     }
 
-    private fetch() {
+    private fetch(): void {
         const itemsPerPage = this.itemsPerPage(this.props);
         const pageNumber = this.pageNumber(this.props);
         const tag = this.tag(this.props);
@@ -162,7 +160,7 @@ const mapDispatchToProps = (
 const mapStateToProps = ({applicationsBrowse}: ReduxObject): ReduxType & {favCount: number} => ({
     ...applicationsBrowse,
     favCount: applicationsBrowse.applicationsPage.content ?
-        applicationsBrowse.applicationsPage.content.items.filter((it: any) => it.favorite).length : 0
+        applicationsBrowse.applicationsPage.content.items.filter(it => it.favorite).length : 0
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(Applications);

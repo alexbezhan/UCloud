@@ -1,6 +1,5 @@
 import {configure, mount} from "enzyme";
 import * as Adapter from "enzyme-adapter-react-16";
-import "jest-styled-components";
 import * as React from "react";
 import {create} from "react-test-renderer";
 import {ThemeProvider} from "styled-components";
@@ -17,6 +16,7 @@ describe("Breadcrumbs", () => {
                     currentPath="/home/mail@mailhost.dk/folder1"
                     navigate={() => undefined}
                     homeFolder={"/home/mail@mailhost.dk"}
+                    projectFolder="/project/hello"
                 />
             </ThemeProvider>)).toMatchSnapshot();
     });
@@ -28,6 +28,7 @@ describe("Breadcrumbs", () => {
             currentPath=""
             navigate={() => undefined}
             homeFolder={"mail@mailhost.dk"}
+            projectFolder="otherthing"
         /></ThemeProvider>)).toMatchSnapshot();
     });
 
@@ -37,6 +38,7 @@ describe("Breadcrumbs", () => {
             currentPath="/home/mail@mailhost.dk/folder1"
             navigate={navigate}
             homeFolder={"/home/mail@mailhost.dk"}
+            projectFolder="otherthing"
         /></ThemeProvider>);
         breadcrumbs.find("span").first().simulate("click");
         expect(navigate).toHaveBeenCalled();

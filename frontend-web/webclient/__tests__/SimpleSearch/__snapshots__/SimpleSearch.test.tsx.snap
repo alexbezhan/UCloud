@@ -1,0 +1,221 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Search mount 1`] = `
+.c5 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+}
+
+.c0 {
+  margin-left: 190px;
+  padding-top: 48px;
+  padding-bottom: 14px;
+  padding-left: 14px;
+  padding-right: 0;
+  background-color: #fff;
+}
+
+.c6 {
+  margin-left: auto;
+}
+
+.c7 {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.c12 {
+  padding-top: 96px;
+  padding-right: 14px;
+}
+
+.c11 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: inherit;
+  margin-left: .7em;
+}
+
+.c9 {
+  cursor: pointer;
+}
+
+.c10 {
+  cursor: inherit;
+}
+
+.c8 {
+  position: relative;
+  display: inline-block;
+}
+
+.c8:hover > div {
+  display: block;
+}
+
+.c2 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  border-bottom: 2px solid #c9d3df;
+  cursor: pointer;
+}
+
+.c3 {
+  cursor: pointer;
+  font-size: 20px;
+  margin-right: 1em;
+}
+
+.c1 {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  padding-left: 204px;
+  padding-right: 14px;
+  width: 100%;
+  height: 96px;
+  background-color: #fff;
+  position: absolute;
+  top: 48px;
+  left: 0;
+  position: fixed;
+  z-index: 50;
+}
+
+@media screen and (max-width:511px) {
+  .c4 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:512px) and (max-width:639px) {
+  .c4 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:640px) and (max-width:767px) {
+  .c4 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:768px) and (max-width:1023px) {
+  .c13 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:1024px) and (max-width:1279px) {
+  .c13 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:1280px) {
+  .c13 {
+    display: none;
+  }
+}
+
+<div
+  className="c0"
+>
+  <div
+    className="sc-AxgMl c1"
+    height={96}
+    width={1}
+  >
+    <div
+      className="c2"
+    >
+      <div
+        className="c3"
+        cursor="pointer"
+        fontSize={3}
+        onClick={[Function]}
+        selected={false}
+      >
+        Files
+      </div>
+      <div
+        className="c3"
+        cursor="pointer"
+        fontSize={3}
+        onClick={[Function]}
+        selected={false}
+      >
+        Applications
+      </div>
+    </div>
+    <div
+      className="c4"
+    >
+      <div
+        className="c5"
+      >
+        <div
+          className="c6"
+        />
+        <div
+          className="c7"
+        >
+          <div
+            className="c5"
+          >
+            <div
+              className="c6"
+            />
+            <div
+              className="c8"
+              data-tag="dropdown"
+            >
+              <span
+                className="c9"
+                cursor="pointer"
+                onClick={[Function]}
+              >
+                <span
+                  className="c10"
+                  cursor="inherit"
+                >
+                   
+                  Files per page 25
+                </span>
+                <svg
+                  className="c11"
+                  clipRule="evenodd"
+                  cursor="inherit"
+                  fill="currentcolor"
+                  fillRule="evenodd"
+                  height=".7em"
+                  ml=".7em"
+                  viewBox="0 0 24 20"
+                  width=".7em"
+                >
+                  <path
+                    d="M11.998 19.999c-.598 0-1.028-.61-1.028-.61L.365 2.268C-.453 1.02.153 0 1.703 0h20.593c1.554 0 2.156 1.02 1.34 2.27l-10.61 17.121c0-.002-.43.608-1.028.608z"
+                    fillRule="nonzero"
+                  />
+                </svg>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    className="c12"
+  >
+    <div
+      className="c13"
+    />
+  </div>
+</div>
+`;

@@ -8,18 +8,15 @@ describe("Initialize Redux Objects", () => {
     test("Dashboard", () => {
         expect(Defaults.initDashboard()).toEqual({
             favoriteFiles: [],
-            recentFiles: [],
             recentAnalyses: [],
             notifications: [],
             favoriteLoading: false,
-            recentLoading: false,
             analysesLoading: false,
         } as DashboardStateProps);
     });
 
     test("Status", () =>
         expect(Defaults.initStatus()).toEqual({
-            status: Defaults.DefaultStatus,
             title: "",
             page: SidebarPages.None,
             loading: false

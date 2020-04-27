@@ -1,13 +1,12 @@
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {ReduxObject} from "DefaultObjects";
-import {ContextSwitcher} from "Project/ContextSwitcher";
 import * as React from "react";
 import {connect} from "react-redux";
 import styled, {css} from "styled-components";
 import {fileTablePage} from "Utilities/FileUtilities";
-import {copyToClipboard, inDevEnvironment} from "UtilityFunctions";
+import {copyToClipboard, inDevEnvironment, shouldHideSidebarAndHeader} from "UtilityFunctions";
+import {DATA_PROTECTION_LINK, DATA_PROTECTION_TEXT, PRODUCT_NAME, SITE_DOCUMENTATION_URL} from "../../site.config.json";
 import Box from "./Box";
-import Divider from "./Divider";
 import ExternalLink from "./ExternalLink";
 import Flex, {FlexCProps} from "./Flex";
 import Icon, {IconName} from "./Icon";
@@ -30,7 +29,7 @@ const SidebarElementContainer = styled(Flex) <{hover?: boolean, active?: boolean
 
 // This is applied to SidebarContainer on small screens
 const HideText = css`
-${({theme}) => theme.mediaQueryLT["xl"]} {
+${({theme}) => theme.mediaQueryLT.xl} {
 
     will-change: transform;
     transition: transform ${({theme}) => theme.timingFunctions.easeOut} ${({theme}) => theme.duration.fastest} ${({theme}) => theme.transitionDelays.xsmall};
@@ -95,12 +94,10 @@ interface TextLabelProps {
     title?: string;
 }
 
-export const SidebarTextLabel = (
-    {
-        icon, children, title, height = "30px", color = "iconColor", color2 = "iconColor2",
-        iconSize = "24", space = "22px", textSize = 3, hover = true
-    }: TextLabelProps
-) => (
+export const SidebarTextLabel = ({
+    icon, children, title, height = "30px", color = "iconColor", color2 = "iconColor2",
+    iconSize = "24", space = "22px", textSize = 3, hover = true
+}: TextLabelProps): JSX.Element => (
         <SidebarElementContainer title={title} height={height} ml="22px" hover={hover}>
             <Icon name={icon} color={color} color2={color2} size={iconSize} mr={space} />
             <Text fontSize={textSize}> {children} </Text>
@@ -132,7 +129,7 @@ interface SidebarElement {
     activePage: SidebarPages;
 }
 
-const SidebarElement = ({icon, label, to, activePage}: SidebarElement) => (
+const SidebarElement = ({icon, label, to, activePage}: SidebarElement): JSX.Element => (
     <SidebarLink to={to} active={enumToLabel(activePage) === label ? true : undefined}>
         <SidebarTextLabel icon={icon}>{label}</SidebarTextLabel>
     </SidebarLink>
@@ -159,41 +156,44 @@ function enumToLabel(value: SidebarPages): string {
     }
 }
 
-const SidebarSpacer = () => (<Box mt="12px" />);
+const SidebarSpacer = (): JSX.Element => (<Box mt="12px" />);
 
 const SidebarPushToBottom = styled.div`
     flex-grow: 1;
 `;
 
-interface MenuElement {icon: IconName; label: string; to: string | (() => string);}
+interface MenuElement {icon: IconName; label: string; to: string | (() => string)}
 interface SidebarMenuElements {
     items: MenuElement[];
     predicate: () => boolean;
 }
 
 export const sideBarMenuElements: {
-    guest: SidebarMenuElements,
-    general: SidebarMenuElements,
-    auditing: SidebarMenuElements,
-    admin: SidebarMenuElements
+    guest: SidebarMenuElements;
+    general: SidebarMenuElements;
+    auditing: SidebarMenuElements;
+    admin: SidebarMenuElements;
 } = {
     guest: {
         items: [
             {icon: "files", label: "Files", to: "/login"},
             {icon: "projects", label: "Projects", to: "/login"},
             {icon: "apps", label: "Apps", to: "/login"}
-        ], predicate: () => !Cloud.isLoggedIn
+        ], predicate: () => !Client.isLoggedIn
     },
     general: {
         items: [
-            {icon: "files", label: "Files", to: () => fileTablePage(Cloud.homeFolder)},
+            {
+                icon: "files", label: "Files", to: () =>
+                    fileTablePage(Client.hasActiveProject ? Client.projectFolder : Client.homeFolder)
+            },
             {icon: "shareMenu", label: "Shares", to: "/shares/"},
             {icon: "appStore", label: "Apps", to: "/applications/overview"},
             {icon: "results", label: "Runs", to: "/applications/results/"}
-        ], predicate: () => Cloud.isLoggedIn
+        ], predicate: () => Client.isLoggedIn
     },
-    auditing: {items: [{icon: "activity", label: "Activity", to: "/activity/"}], predicate: () => Cloud.isLoggedIn},
-    admin: {items: [{icon: "admin", label: "Admin", to: "/admin/userCreation/"}], predicate: () => Cloud.userIsAdmin}
+    auditing: {items: [{icon: "activity", label: "Activity", to: "/activity/"}], predicate: () => Client.isLoggedIn},
+    admin: {items: [{icon: "admin", label: "Admin", to: "/admin"}], predicate: () => Client.userIsAdmin}
 };
 
 interface SidebarStateProps {
@@ -206,62 +206,95 @@ interface SidebarProps extends SidebarStateProps {
     sideBarEntries?: any;
 }
 
-const Sidebar = ({sideBarEntries = sideBarMenuElements, page, loggedIn}: SidebarProps) => {
+const Sidebar = ({sideBarEntries = sideBarMenuElements, page, loggedIn}: SidebarProps): JSX.Element | null => {
     if (!loggedIn) return null;
+
+    // TODO If more hacks like this is needed then implement a general process for hiding header/sidebar.
+    // The following is only supposed to work for the initial load.
+    if (shouldHideSidebarAndHeader()) return null;
+
     const sidebar = Object.keys(sideBarEntries)
         .map(key => sideBarEntries[key])
         .filter(it => it.predicate());
     return (
         <SidebarContainer color="sidebar" flexDirection="column" width={190}>
-            {sidebar.map((category, categoryIdx) =>
+            {sidebar.map((category, categoryIdx) => (
                 <React.Fragment key={categoryIdx}>
                     {category.items.map(({icon, label, to}: MenuElement) => (
                         <React.Fragment key={label}>
                             <SidebarSpacer />
-                            <SidebarElement icon={icon} activePage={page} label={label}
-                                to={typeof to === "function" ? to() : to} />
-                        </React.Fragment>))}
+                            <SidebarElement
+                                icon={icon}
+                                activePage={page}
+                                label={label}
+                                to={typeof to === "function" ? to() : to}
+                            />
+                        </React.Fragment>
+                    ))}
                 </React.Fragment>
-            )}
+            ))}
             <SidebarPushToBottom />
             {/* Screen size indicator */}
             {inDevEnvironment() ? <Flex mb={"5px"} width={190} ml={19} justifyContent="left"><RBox /> </Flex> : null}
-            {Cloud.userRole === "ADMIN" ? <ContextSwitcher maxSize={140} /> : null}
-            {Cloud.isLoggedIn ?
-                <SidebarTextLabel height="25px" hover={false} icon="id" iconSize="1em" textSize={1} space=".5em"
-                    title={Cloud.username || ""}>
+            {!Client.isLoggedIn ? null : (
+                <SidebarTextLabel
+                    height="25px"
+                    hover={false}
+                    icon="id"
+                    iconSize="1em"
+                    textSize={1}
+                    space=".5em"
+                    title={Client.username ?? ""}
+                >
                     <Tooltip
                         left="-50%"
                         top={"1"}
                         mb="35px"
-                        trigger={
+                        trigger={(
                             <EllipsedText
                                 cursor="pointer"
-                                onClick={() => copyToClipboard({
-                                    value: Cloud.username,
-                                    message: "Username copied to clipboard"
-                                })}
-                                width={"140px"}>{Cloud.username}</EllipsedText>
-                        }>
-                        {`Click to copy "${Cloud.username}" to clipboard`}
+                                onClick={copyUserName}
+                                width="140px"
+                            >
+                                {Client.username}
+                            </EllipsedText>
+                        )}
+                    >
+                        Click to copy {Client.username} to clipboard
                     </Tooltip>
-                </SidebarTextLabel> : null}
-            <ExternalLink href="https://www.sdu.dk/en/om_sdu/om_dette_websted/databeskyttelse">
-                <SidebarTextLabel height="25px" icon="verified" iconSize="1em" textSize={1}
-                    space=".5em">
-                    SDU Data Protection
                 </SidebarTextLabel>
-            </ExternalLink>
+            )}
+            {!SITE_DOCUMENTATION_URL ? null : (
+                <ExternalLink href={SITE_DOCUMENTATION_URL}>
+                    <SidebarTextLabel height="25px" icon="docs" iconSize="1em" textSize={1} space=".5em">
+                        {`${PRODUCT_NAME} Docs`}
+                    </SidebarTextLabel>
+                </ExternalLink>
+            )}
+            {!DATA_PROTECTION_LINK ? null : (
+                <ExternalLink href={DATA_PROTECTION_LINK}>
+                    <SidebarTextLabel height="25px" icon="verified" iconSize="1em" textSize={1} space=".5em">
+                        {DATA_PROTECTION_TEXT}
+                    </SidebarTextLabel>
+                </ExternalLink>
+            )}
             <Box mb="10px" />
         </SidebarContainer>
     );
 };
 
+function copyUserName(): void {
+    copyToClipboard({
+        value: Client.username,
+        message: "Username copied to clipboard"
+    });
+}
+
 const mapStateToProps = ({status, project}: ReduxObject): SidebarStateProps => ({
     page: status.page,
 
     /* Used to ensure re-rendering of Sidebar after user logs in. */
-    loggedIn: Cloud.isLoggedIn,
+    loggedIn: Client.isLoggedIn,
 
     /* Used to ensure re-rendering of Sidebar after project change. */
     activeProject: project.project

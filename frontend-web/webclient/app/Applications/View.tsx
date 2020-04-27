@@ -12,6 +12,7 @@ import {Page} from "Types";
 import {
     ActionButton,
     Box,
+    Flex,
     ExternalLink,
     Image,
     Link,
@@ -24,10 +25,11 @@ import * as Heading from "ui-components/Heading";
 import {TextSpan} from "ui-components/Text";
 import {dateToString} from "Utilities/DateUtilities";
 import {capitalized} from "UtilityFunctions";
-import {ApplicationCardContainer, SlimApplicationCard} from "./Card";
+import {ApplicationCardContainer, SlimApplicationCard, Tag} from "./Card";
 import * as Pages from "./Pages";
 import * as Actions from "./Redux/ViewActions";
 import * as ViewObject from "./Redux/ViewObject";
+import {match} from "react-router";
 
 interface MainContentProps {
     onFavorite?: () => void;
@@ -43,12 +45,12 @@ interface OperationProps {
 type StateProps = ViewObject.Type;
 
 interface OwnProps {
-    match: any;
+    match: match<{appName: string; appVersion: string}>;
 }
 
 type ViewProps = OperationProps & StateProps & OwnProps;
 
-function View(props: ViewProps) {
+function View(props: ViewProps): JSX.Element {
 
     React.useEffect(() => {
         fetchApp();
@@ -64,7 +66,7 @@ function View(props: ViewProps) {
         }
     });
 
-    function fetchApp() {
+    function fetchApp(): void {
         const {params} = props.match;
         props.fetchApp(params.appName, params.appVersion);
     }
@@ -79,22 +81,24 @@ function View(props: ViewProps) {
     return (
         <LoadableMainContainer
             loadable={props.application}
-            main={
+            main={(
                 <ContainerForText left>
-                    <Box m={16}/>
+                    <Box m={16} />
                     <AppHeader application={application!} />
                     <Content
                         application={application!}
-                        previousVersions={props.previous.content} />
+                        previousVersions={props.previous.content}
+                    />
                 </ContainerForText>
-            }
+            )}
 
-            sidebar={
+            sidebar={(
                 <Sidebar
                     application={application!}
                     onFavorite={() => props.onFavorite(appName, appVersion)}
-                    favorite={props.favorite} />
-            }
+                    favorite={props.favorite}
+                />
+            )}
         />
     );
 }
@@ -130,19 +134,20 @@ export const AppHeader: React.FunctionComponent<MainContentProps & {slim?: boole
                 <AppToolLogo type={"APPLICATION"} name={props.application.metadata.name} size={size} />
             </Box>
             <AppHeaderDetails>
-                {isSlim ?
+                {isSlim ? (
                     <Heading.h3>
                         {props.application.metadata.title} <small>({props.application.metadata.version})</small>
-                    </Heading.h3> :
-                    <>
-                        <Heading.h2>{props.application.metadata.title}</Heading.h2>
-                        <Heading.h3>v{props.application.metadata.version}</Heading.h3>
-                        <TextSpan>{props.application.metadata.authors.join(", ")}</TextSpan>
-                        <Heading.h6>
-                            <Tags tags={props.application.tags} />
-                        </Heading.h6>
-                    </>
-                }
+                    </Heading.h3>
+                ) : (
+                        <>
+                            <Heading.h2>{props.application.metadata.title}</Heading.h2>
+                            <Heading.h3>v{props.application.metadata.version}</Heading.h3>
+                            <TextSpan>{props.application.metadata.authors.join(", ")}</TextSpan>
+                            <Heading.h6>
+                                <Tags tags={props.application.tags} />
+                            </Heading.h6>
+                        </>
+                    )}
             </AppHeaderDetails>
         </AppHeaderBase>
     );
@@ -152,20 +157,21 @@ const Sidebar: React.FunctionComponent<MainContentProps> = props => (
     <VerticalButtonGroup>
         <ActionButton
             fullWidth
-            onClick={() => {if (!!props.onFavorite) props.onFavorite();}}
+            onClick={() => props.onFavorite?.()}
             loadable={props.favorite as LoadableContent}
-            color="blue">
+            color="blue"
+        >
             {props.application.favorite ? "Remove from favorites" : "Add to favorites"}
         </ActionButton>
 
         <Link to={Pages.runApplication(props.application.metadata)}>
             <OutlineButton fullWidth color={"blue"}>Run Application</OutlineButton>
         </Link>
-        {!props.application.metadata.website ? null :
+        {!props.application.metadata.website ? null : (
             <ExternalLink href={props.application.metadata.website}>
                 <OutlineButton fullWidth color={"blue"}>Website</OutlineButton>
             </ExternalLink>
-        }
+        )}
     </VerticalButtonGroup>
 );
 
@@ -201,7 +207,7 @@ function Content(props: MainContentProps & {previousVersions?: Page<FullAppInfo>
 const PreviousVersions: React.FunctionComponent<{previousVersions?: Page<FullAppInfo>}> = props => (
     <>
         {!props.previousVersions ? null :
-            (!props.previousVersions.items.length ? null :
+            (!props.previousVersions.items.length ? null : (
                 <div>
                     <Heading.h4>Other Versions</Heading.h4>
                     <ApplicationCardContainer>
@@ -210,55 +216,42 @@ const PreviousVersions: React.FunctionComponent<{previousVersions?: Page<FullApp
                         ))}
                     </ApplicationCardContainer>
                 </div>
-            )
+            ))
         }
     </>
 );
 
-export const TagStyle = styled(Link)`
-    background-color: ${({theme}) => theme.colors.darkGray};
-    color: #ebeff3;
-    &:hover { color: #ebeff3;}
-    text-decoration: none;
-    text-transform: Uppercase;
-    padding: 0px 10px 0px 10px;
-    margin-right: 4px;
-    border-radius: 3px;
-`;
-
-
-const TagBase = styled.div`
-    display: flex;
-    flex-direction: row;
-`;
-
-function Tags({tags}: {tags: string[]}) {
+function Tags({tags}: {tags: string[]}): JSX.Element | null {
     if (!tags) return null;
 
-    return <div>
-        <TagBase>
-            {
-                tags.map(tag => (
-                    <TagStyle to={Pages.browseByTag(tag)}>{tag}</TagStyle>
-                ))
-            }
-        </TagBase>
-    </div>;
+    return (
+        <div>
+            <Flex flexDirection="row" >
+                {
+                    tags.map(tag => (
+                        <Link key={tag} to={Pages.browseByTag(tag)}><Tag label={tag}/> </Link>
+                    ))
+                }
+            </Flex>
+        </div>
+    );
 }
 
 function InfoAttribute(props: {
-    name: string,
-    value?: string,
-    children?: JSX.Element
-}) {
-    return <Box mb={8} mr={32}>
-        <Heading.h5>{props.name}</Heading.h5>
-        {props.value}
-        {props.children}
-    </Box>;
+    name: string;
+    value?: string;
+    children?: JSX.Element;
+}): JSX.Element {
+    return (
+        <Box mb={8} mr={32}>
+            <Heading.h5>{props.name}</Heading.h5>
+            {props.value}
+            {props.children}
+        </Box>
+    );
 }
 
-export const pad = (value: string | number, length: number) =>
+export const pad = (value: string | number, length: number): string | number =>
     (value.toString().length < length) ? pad("0" + value, length) : value;
 
 const InfoAttributes = styled.div`
@@ -266,48 +259,55 @@ const InfoAttributes = styled.div`
     flex-direction: row;
 `;
 
-function Information({application}: {application: WithAppMetadata & WithAppInvocation}) {
+function Information({application}: {application: WithAppMetadata & WithAppInvocation}): JSX.Element {
     const time = application.invocation.tool.tool.description.defaultTimeAllocation;
     const timeString = time ? `${pad(time.hours, 2)}:${pad(time.minutes, 2)}:${pad(time.seconds, 2)}` : "";
     const backend = application.invocation.tool.tool.description.backend;
     const license = application.invocation.tool.tool.description.license;
-    return <>
-        <Heading.h4>Information</Heading.h4>
+    return (
+        <>
+            <Heading.h4>Information</Heading.h4>
 
-        <InfoAttributes>
-            <InfoAttribute
-                name="Release Date"
-                value={dateToString(application.invocation.tool.tool.createdAt)} />
+            <InfoAttributes>
+                <InfoAttribute
+                    name="Release Date"
+                    value={dateToString(application.invocation.tool.tool.createdAt)}
+                />
 
-            <InfoAttribute
-                name="Default Time Allocation"
-                value={timeString} />
+                <InfoAttribute
+                    name="Default Time Allocation"
+                    value={timeString}
+                />
 
-            <InfoAttribute
-                name="Default Nodes"
-                value={`${application.invocation.tool.tool.description.defaultNumberOfNodes}`} />
+                <InfoAttribute
+                    name="Default Nodes"
+                    value={`${application.invocation.tool.tool.description.defaultNumberOfNodes}`}
+                />
 
-            <InfoAttribute
-                name="Container Type"
-                value={capitalized(backend)} />
+                <InfoAttribute
+                    name="Container Type"
+                    value={capitalized(backend)}
+                />
 
-            <InfoAttribute
-                name="License"
-                value={license} />
-        </InfoAttributes>
-    </>;
+                <InfoAttribute
+                    name="License"
+                    value={license}
+                />
+            </InfoAttributes>
+        </>
+    );
 }
 
 const mapDispatchToProps = (dispatch: Dispatch<Actions.Type | UpdatePageTitleAction>): OperationProps => ({
     fetchApp: async (name: string, version: string) => {
         dispatch(updatePageTitle(`${name} v${version}`));
 
-        const loadApplications = async () => {
+        const loadApplications = async (): Promise<void> => {
             dispatch({type: Actions.Tag.RECEIVE_APP, payload: loadingEvent(true)});
             dispatch(await Actions.fetchApplication(name, version));
         };
 
-        const loadPrevious = async () => {
+        const loadPrevious = async (): Promise<void> => {
             dispatch({type: Actions.Tag.RECEIVE_PREVIOUS, payload: loadingEvent(true)});
             dispatch(await Actions.fetchPreviousVersions(name));
         };

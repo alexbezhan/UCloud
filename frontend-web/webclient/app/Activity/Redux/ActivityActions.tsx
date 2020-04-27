@@ -1,17 +1,22 @@
-import {Cloud} from "Authentication/SDUCloudObject";
-import {ActivityGroup, ActivityFilter} from "Activity";
+import {ActivityFilter, ActivityForFrontend} from "Activity";
+import {Client} from "Authentication/HttpClientInstance";
+import {Action} from "redux";
+import {ScrollRequest, ScrollResult} from "Scroll/Types";
+import {snackbarStore} from "Snackbar/SnackbarStore";
 import {PayloadAction, SetLoadingAction} from "Types";
 import {activityQuery} from "Utilities/ActivityUtilities";
 import {errorMessageOrDefault} from "UtilityFunctions";
-import {ScrollResult, ScrollRequest} from "Scroll/Types";
-import {Action} from "redux";
-import {snackbarStore} from "Snackbar/SnackbarStore";
 
 // Request builders
 export const fetchActivity = async (scroll: ScrollRequest<number>, filter?: ActivityFilter) => {
     try {
-        const {response} = await Cloud.get(activityQuery(scroll, filter));
-        return receiveActivity(response)
+        const {response} = await Client.get(activityQuery(scroll, filter));
+        response.items.forEach(it => {
+            if (it.activityEvent.username.startsWith("_")) {
+                it.activityEvent.username = "UCloud";
+            }
+        });
+        return receiveActivity(response);
     } catch (e) {
         snackbarStore.addFailure(errorMessageOrDefault(e, "Could not fetch activity from server"));
         return setErrorMessage();
@@ -26,21 +31,21 @@ export type ActivityActions =
     UpdateActivityFilterAction;
 
 export const SET_ACTIVITY_ERROR_MESSAGE = "SET_ACTIVITY_ERROR_MESSAGE";
-type ActivityError = Action<typeof SET_ACTIVITY_ERROR_MESSAGE>
+type ActivityError = Action<typeof SET_ACTIVITY_ERROR_MESSAGE>;
 export const setErrorMessage = (): ActivityError => ({
     type: SET_ACTIVITY_ERROR_MESSAGE
 });
 
 export const SET_ACTIVITY_LOADING = "SET_ACTIVITY_LOADING";
-type SetActivityLoading = SetLoadingAction<typeof SET_ACTIVITY_LOADING>
+type SetActivityLoading = SetLoadingAction<typeof SET_ACTIVITY_LOADING>;
 export const setLoading = (loading: boolean): SetActivityLoading => ({
     type: SET_ACTIVITY_LOADING,
     payload: {loading}
 });
 
 export const RECEIVE_ACTIVITY = "RECEIVE_ACTIVITY";
-type ReceiveActivityAction = PayloadAction<typeof RECEIVE_ACTIVITY, {page: ScrollResult<ActivityGroup, number>}>
-const receiveActivity = (page: ScrollResult<ActivityGroup, number>): ReceiveActivityAction => ({
+type ReceiveActivityAction = PayloadAction<typeof RECEIVE_ACTIVITY, {page: ScrollResult<ActivityForFrontend, number>}>;
+const receiveActivity = (page: ScrollResult<ActivityForFrontend, number>): ReceiveActivityAction => ({
     type: RECEIVE_ACTIVITY,
     payload: {page}
 });
@@ -50,7 +55,7 @@ type ResetActivityAction = Action<typeof RESET_ACTIVITY>;
 export const resetActivity = (): ResetActivityAction => ({type: RESET_ACTIVITY});
 
 export const UPDATE_ACTIVITY_FILTER = "UPDATE_ACTIVITY_FILTER";
-type UpdateActivityFilterAction = PayloadAction<typeof UPDATE_ACTIVITY_FILTER, {filter: Partial<ActivityFilter>}>
+type UpdateActivityFilterAction = PayloadAction<typeof UPDATE_ACTIVITY_FILTER, {filter: Partial<ActivityFilter>}>;
 export const updateActivityFilter = (filter: Partial<ActivityFilter>): UpdateActivityFilterAction => (
     {type: UPDATE_ACTIVITY_FILTER, payload: {filter}}
 );

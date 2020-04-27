@@ -11,7 +11,7 @@ export enum AvatarStyle {
     Transparent = "Transparent"
 }
 
-export default function Avatar(props: AvatarComponentProps) {
+export default function Avatar(props: AvatarComponentProps): JSX.Element {
     const {avatarStyle} = props;
     const circle = avatarStyle === AvatarStyle.Circle;
     return (
@@ -22,7 +22,8 @@ export default function Avatar(props: AvatarComponentProps) {
             viewBox="0 0 264 280"
             version="1.1"
             xmlns="http://www.w3.org/2000/svg"
-            xmlnsXlink="http://www.w3.org/1999/xlink">
+            xmlnsXlink="http://www.w3.org/1999/xlink"
+        >
             <desc>Created with getavataaars.com</desc>
             <defs>
                 <circle id="path-1" cx="120" cy="120" r="120" />
@@ -40,17 +41,20 @@ export default function Avatar(props: AvatarComponentProps) {
                 stroke="none"
                 strokeWidth="1"
                 fill="none"
-                fillRule="evenodd">
+                fillRule="evenodd"
+            >
                 <g
                     transform="translate(-825.000000, -1100.000000)"
-                    id="Avataaar/Circle">
+                    id="Avataaar/Circle"
+                >
                     <g transform="translate(825.000000, 1100.000000)">
                         {circle ? (
                             <g
                                 id="Circle"
                                 strokeWidth="1"
                                 fillRule="evenodd"
-                                transform="translate(12.000000, 40.000000)">
+                                transform="translate(12.000000, 40.000000)"
+                            >
                                 <mask id="mask-2" fill="white">
                                     <use xlinkHref="#path-1" />
                                 </mask>
@@ -62,7 +66,8 @@ export default function Avatar(props: AvatarComponentProps) {
                                 <g
                                     id="Color/Palette/Blue-01"
                                     mask="url(#mask-2)"
-                                    fill="#65C9FF">
+                                    fill="#65C9FF"
+                                >
                                     <rect id="🖍Color" x="0" y="0" width="240" height="240" />
                                 </g>
                             </g>
@@ -77,13 +82,14 @@ export default function Avatar(props: AvatarComponentProps) {
                             id="Avataaar"
                             strokeWidth="1"
                             fillRule="evenodd"
-                            mask="url(#mask-4)">
+                            mask="url(#mask-4)"
+                        >
                             <g id="Body" transform="translate(32.000000, 36.000000)">
                                 <mask id="mask-6" fill="white">
                                     <use xlinkHref="#path-5" />
                                 </mask>
                                 <use fill="#D0C6AC" xlinkHref="#path-5" />
-                                <Skin optionValue={props.skinColor} maskID="mask-6" />
+                                <Skin optionValue={props.skinColors} maskID="mask-6" />
                                 <path
                                     d="M156,79 L156,102 C156,132.927946 130.927946,158 100,158 C69.072054,158 44,132.927946 44,102 L44,79 L44,94 C44,124.927946 69.072054,150 100,150 C130.927946,150 156,124.927946 156,94 L156,79 Z"
                                     id="Neck-Shadow"
@@ -93,10 +99,13 @@ export default function Avatar(props: AvatarComponentProps) {
                                 />
                             </g>
                             <Clothe
-                                optionValue={props.clotheType} color={props.clotheColor} graphic={props.graphicType} />
-                            <Face eyebrow={props.eyebrowType} eyes={props.eyeType} mouth={props.mouthType} />
-                            <Top optionValue={props.topType} facialHair={props.facialHairType} {...props}>
-                                <Accessories optionValue={props.accessoriesType} />
+                                optionValue={props.clothes}
+                                color={props.colorFabric}
+                                graphic={props.clothesGraphic}
+                            />
+                            <Face eyebrow={props.eyebrows} eyes={props.eyes} mouth={props.mouthTypes} />
+                            <Top optionValue={props.top} facialHair={props.facialHair} {...props}>
+                                <Accessories optionValue={props.topAccessory} />
                             </Top>
                         </g>
                     </g>

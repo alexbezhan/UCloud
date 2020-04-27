@@ -1,3 +1,5 @@
+import {useEffect, useState} from "react";
+
 export default class PromiseKeeper {
     public canceledKeeper: boolean = false;
     private promises: Array<CancelablePromise<any>>;
@@ -15,15 +17,18 @@ export default class PromiseKeeper {
                     val => {
                         cancelablePromise.isComplete = true;
                         this.cleanup();
+                        // eslint-disable-next-line no-underscore-dangle
                         cancelablePromise.hasCanceled_ ? reject({isCanceled: true}) : resolve(val);
                     },
                     error => {
                         cancelablePromise.isComplete = true;
                         this.cleanup();
+                        // eslint-disable-next-line no-underscore-dangle
                         cancelablePromise.hasCanceled_ ? reject({isCanceled: true}) : reject(error);
                     }
                 );
             }),
+            // eslint-disable-next-line no-underscore-dangle
             cancel: () => cancelablePromise.hasCanceled_ = true,
         };
         this.promises.push(cancelablePromise);
@@ -35,13 +40,13 @@ export default class PromiseKeeper {
      */
     public cancelPromises = (): void => {
         this.canceledKeeper = true;
-        this.promises.forEach((it) => it.cancel());
+        this.promises.forEach(it => it.cancel());
         this.promises = [];
-    }
+    };
 
     private cleanup = (): void => {
         this.promises = this.promises.filter(it => !it.isComplete);
-    }
+    };
 }
 
 interface CancelablePromise<T> {
@@ -49,4 +54,12 @@ interface CancelablePromise<T> {
     promise: Promise<T>;
     cancel: VoidFunction;
     hasCanceled_: boolean;
+}
+
+export function usePromiseKeeper(): PromiseKeeper {
+    const [promises] = useState(new PromiseKeeper());
+    useEffect(() => {
+        return () => promises.cancelPromises();
+    }, []);
+    return promises;
 }

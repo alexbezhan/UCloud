@@ -1,18 +1,9 @@
-import {ParameterTypes} from "Applications";
-import "jest-styled-components";
-import {
-    findKnownParameterValues,
-    hpcApplicationsQuery,
-    hpcJobQuery,
-} from "Utilities/ApplicationUtilities";
+import {ParameterTypes} from "../../app/Applications";
+import {findKnownParameterValues, hpcJobQuery} from "../../app/Utilities/ApplicationUtilities";
 
 describe("Application Utilities", () => {
     test("Create hpcJobQuery string", () => {
         expect(hpcJobQuery("job")).toBe("/hpc/jobs/job");
-    });
-
-    test("Create hpcApplicationsQuery string", () => {
-        expect(hpcApplicationsQuery(0, 10)).toBe(`/hpc/apps?page=0&itemsPerPage=10`)
     });
 
     test("Extract Parameters for version 1", () => {

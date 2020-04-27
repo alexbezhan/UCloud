@@ -1,11 +1,11 @@
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import FileSelector from "Files/FileSelector";
 import * as React from "react";
 import {useState} from "react";
 import styled from "styled-components";
-import { Button, Flex, Icon } from "ui-components";
+import {Button, Flex, Icon} from "ui-components";
 import Input, {InputLabel} from "ui-components/Input";
-import {replaceHomeFolder} from "Utilities/FileUtilities";
+import {replaceHomeOrProjectFolder} from "Utilities/FileUtilities";
 
 interface FileInputSelectorProps {
     path: string; // selected file
@@ -17,7 +17,7 @@ interface FileInputSelectorProps {
     unitName?: string | React.ReactNode;
     unitWidth?: string | number | undefined;
     remove?: () => void;
-    onFileSelect: (file: { path: string }) => void;
+    onFileSelect: (file: {path: string}) => void;
     disallowedPaths?: string[];
 
     canSelectFolders?: boolean;
@@ -27,54 +27,52 @@ interface FileInputSelectorProps {
 export const FileInputSelector: React.FunctionComponent<FileInputSelectorProps> = props => {
     const [visible, setVisible] = useState(false);
     const path = props.path ? props.path : "";
-    const onUpload = () => {
-        if (!props.allowUpload) return;
-    };
-    const uploadButton = props.allowUpload ? (<UploadButton onClick={onUpload}/>) : null;
-    const removeButton = props.remove ? (<RemoveButton onClick={() => props.remove!()}/>) : null;
-    const inputRefValueOrNull = props.inputRef && props.inputRef.current && props.inputRef.current.value;
-    const inputValue = inputRefValueOrNull || replaceHomeFolder(path, Cloud.homeFolder);
 
-    return <FileSelector
-        visible={visible}
+    const removeButton = props.remove ? (<RemoveButton onClick={() => props.remove!()} />) : null;
+    const inputRefValueOrNull = props.inputRef?.current?.value;
+    const inputValue = inputRefValueOrNull ?? replaceHomeOrProjectFolder(path, Client);
 
-        canSelectFolders={props.canSelectFolders}
-        onlyAllowFolders={props.onlyAllowFolders}
+    return (
+        <FileSelector
+            visible={visible}
 
-        disallowedPaths={props.disallowedPaths}
+            canSelectFolders={props.canSelectFolders}
+            onlyAllowFolders={props.onlyAllowFolders}
 
-        onFileSelect={file => {
-            if (file !== null) {
-                props.onFileSelect(file);
-            }
+            disallowedPaths={props.disallowedPaths}
 
-            setVisible(false);
-        }}
-
-        trigger={
-            <Flex>
-                <FileSelectorInput
-                    defaultValue={props.defaultValue}
-                    showError={props.showError && props.isRequired}
-                    ref={props.inputRef}
-                    required={props.isRequired}
-                    placeholder="No file selected"
-                    value={inputValue}
-                    rightLabel={!!props.unitName}
-                    onChange={() => undefined}
-                    onClick={() => setVisible(true)}
-                />
-                {
-                    !props.unitName ? null :
-                        <InputLabel width={props.unitWidth || "auto"} backgroundColor="lightBlue" rightLabel>
-                            {props.unitName}
-                        </InputLabel>
+            onFileSelect={file => {
+                if (file !== null) {
+                    props.onFileSelect(file);
                 }
-                {uploadButton}
-                {removeButton}
-            </Flex>
-        }
-    />;
+
+                setVisible(false);
+            }}
+
+            trigger={(
+                <Flex>
+                    <FileSelectorInput
+                        defaultValue={props.defaultValue}
+                        showError={props.showError && props.isRequired}
+                        ref={props.inputRef}
+                        required={props.isRequired}
+                        placeholder="No file selected"
+                        value={inputValue}
+                        rightLabel={!!props.unitName}
+                        onChange={() => undefined}
+                        onClick={() => setVisible(true)}
+                    />
+                    {
+                        !props.unitName ? null : (
+                            <InputLabel width={props.unitWidth ?? "auto"} backgroundColor="lightBlue" rightLabel>
+                                {props.unitName}
+                            </InputLabel>
+                        )}
+                    {removeButton}
+                </Flex>
+            )}
+        />
+    );
 };
 
 const FileSelectorInput = styled(Input)`
@@ -85,7 +83,6 @@ interface FileSelectorButton {
     onClick: () => void;
 }
 
-const UploadButton = ({onClick}: FileSelectorButton) => (
-    <Button ml="5px" height={"35px"} type="button" onClick={onClick}>Upload File</Button>);
-const RemoveButton = ({onClick}: FileSelectorButton) => (<Button color={"red"} ml={"8px"} onClick={onClick}><Icon name="close" size="1em"/></Button>);
-
+const RemoveButton = ({onClick}: FileSelectorButton): JSX.Element => (
+    <Button color="red" ml="8px" onClick={onClick}><Icon name="close" size="1em" /></Button>
+);

@@ -1,0 +1,1590 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Runs component Mount component with non-empty page 1`] = `
+.c1 {
+  margin-left: 190px;
+  padding-top: 48px;
+  padding-bottom: 14px;
+  padding-left: 14px;
+  padding-right: 0;
+  background-color: #fff;
+}
+
+.c4 {
+  margin-left: auto;
+}
+
+.c5 {
+  width: 170px;
+}
+
+.c12 {
+  padding-top: 48px;
+}
+
+.c14 {
+  cursor: pointer;
+}
+
+.c17 {
+  margin-bottom: 16px;
+  margin-top: 16px;
+}
+
+.c20 {
+  margin-bottom: 16px;
+}
+
+.c21 {
+  padding-top: 48px;
+  padding-right: 340px;
+}
+
+.c31 {
+  margin-left: 8px;
+  margin-right: 8px;
+  margin-top: 4px;
+}
+
+.c32 {
+  width: auto;
+  max-width: calc(100% - 180px);
+}
+
+.c9 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: inherit;
+  margin-left: .7em;
+}
+
+.c27 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: inherit;
+}
+
+.c28 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: pointer;
+  margin-right: .4em;
+}
+
+.c36 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: inherit;
+  margin-right: 5px;
+  color: #8393A7;
+}
+
+.c37 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: inherit;
+  margin-left: 4px;
+  margin-right: 2px;
+  color: #8393A7;
+}
+
+.c40 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: inherit;
+  margin-right: 8px;
+  color: #c00;
+}
+
+.c42 {
+  -webkit-flex: none;
+  -ms-flex: none;
+  flex: none;
+  vertical-align: middle;
+  cursor: inherit;
+  margin-right: 8px;
+  color: #00C05A;
+}
+
+.c3 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+}
+
+.c34 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  margin-top: 4px;
+}
+
+.c38 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  margin-right: 8px;
+}
+
+.c39 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  width: 110px;
+}
+
+.c41 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  margin-top: -3px;
+}
+
+.c7 {
+  cursor: pointer;
+}
+
+.c8 {
+  cursor: inherit;
+}
+
+.c13 {
+  cursor: inherit;
+  font-size: 24px;
+  margin: 0;
+  font-weight: 400;
+}
+
+.c15 {
+  cursor: inherit;
+  font-size: 24px;
+  margin: 0;
+  margin-top: 16px;
+  font-weight: 400;
+}
+
+.c35 {
+  cursor: inherit;
+  font-size: 10px;
+  color: #8393A7;
+}
+
+.c16 {
+  font-size: 10px;
+  -webkit-letter-spacing: 0.2px;
+  -moz-letter-spacing: 0.2px;
+  -ms-letter-spacing: 0.2px;
+  letter-spacing: 0.2px;
+  display: block;
+  margin: 0;
+  font-size: 14px;
+  color: #000;
+  font-weight: 700;
+  width: 100%;
+}
+
+.c24 {
+  font-size: 10px;
+  -webkit-letter-spacing: 0.2px;
+  -moz-letter-spacing: 0.2px;
+  -ms-letter-spacing: 0.2px;
+  letter-spacing: 0.2px;
+  display: block;
+  margin: 0;
+  margin-left: 10px;
+  font-size: 14px;
+  color: #000;
+  font-weight: 700;
+  width: auto;
+}
+
+.c6 {
+  position: relative;
+  display: inline-block;
+}
+
+.c6:hover > div {
+  display: block;
+}
+
+.c33 {
+  cursor: pointer;
+  width: 100%;
+  font-size: 20px;
+  margin-bottom: -4px;
+  -webkit-flex: 1;
+  -ms-flex: 1;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.c29 {
+  font-size: large;
+}
+
+.c29 > * {
+  border-bottom: 1px solid lightGrey;
+}
+
+.c29 > *:last-child {
+  border-bottom: 0px;
+}
+
+.c30 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  width: 100%;
+  -webkit-align-items: center;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  -webkit-transition: background-color 0.3s;
+  transition: background-color 0.3s;
+  background-color: var(--white);
+}
+
+.c30:hover {
+  background-color: var(--lightBlue,#f00);
+}
+
+.c18 {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-align-items: center;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  border-radius: 5px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #c9d3df;
+}
+
+.c18 > .c0 {
+  width: 100%;
+  -webkit-flex: 1 1 auto;
+  -ms-flex: 1 1 auto;
+  flex: 1 1 auto;
+}
+
+.c18 .sc-fzokOt {
+  border: 0;
+  box-shadow: none;
+}
+
+.c25 {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  cursor: pointer;
+  color: #8393A7;
+  margin-right: .5em;
+}
+
+.c25 svg[data-name="checked"] {
+  display: none;
+}
+
+.c25 > input:checked ~ svg[data-name="checked"] {
+  display: inline-block;
+  color: var(--blue,#f00);
+}
+
+.c25 > input:checked ~ svg[data-name="empty"] {
+  display: none;
+}
+
+.c26 {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  opacity: 0;
+  position: absolute;
+}
+
+.c2 {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  padding-left: 204px;
+  padding-right: 14px;
+  width: 100%;
+  height: 48px;
+  background-color: #fff;
+  position: absolute;
+  top: 48px;
+  left: 0;
+  position: fixed;
+  z-index: 50;
+}
+
+.c11 {
+  padding-top: 96px;
+  padding-left: 14px;
+  padding-right: 14px;
+  width: 340px;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  right: 0;
+  overflow-y: auto;
+  position: fixed;
+  z-index: 45;
+}
+
+.c19 {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  font-family: inherit;
+  color: inherit;
+  font-size: 14px;
+  background-color: transparent;
+  border-radius: 5px;
+  border-width: 0px;
+  border-style: solid;
+  border-color: var(--borderGray,#f00);
+  padding-top: 14px;
+  padding-bottom: 14px;
+  padding-left: 12px;
+  padding-right: 12px;
+  margin: 0;
+}
+
+.c19::-webkit-input-placeholder {
+  color: var(--gray,#f00);
+}
+
+.c19::-moz-placeholder {
+  color: var(--gray,#f00);
+}
+
+.c19:-ms-input-placeholder {
+  color: var(--gray,#f00);
+}
+
+.c19::placeholder {
+  color: var(--gray,#f00);
+}
+
+.c19::-ms-clear {
+  display: none;
+}
+
+.c23 {
+  background-color: #fff;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 95px;
+  z-index: 50;
+}
+
+@media screen and (max-width:511px) {
+  .c10 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:512px) and (max-width:639px) {
+  .c10 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:640px) and (max-width:767px) {
+  .c10 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:768px) and (max-width:1023px) {
+  .c22 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:1024px) and (max-width:1279px) {
+  .c22 {
+    display: none;
+  }
+}
+
+@media screen and (min-width:1280px) {
+  .c22 {
+    display: none;
+  }
+}
+
+<div
+  className="c0 c1"
+>
+  <div
+    className="c0 sc-AxiKw c2"
+    height={48}
+    width={1}
+  >
+    <div
+      className="c3"
+    >
+      <div
+        className="c0 c4"
+      />
+      <div
+        className="c0 c5"
+        width="170px"
+      >
+        <div
+          className="c6"
+          data-tag="dropdown"
+        >
+          <span
+            className="c7"
+            cursor="pointer"
+            onClick={[Function]}
+          >
+            <span
+              className="c8"
+              cursor="inherit"
+            >
+               
+              Jobs per page 25
+            </span>
+            <svg
+              className="c9"
+              clipRule="evenodd"
+              cursor="inherit"
+              fill="currentcolor"
+              fillRule="evenodd"
+              height=".7em"
+              ml=".7em"
+              viewBox="0 0 24 20"
+              width=".7em"
+            >
+              <path
+                d="M11.998 19.999c-.598 0-1.028-.61-1.028-.61L.365 2.268C-.453 1.02.153 0 1.703 0h20.593c1.554 0 2.156 1.02 1.34 2.27l-10.61 17.121c0-.002-.43.608-1.028.608z"
+                fillRule="nonzero"
+              />
+            </svg>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    className="c0 c10"
+  >
+    <div
+      className="c0 sc-AxiKw c11"
+      height="100%"
+      width={340}
+    >
+      <div
+        className="c0 c12"
+      >
+        <h3
+          className="c13"
+          cursor="inherit"
+          fontSize={4}
+        >
+          Quick Filters
+        </h3>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            Today
+          </span>
+        </div>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            Yesterday
+          </span>
+        </div>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            This week
+          </span>
+        </div>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            No filter
+          </span>
+        </div>
+        <h3
+          className="c15"
+          cursor="inherit"
+          fontSize={4}
+        >
+          Active Filters
+        </h3>
+        <label
+          className="c16"
+          color="black"
+          fontSize={1}
+          fontWeight="bold"
+          width="100%"
+        >
+          Filter by app state
+        </label>
+        <div
+          className="c6"
+          data-tag="dropdown"
+        >
+          <span
+            className="c7"
+            cursor="pointer"
+            onClick={[Function]}
+          >
+            Don't filter
+            <svg
+              className="c9"
+              clipRule="evenodd"
+              cursor="inherit"
+              fill="currentcolor"
+              fillRule="evenodd"
+              height=".7em"
+              ml=".7em"
+              viewBox="0 0 24 20"
+              width=".7em"
+            >
+              <path
+                d="M11.998 19.999c-.598 0-1.028-.61-1.028-.61L.365 2.268C-.453 1.02.153 0 1.703 0h20.593c1.554 0 2.156 1.02 1.34 2.27l-10.61 17.121c0-.002-.43.608-1.028.608z"
+                fillRule="nonzero"
+              />
+            </svg>
+          </span>
+        </div>
+        <div
+          className="c0 c17"
+        >
+          <label
+            className="c16"
+            color="black"
+            fontSize={1}
+            fontWeight="bold"
+            width="100%"
+          >
+            Job created after
+          </label>
+          <div
+            className="c18"
+          >
+            <div
+              className="react-datepicker-wrapper"
+            >
+              <div
+                className="react-datepicker__input-container"
+              >
+                <input
+                  className="c19"
+                  disabled={false}
+                  onBlur={[Function]}
+                  onChange={[Function]}
+                  onClick={[Function]}
+                  onFocus={[Function]}
+                  onKeyDown={[Function]}
+                  placeholder="Don't filter"
+                  readOnly={false}
+                  type="text"
+                  value=""
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          className="c0 c20"
+        >
+          <label
+            className="c16"
+            color="black"
+            fontSize={1}
+            fontWeight="bold"
+            width="100%"
+          >
+            Job created before
+          </label>
+          <div
+            className="c18"
+          >
+            <div
+              className="react-datepicker-wrapper"
+            >
+              <div
+                className="react-datepicker__input-container"
+              >
+                <input
+                  className="c19"
+                  disabled={false}
+                  onBlur={[Function]}
+                  onChange={[Function]}
+                  onClick={[Function]}
+                  onFocus={[Function]}
+                  onKeyDown={[Function]}
+                  placeholder="Don't filter"
+                  readOnly={false}
+                  type="text"
+                  value=""
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    className="c0 c21"
+  >
+    <div
+      className="c0 c22"
+    >
+      <div
+        className="c0 c12"
+      >
+        <h3
+          className="c13"
+          cursor="inherit"
+          fontSize={4}
+        >
+          Quick Filters
+        </h3>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            Today
+          </span>
+        </div>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            Yesterday
+          </span>
+        </div>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            This week
+          </span>
+        </div>
+        <div
+          className="c0 c14"
+          cursor="pointer"
+          onClick={[Function]}
+        >
+          <span
+            className="c8"
+            cursor="inherit"
+          >
+            No filter
+          </span>
+        </div>
+        <h3
+          className="c15"
+          cursor="inherit"
+          fontSize={4}
+        >
+          Active Filters
+        </h3>
+        <label
+          className="c16"
+          color="black"
+          fontSize={1}
+          fontWeight="bold"
+          width="100%"
+        >
+          Filter by app state
+        </label>
+        <div
+          className="c6"
+          data-tag="dropdown"
+        >
+          <span
+            className="c7"
+            cursor="pointer"
+            onClick={[Function]}
+          >
+            Don't filter
+            <svg
+              className="c9"
+              clipRule="evenodd"
+              cursor="inherit"
+              fill="currentcolor"
+              fillRule="evenodd"
+              height=".7em"
+              ml=".7em"
+              viewBox="0 0 24 20"
+              width=".7em"
+            >
+              <path
+                d="M11.998 19.999c-.598 0-1.028-.61-1.028-.61L.365 2.268C-.453 1.02.153 0 1.703 0h20.593c1.554 0 2.156 1.02 1.34 2.27l-10.61 17.121c0-.002-.43.608-1.028.608z"
+                fillRule="nonzero"
+              />
+            </svg>
+          </span>
+        </div>
+        <div
+          className="c0 c17"
+        >
+          <label
+            className="c16"
+            color="black"
+            fontSize={1}
+            fontWeight="bold"
+            width="100%"
+          >
+            Job created after
+          </label>
+          <div
+            className="c18"
+          >
+            <div
+              className="react-datepicker-wrapper"
+            >
+              <div
+                className="react-datepicker__input-container"
+              >
+                <input
+                  className="c19"
+                  disabled={false}
+                  onBlur={[Function]}
+                  onChange={[Function]}
+                  onClick={[Function]}
+                  onFocus={[Function]}
+                  onKeyDown={[Function]}
+                  placeholder="Don't filter"
+                  readOnly={false}
+                  type="text"
+                  value=""
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          className="c0 c20"
+        >
+          <label
+            className="c16"
+            color="black"
+            fontSize={1}
+            fontWeight="bold"
+            width="100%"
+          >
+            Job created before
+          </label>
+          <div
+            className="c18"
+          >
+            <div
+              className="react-datepicker-wrapper"
+            >
+              <div
+                className="react-datepicker__input-container"
+              >
+                <input
+                  className="c19"
+                  disabled={false}
+                  onBlur={[Function]}
+                  onChange={[Function]}
+                  onClick={[Function]}
+                  onFocus={[Function]}
+                  onKeyDown={[Function]}
+                  placeholder="Don't filter"
+                  readOnly={false}
+                  type="text"
+                  value=""
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      className="c0 c23"
+    >
+      <div
+        className="c3"
+      >
+        <label
+          className="c24"
+          color="black"
+          fontSize={1}
+          fontWeight="bold"
+          width="auto"
+        >
+          <div
+            className="c0 c25"
+            disabled={false}
+          >
+            <input
+              checked={false}
+              className="c26"
+              disabled={false}
+              onChange={[Function]}
+              onClick={[Function]}
+              size={27}
+              type="checkbox"
+            />
+            <svg
+              className="c27"
+              cursor="inherit"
+              data-name="checked"
+              fill="currentcolor"
+              height={27}
+              viewBox="0 0 24 24"
+              width={27}
+            >
+              <path
+                d="M6 3h12c1.7 0 3 1.3 3 3v12c0 1.7-1.3 3-3 3H6c-1.7 0-3-1.3-3-3V6c0-1.7 1.3-3 3-3zm4 14l9-8.6L17.6 7 10 14.3l-3.6-3.5L5 12.2l5 4.8z"
+              />
+            </svg>
+            <svg
+              className="c27"
+              cursor="inherit"
+              data-name="empty"
+              fill="currentcolor"
+              height={27}
+              viewBox="0 0 24 24"
+              width={27}
+            >
+              <path
+                d="M6 5c-.6 0-1 .4-1 1v12c0 .6.4 1 1 1h12c.6 0 1-.4 1-1V6c0-.6-.4-1-1-1H6zm0-2h12c1.7 0 3 1.3 3 3v12c0 1.7-1.3 3-3 3H6c-1.7 0-3-1.3-3-3V6c0-1.7 1.3-3 3-3z"
+              />
+            </svg>
+          </div>
+          <span
+            className="c0 "
+          >
+            Select all
+          </span>
+        </label>
+        <div
+          className="c0 c4"
+        />
+        <div
+          className="c0 "
+        >
+          <div
+            className="c6"
+            data-tag="dropdown"
+          >
+            <span
+              className="c7"
+              cursor="pointer"
+              onClick={[Function]}
+            >
+              <svg
+                className="c28"
+                clipRule="evenodd"
+                cursor="pointer"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height=".7em"
+                mr=".4em"
+                rotation={0}
+                viewBox="0 0 18 24"
+                width=".7em"
+              >
+                <path
+                  d="M9 24l9-10h-6V0H6v14h-6l9 10z"
+                />
+              </svg>
+              Sort by: 
+              Created at
+              <svg
+                className="c9"
+                clipRule="evenodd"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height=".7em"
+                ml=".7em"
+                viewBox="0 0 24 20"
+                width=".7em"
+              >
+                <path
+                  d="M11.998 19.999c-.598 0-1.028-.61-1.028-.61L.365 2.268C-.453 1.02.153 0 1.703 0h20.593c1.554 0 2.156 1.02 1.34 2.27l-10.61 17.121c0-.002-.43.608-1.028.608z"
+                  fillRule="nonzero"
+                />
+              </svg>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      className="c0 c29"
+      fontSize="large"
+    >
+      <div
+        className="c30"
+        onClick={[Function]}
+        width="100%"
+      >
+        <div
+          className="c0 c31"
+        >
+          <img
+            alt=""
+            onErrorCapture={[Function]}
+            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            style={
+              Object {
+                "height": "36px",
+                "objectFit": "contain",
+                "width": "36px",
+              }
+            }
+          />
+        </div>
+        <div
+          className="c0 c32"
+          width="auto"
+        >
+          <div
+            className="c33"
+            cursor="pointer"
+            fontSize={20}
+            onClick={[Function]}
+            width={1}
+          >
+            <div
+              className="c7"
+              cursor="pointer"
+            >
+              Thomas
+            </div>
+          </div>
+          <div
+            className="c34"
+          >
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c36"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                mr="5px"
+                viewBox="0 0 24 24"
+                width="10px"
+              >
+                <path
+                  d="M21 24H3a3 3 0 01-3-3V3a3 3 0 013-3h18a3 3 0 013 3v18a3.001 3.001 0 01-3 3zm-10.409-6v-1.88H8.722V7.93h1.869V6H4.978v1.93h1.869v8.19H4.978V18h5.613zm4.419 0c1.077-.001 1.867-.244 2.375-.731.507-.487.9-1.183 1.177-2.087.278-.905.416-1.955.416-3.151 0-1.263-.131-2.356-.393-3.278-.263-.923-.656-1.613-1.178-2.069C16.884 6.228 16.085 6 15.01 6h-2.337v12h2.337zm.087-9.851c.792.001 1.021.068 1.368.4.347.332.454.524.64 1.142.186.619.224.975.224 2.124 0 1.175-.032 1.546-.191 2.214-.158.667-.265.877-.635 1.254-.371.376-.62.452-1.488.452h-.686V8.149h.768z"
+                />
+              </svg>
+              
+               v
+              
+            </div>
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c37"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                ml="4px"
+                mr="2px"
+                viewBox="0 0 21 24"
+                width="10px"
+              >
+                <path
+                  d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M18.411 7.408l1.65-1.65-1.819-1.818-1.65 1.65a10.24 10.24 0 00-6.306-2.161C4.606 3.429 0 8.034 0 13.715 0 19.395 4.605 24 10.286 24c5.68 0 10.286-4.605 10.286-10.285a10.24 10.24 0 00-2.16-6.307zm-2.443 11.989a7.983 7.983 0 01-5.682 2.353 7.983 7.983 0 01-5.682-2.353 7.983 7.983 0 01-2.354-5.682c0-2.147.836-4.165 2.354-5.683a7.983 7.983 0 015.682-2.353c2.146 0 4.164.836 5.682 2.353a7.983 7.983 0 012.354 5.683 7.983 7.983 0 01-2.354 5.682z"
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M6.857 0h6.858v2.572H6.857z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+              </svg>
+              Started 
+              28/08/2018
+            </div>
+          </div>
+        </div>
+        <div
+          className="c0 c4"
+        />
+        <div
+          className="c38"
+        >
+          <div
+            className="c39"
+            width="110px"
+          >
+            <svg
+              className="c40"
+              clipRule="evenodd"
+              color="#c00"
+              cursor="inherit"
+              fill="currentcolor"
+              fillRule="evenodd"
+              height={24}
+              isExpired={false}
+              mr="8px"
+              state="FAILURE"
+              viewBox="0 0 25 24"
+              width={24}
+            >
+              <path
+                d="M24.002 2.001L22 .001 12 9.6l-10-9.6-2 2 9.6 10L.001 22l2 2 10-9.6 10 9.6 2-2-9.6-10 9.6-9.999z"
+                fillRule="nonzero"
+              />
+            </svg>
+            <div
+              className="c41"
+            >
+              Failure
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        className="c30"
+        onClick={[Function]}
+        width="100%"
+      >
+        <div
+          className="c0 c31"
+        >
+          <img
+            alt=""
+            onErrorCapture={[Function]}
+            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            style={
+              Object {
+                "height": "36px",
+                "objectFit": "contain",
+                "width": "36px",
+              }
+            }
+          />
+        </div>
+        <div
+          className="c0 c32"
+          width="auto"
+        >
+          <div
+            className="c33"
+            cursor="pointer"
+            fontSize={20}
+            onClick={[Function]}
+            width={1}
+          >
+            <div
+              className="c7"
+              cursor="pointer"
+            >
+              Johnny
+            </div>
+          </div>
+          <div
+            className="c34"
+          >
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c36"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                mr="5px"
+                viewBox="0 0 24 24"
+                width="10px"
+              >
+                <path
+                  d="M21 24H3a3 3 0 01-3-3V3a3 3 0 013-3h18a3 3 0 013 3v18a3.001 3.001 0 01-3 3zm-10.409-6v-1.88H8.722V7.93h1.869V6H4.978v1.93h1.869v8.19H4.978V18h5.613zm4.419 0c1.077-.001 1.867-.244 2.375-.731.507-.487.9-1.183 1.177-2.087.278-.905.416-1.955.416-3.151 0-1.263-.131-2.356-.393-3.278-.263-.923-.656-1.613-1.178-2.069C16.884 6.228 16.085 6 15.01 6h-2.337v12h2.337zm.087-9.851c.792.001 1.021.068 1.368.4.347.332.454.524.64 1.142.186.619.224.975.224 2.124 0 1.175-.032 1.546-.191 2.214-.158.667-.265.877-.635 1.254-.371.376-.62.452-1.488.452h-.686V8.149h.768z"
+                />
+              </svg>
+              
+               v
+              
+            </div>
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c37"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                ml="4px"
+                mr="2px"
+                viewBox="0 0 21 24"
+                width="10px"
+              >
+                <path
+                  d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M18.411 7.408l1.65-1.65-1.819-1.818-1.65 1.65a10.24 10.24 0 00-6.306-2.161C4.606 3.429 0 8.034 0 13.715 0 19.395 4.605 24 10.286 24c5.68 0 10.286-4.605 10.286-10.285a10.24 10.24 0 00-2.16-6.307zm-2.443 11.989a7.983 7.983 0 01-5.682 2.353 7.983 7.983 0 01-5.682-2.353 7.983 7.983 0 01-2.354-5.682c0-2.147.836-4.165 2.354-5.683a7.983 7.983 0 015.682-2.353c2.146 0 4.164.836 5.682 2.353a7.983 7.983 0 012.354 5.683 7.983 7.983 0 01-2.354 5.682z"
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M6.857 0h6.858v2.572H6.857z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+              </svg>
+              Started 
+              29/08/2018
+            </div>
+          </div>
+        </div>
+        <div
+          className="c0 c4"
+        />
+        <div
+          className="c38"
+        >
+          <div
+            className="c39"
+            width="110px"
+          >
+            <svg
+              className="c40"
+              clipRule="evenodd"
+              color="#c00"
+              cursor="inherit"
+              fill="currentcolor"
+              fillRule="evenodd"
+              height={24}
+              isExpired={false}
+              mr="8px"
+              state="FAILURE"
+              viewBox="0 0 25 24"
+              width={24}
+            >
+              <path
+                d="M24.002 2.001L22 .001 12 9.6l-10-9.6-2 2 9.6 10L.001 22l2 2 10-9.6 10 9.6 2-2-9.6-10 9.6-9.999z"
+                fillRule="nonzero"
+              />
+            </svg>
+            <div
+              className="c41"
+            >
+              Failure
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        className="c30"
+        onClick={[Function]}
+        width="100%"
+      >
+        <div
+          className="c0 c31"
+        >
+          <img
+            alt=""
+            onErrorCapture={[Function]}
+            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            style={
+              Object {
+                "height": "36px",
+                "objectFit": "contain",
+                "width": "36px",
+              }
+            }
+          />
+        </div>
+        <div
+          className="c0 c32"
+          width="auto"
+        >
+          <div
+            className="c33"
+            cursor="pointer"
+            fontSize={20}
+            onClick={[Function]}
+            width={1}
+          >
+            <div
+              className="c7"
+              cursor="pointer"
+            >
+              Fred
+            </div>
+          </div>
+          <div
+            className="c34"
+          >
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c36"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                mr="5px"
+                viewBox="0 0 24 24"
+                width="10px"
+              >
+                <path
+                  d="M21 24H3a3 3 0 01-3-3V3a3 3 0 013-3h18a3 3 0 013 3v18a3.001 3.001 0 01-3 3zm-10.409-6v-1.88H8.722V7.93h1.869V6H4.978v1.93h1.869v8.19H4.978V18h5.613zm4.419 0c1.077-.001 1.867-.244 2.375-.731.507-.487.9-1.183 1.177-2.087.278-.905.416-1.955.416-3.151 0-1.263-.131-2.356-.393-3.278-.263-.923-.656-1.613-1.178-2.069C16.884 6.228 16.085 6 15.01 6h-2.337v12h2.337zm.087-9.851c.792.001 1.021.068 1.368.4.347.332.454.524.64 1.142.186.619.224.975.224 2.124 0 1.175-.032 1.546-.191 2.214-.158.667-.265.877-.635 1.254-.371.376-.62.452-1.488.452h-.686V8.149h.768z"
+                />
+              </svg>
+              
+               v
+              
+            </div>
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c37"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                ml="4px"
+                mr="2px"
+                viewBox="0 0 21 24"
+                width="10px"
+              >
+                <path
+                  d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M18.411 7.408l1.65-1.65-1.819-1.818-1.65 1.65a10.24 10.24 0 00-6.306-2.161C4.606 3.429 0 8.034 0 13.715 0 19.395 4.605 24 10.286 24c5.68 0 10.286-4.605 10.286-10.285a10.24 10.24 0 00-2.16-6.307zm-2.443 11.989a7.983 7.983 0 01-5.682 2.353 7.983 7.983 0 01-5.682-2.353 7.983 7.983 0 01-2.354-5.682c0-2.147.836-4.165 2.354-5.683a7.983 7.983 0 015.682-2.353c2.146 0 4.164.836 5.682 2.353a7.983 7.983 0 012.354 5.683 7.983 7.983 0 01-2.354 5.682z"
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M6.857 0h6.858v2.572H6.857z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+              </svg>
+              Started 
+              30/08/2018
+            </div>
+          </div>
+        </div>
+        <div
+          className="c0 c4"
+        />
+        <div
+          className="c38"
+        >
+          <div
+            className="c39"
+            width="110px"
+          >
+            <svg
+              className="c40"
+              clipRule="evenodd"
+              color="#c00"
+              cursor="inherit"
+              fill="currentcolor"
+              fillRule="evenodd"
+              height={24}
+              isExpired={false}
+              mr="8px"
+              state="FAILURE"
+              viewBox="0 0 25 24"
+              width={24}
+            >
+              <path
+                d="M24.002 2.001L22 .001 12 9.6l-10-9.6-2 2 9.6 10L.001 22l2 2 10-9.6 10 9.6 2-2-9.6-10 9.6-9.999z"
+                fillRule="nonzero"
+              />
+            </svg>
+            <div
+              className="c41"
+            >
+              Failure
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        className="c30"
+        onClick={[Function]}
+        width="100%"
+      >
+        <div
+          className="c0 c31"
+        >
+          <img
+            alt=""
+            onErrorCapture={[Function]}
+            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            style={
+              Object {
+                "height": "36px",
+                "objectFit": "contain",
+                "width": "36px",
+              }
+            }
+          />
+        </div>
+        <div
+          className="c0 c32"
+          width="auto"
+        >
+          <div
+            className="c33"
+            cursor="pointer"
+            fontSize={20}
+            onClick={[Function]}
+            width={1}
+          >
+            <div
+              className="c7"
+              cursor="pointer"
+            >
+              Nathan
+            </div>
+          </div>
+          <div
+            className="c34"
+          >
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c36"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                mr="5px"
+                viewBox="0 0 24 24"
+                width="10px"
+              >
+                <path
+                  d="M21 24H3a3 3 0 01-3-3V3a3 3 0 013-3h18a3 3 0 013 3v18a3.001 3.001 0 01-3 3zm-10.409-6v-1.88H8.722V7.93h1.869V6H4.978v1.93h1.869v8.19H4.978V18h5.613zm4.419 0c1.077-.001 1.867-.244 2.375-.731.507-.487.9-1.183 1.177-2.087.278-.905.416-1.955.416-3.151 0-1.263-.131-2.356-.393-3.278-.263-.923-.656-1.613-1.178-2.069C16.884 6.228 16.085 6 15.01 6h-2.337v12h2.337zm.087-9.851c.792.001 1.021.068 1.368.4.347.332.454.524.64 1.142.186.619.224.975.224 2.124 0 1.175-.032 1.546-.191 2.214-.158.667-.265.877-.635 1.254-.371.376-.62.452-1.488.452h-.686V8.149h.768z"
+                />
+              </svg>
+              
+               v
+              
+            </div>
+            <div
+              className="c35"
+              color="gray"
+              cursor="inherit"
+              fontSize={0}
+            >
+              <svg
+                className="c37"
+                clipRule="evenodd"
+                color="gray"
+                cursor="inherit"
+                fill="currentcolor"
+                fillRule="evenodd"
+                height="10px"
+                ml="4px"
+                mr="2px"
+                viewBox="0 0 21 24"
+                width="10px"
+              >
+                <path
+                  d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M18.411 7.408l1.65-1.65-1.819-1.818-1.65 1.65a10.24 10.24 0 00-6.306-2.161C4.606 3.429 0 8.034 0 13.715 0 19.395 4.605 24 10.286 24c5.68 0 10.286-4.605 10.286-10.285a10.24 10.24 0 00-2.16-6.307zm-2.443 11.989a7.983 7.983 0 01-5.682 2.353 7.983 7.983 0 01-5.682-2.353 7.983 7.983 0 01-2.354-5.682c0-2.147.836-4.165 2.354-5.683a7.983 7.983 0 015.682-2.353c2.146 0 4.164.836 5.682 2.353a7.983 7.983 0 012.354 5.683 7.983 7.983 0 01-2.354 5.682z"
+                  fillRule="nonzero"
+                />
+                <path
+                  d="M6.857 0h6.858v2.572H6.857z"
+                  fill={null}
+                  fillRule="nonzero"
+                />
+              </svg>
+              Started 
+              03/09/2018
+            </div>
+          </div>
+        </div>
+        <div
+          className="c0 c4"
+        />
+        <div
+          className="c38"
+        >
+          <div
+            className="c39"
+            width="110px"
+          >
+            <svg
+              className="c42"
+              clipRule="evenodd"
+              color="#00C05A"
+              cursor="inherit"
+              fill="currentcolor"
+              fillRule="evenodd"
+              height={24}
+              isExpired={false}
+              mr="8px"
+              state="SUCCESS"
+              viewBox="0 0 25 19"
+              width={24}
+            >
+              <path
+                d="M8 15L2 8.981l-2 2.02L8 19 24.001 2l-2.002-2L8 15z"
+                fillRule="nonzero"
+              />
+            </svg>
+            <div
+              className="c41"
+            >
+              Success
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;

@@ -1,18 +1,18 @@
-import { Analysis } from "Applications";
-import { File } from "Files";
-import { Notification } from "Notifications"
+import {JobWithStatus} from "Applications";
+import {File} from "Files";
+import {Notification} from "Notifications"
 
-export interface DashboardProps extends DashboardOperations, DashboardStateProps { }
+export type DashboardProps = DashboardOperations & DashboardStateProps;
 
 export interface DashboardStateProps {
     favoriteFiles: File[]
-    recentFiles: File[]
-    recentAnalyses: Analysis[]
+    recentAnalyses: JobWithStatus[]
     notifications: Notification[]
     favoriteLoading: boolean
     analysesLoading: boolean
-    recentLoading: boolean
     favoriteFilesLength?: number
+    favoritesError?: string;
+    recentJobsError?: string;
 }
 
 export interface DashboardOperations {
@@ -21,7 +21,6 @@ export interface DashboardOperations {
     setAllLoading: (loading: boolean) => void
     fetchUsage: () => void
     fetchFavorites: () => void
-    fetchRecentFiles: () => void
     fetchRecentAnalyses: () => void
     notificationRead: (id: number) => void
     readAll: () => void

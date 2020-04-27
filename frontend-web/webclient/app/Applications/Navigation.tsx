@@ -3,7 +3,7 @@ import {Link} from "react-router-dom";
 import {Flex, ToggleBadge} from "ui-components";
 import {Card} from "ui-components/Card";
 
-export const Tabs: React.FunctionComponent<{}> = (props) => (
+export const Tabs: React.FunctionComponent = (props) => (
     <Card>
         <Flex>
             {props.children}
@@ -31,7 +31,7 @@ export const Tab: React.FunctionComponent<TabProps> = (props): JSX.Element => (
     </Link>
 );
 
-export const Navigation = (props: { selected?: Pages }) => (
+export const Navigation = (props: {selected?: Pages}) => (
     <Tabs>
         <Tab linkTo="/applications" selected={props.selected === Pages.BROWSE}>Browse</Tab>
         <Tab linkTo="/applications/installed" selected={props.selected === Pages.INSTALLED}>My Applications</Tab>

@@ -1,19 +1,9 @@
 import {
-    filepathQuery,
     getFilenameFromPath,
-    replaceHomeFolder,
-    sizeToString,
-    toFileText,
+    replaceHomeOrProjectFolder,
+    sizeToString
 } from "../../app/Utilities/FileUtilities";
-import { mockFilesSensitivityConfidential } from "../mock/Files";
-
-describe("To file text", () => {
-    test("Single file", () => {
-        const firstFile = mockFilesSensitivityConfidential.items[0];
-        expect(toFileText([firstFile])).toBe("1 file selected");
-    });
-});
-
+import {Client} from "../../app/Authentication/HttpClientInstance";
 
 describe("File size to string", () => {
     test("0 bytes to string", () =>
@@ -63,30 +53,18 @@ describe("Get filename from path", () => {
     });
 });
 
-describe("Replace homefolder", () => {
-
-    const mockHomeFolder = "/home/user@mail.co.uk/";
-
+describe("Replace homefolder and project folder", () => {
     test("Replace homefolder", () =>
-        expect(replaceHomeFolder("/home/user@mail.co.uk/", mockHomeFolder)).toBe("Home/")
+        expect(replaceHomeOrProjectFolder("/home/test@test.dk/", Client)).toBe("Home/")
     );
 
     test("Replace homefolder subfolder", () =>
-        expect(replaceHomeFolder("/home/user@mail.co.uk/subFolder/withSomething", mockHomeFolder))
-         .toBe("Home/subFolder/withSomething")
+        expect(replaceHomeOrProjectFolder("/home/test@test.dk/subFolder/withSomething", Client))
+            .toBe("Home/subFolder/withSomething")
     );
 
     const noHomeFolder = "NotHomeFolder/subfolder/";
     test("Replace homefolder, no homefolder", () =>
-        expect(replaceHomeFolder(noHomeFolder, mockHomeFolder)).toBe(`${noHomeFolder}`)
-    );
-});
-
-
-describe("Filepath query", () => {
-    test("Defaults", () =>
-        expect(filepathQuery("/path", 0, 25)).toBe(
-            "files?path=%2Fpath&itemsPerPage=25&page=0&order=ASCENDING&sortBy=path"
-        )
+        expect(replaceHomeOrProjectFolder(noHomeFolder, Client)).toBe(`${noHomeFolder}`)
     );
 });

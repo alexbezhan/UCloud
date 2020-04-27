@@ -1,3 +1,4 @@
+import {AppToolLogo} from "Applications/AppToolLogo";
 import * as React from "react";
 import styled, {css} from "styled-components";
 import {Absolute, Flex, Icon, RatingBadge, Text} from "ui-components";
@@ -9,7 +10,6 @@ import {EllipsedText} from "ui-components/Text";
 import theme from "ui-components/theme";
 import {WithAllAppTags, WithAppMetadata} from ".";
 import * as Pages from "./Pages";
-import {AppToolLogo} from "Applications/AppToolLogo";
 
 interface ApplicationCardProps {
     onFavorite?: (name: string, version: string) => void;
@@ -40,7 +40,7 @@ const AppCardBase = styled(Link)`
     }
 
     & > ${EllipsedText} {
-        color: ${(props) => props.theme.colors.gray};
+        color: var(--gray, #f00);
         flex-grow: 1;
     }
 
@@ -56,13 +56,13 @@ export const ApplicationCardContainer = styled.div`
     flex-direction: column;
 
     & > ${AppCardBase}:first-child {
-        border: 1px solid ${props => props.theme.colors.borderGray};
+        border: 1px solid var(--borderGray, #f00);
         border-top-left-radius: 5px;
         border-top-right-radius: 5px;
     }
 
     & > ${AppCardBase} {
-        border: 1px solid ${props => props.theme.colors.borderGray};
+        border: 1px solid var(--borderGray, #f00);
         border-top: 0;
     }
 
@@ -111,7 +111,7 @@ export const SlimApplicationCard: React.FunctionComponent<ApplicationCardProps> 
                     unwrapDisallowed
                 />
             </EllipsedText>
-            <div><Icon name="chevronDown" rotation={-90} /></div>
+            <Flex><Icon name="chevronDown" size={"18px"} rotation={-90} /></Flex>
         </AppCardBase>
     );
 };
@@ -125,19 +125,18 @@ export const AppCard = styled(Link)`
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    border-radius: ${props => props.theme.radius};
+    border-radius: ${theme.radius};
     position: relative;
     overflow: hidden;
-    box-shadow: ${p => p.theme.shadows["sm"]};
-    //box-shadow: inset 0 0 0 1px #c9d3df ; //inset border does not work on chrome with will-change
+    box-shadow: ${theme.shadows.sm};
 
-    transition: transform ${p => `${p.theme.timingFunctions.easeIn} ${p.theme.duration.fastest} ${p.theme.transitionDelays.xsmall}`};
+    transition: transform ${theme.timingFunctions.easeIn} ${theme.duration.fastest} ${theme.transitionDelays.xsmall};
     will-change: transform;
 
     &:hover {
-        transition: transform ${p => `${theme.timingFunctions.easeOut} ${theme.duration.fastest} ${theme.transitionDelays.xsmall}`};
+        transition: transform ${theme.timingFunctions.easeOut} ${theme.duration.fastest} ${theme.transitionDelays.xsmall};
+        box-shadow: ${theme.shadows.md};
         transform: scale(1.02);
-        box-shadow: ${p => p.theme.shadows["md"]};
     }
 
     // Background
@@ -145,16 +144,13 @@ export const AppCard = styled(Link)`
         pointer-events: none;
         content: "";
         position: absolute;
-        width: 104%;
-        height: 280%;
+        width: 100%;
+        height: 100%;
         top: 0;
         left: 0;
         z-index: -1;
-        background-color: ${props => props.theme.colors.appCard};
-        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSI1MCI+CiAgPGcgdHJhbnNmb3JtPSJzY2FsZSgwLjUpIj4KPHBhdGggZD0iTTI4IDY2TDAgNTBMMCAxNkwyOCAwTDU2IDE2TDU2IDUwTDI4IDY2TDI4IDEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYzlkM2RmNDQiIHN0cm9rZS13aWR0aD0iMS41Ij48L3BhdGg+CjxwYXRoIGQ9Ik0yOCAwTDI4IDM0TDAgNTBMMCA4NEwyOCAxMDBMNTYgODRMNTYgNTBMMjggMzQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2M5ZDNkZjQ0IiBzdHJva2Utd2lkdGg9IjQiPjwvcGF0aD4KICA8L2c+Cjwvc3ZnPg==");
-        background-repeat: repeat;
-        transform: rotate(15deg) translate(0,-60%);
-        transform-origin: 0 0;
+        background-color: var(--appCard, #f00);
+        background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIHZpZXdCb3g9IjAgMCBhdXRvIGF1dG8iIHg9IjAiIHk9IjAiIGlkPSJwMSIgd2lkdGg9IjU2IiBwYXR0ZXJuVHJhbnNmb3JtPSJyb3RhdGUoMTUpIHNjYWxlKDAuNSAwLjUpIiBoZWlnaHQ9IjEwMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTI4IDY2TDAgNTBMMCAxNkwyOCAwTDU2IDE2TDU2IDUwTDI4IDY2TDI4IDEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYzlkM2RmNDQiIHN0cm9rZS13aWR0aD0iMS41Ij48L3BhdGg+PHBhdGggZD0iTTI4IDBMMjggMzRMMCA1MEwwIDg0TDI4IDEwMEw1NiA4NEw1NiA1MEwyOCAzNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYzlkM2RmNDQiIHN0cm9rZS13aWR0aD0iNCI+PC9wYXRoPjwvcGF0dGVybj48L2RlZnM+PHJlY3QgZmlsbD0idXJsKCNwMSkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjwvcmVjdD48L3N2Zz4=");
     }
 
     &:after {
@@ -165,9 +161,9 @@ export const AppCard = styled(Link)`
         top: 0;
         left: 0;
         z-index: 1;
-        border: 2px solid ${props => props.theme.colors.textHighlight};
+        border: 2px solid var(--textHighlight, #f00);
         opacity: 0;
-        border-radius: ${props => props.theme.radius};
+        border-radius: ${theme.radius};
         pointer-events: none; //needed for star-badge
         will-change: opacity;
     }
@@ -177,7 +173,7 @@ export const AppCard = styled(Link)`
     }
 `;
 
-export const Tag = ({label}: {label: string}) => (
+export const Tag = ({label}: {label: string}): JSX.Element => (
     <RatingBadge mr="3px" bg="darkGray"><Heading.h6>{label}</Heading.h6></RatingBadge>
 );
 
@@ -185,24 +181,7 @@ const appColors = theme.appColors;
 
 const nColors = appColors.length;
 
-const bgGradients = appColors.map(x => ({color1: x[0], color2: x[2]}));
-
-const AppBg_triangle = ({color1, color2}: {color1: string, color2: string}) => (
-    <svg height="128px" viewBox="0 0 72 128">
-        <path d="M0,128h72v-72z" fill={`url(#appbg_svg___${color1}_${color2}`} />
-        <defs>
-            <linearGradient
-                id={`appbg_svg___${color1}_${color2}`}
-                x1={72} x2={0} y1={128 - 72} y2={128}
-                // x1={21} x2={72} y1={77} y2={128}
-                gradientUnits="userSpaceOnUse"
-            >
-                <stop offset={0} stopColor={color1} />
-                <stop offset={1} stopColor={color2} />
-            </linearGradient>
-        </defs>
-    </svg>
-);
+const bgGradients = appColors.map(x => (`linear-gradient(0deg, ${x[0]}, ${x[2]})`));
 
 interface AppLogoRawProps {
     color1Offset: number;
@@ -212,7 +191,7 @@ interface AppLogoRawProps {
     size: string;
 }
 
-export const AppLogoRaw = ({rot, color1Offset, color2Offset, appC, size}: AppLogoRawProps) => {
+export const AppLogoRaw = ({rot, color1Offset, color2Offset, appC, size}: AppLogoRawProps): JSX.Element => {
     const c1 = [color1Offset % 3, (color1Offset + 1) % 3, (color1Offset + 2) % 3];
     const c2 = [color2Offset % 3, (color2Offset + 1) % 3, (color2Offset + 2) % 3];
     const centerC = nColors - 1;
@@ -228,7 +207,8 @@ export const AppLogoRaw = ({rot, color1Offset, color2Offset, appC, size}: AppLog
 
     return (
         <svg
-            width={size} height={size}
+            width={size}
+            height={size}
             viewBox={`-1 -${s32} 2 ${2 * s32}`}
             fillRule="evenodd"
             clipRule="evenodd"
@@ -251,7 +231,7 @@ export const AppLogoRaw = ({rot, color1Offset, color2Offset, appC, size}: AppLog
     );
 };
 
-export const AppLogo = ({size, hash}: {size: string, hash: number}) => {
+export const AppLogo = ({size, hash}: {size: string, hash: number}): JSX.Element => {
     const i1 = (hash >>> 30) & 3;
     const i2 = (hash >>> 20) & 3;
     const rot = [0, 15, 30];
@@ -303,28 +283,30 @@ export const ApplicationCard: React.FunctionComponent<ApplicationCardProps> = ({
     isFavorite,
     linkToRun
 }: ApplicationCardProps) => {
-    const hash = hashF(app.metadata.title);
+    const hash = hashF(app.metadata.name);
     const {metadata} = app;
     const appC = appColor(hash);
     return (
-        <AppCard to={linkToRun ? Pages.runApplication(metadata) : Pages.viewApplication(metadata)} hoverColor={null}>
-            <AbsoluteNoPointerEvents right={0} top={0} cursor="inherit">
-                <AppBg_triangle {...bgGradients[appC]} />
-            </AbsoluteNoPointerEvents>
-            {(!onFavorite && !isFavorite) ? null :
+        <AppCard to={linkToRun ? Pages.runApplication(metadata) : Pages.viewApplication(metadata)}>
+            <AbsoluteNoPointerEvents right={0} top={0} 
+                cursor="inherit"
+                height="100%"
+                width="10px" 
+                background={bgGradients[appC]} />
+            {(!onFavorite && !isFavorite) ? null : (
                 <AppRibbonContainer
                     cursor="inherit"
-                    right={0}
+                    right={"12px"}
                     top={0}
                     favorite={isFavorite}
                     onClick={onFavoriteClick}
                 >
-                    <Icon name={"starRibbon"} color="red" size={48} />
+                    <Icon name="starRibbon" color="red" size={48} />
                 </AppRibbonContainer>
-            }
-            <Flex flexDirection={"row"} alignItems={"flex-start"} zIndex={1}>
-                <AppToolLogo name={app.metadata.name} type={"APPLICATION"} size={"48px"} />
-                <Flex flexDirection={"column"} ml="10px">
+            )}
+            <Flex flexDirection="row" alignItems="flex-start" zIndex={1}>
+                <AppToolLogo name={app.metadata.name} type="APPLICATION" size="48px" />
+                <Flex flexDirection="column" ml="10px">
                     <Flex>
                         <EllipsedText fontSize="20px" maxWidth="220px">{metadata.title}</EllipsedText>
                         <Text ml="0.4em" mt="3px" color="gray">v{metadata.version}</Text>
@@ -335,99 +317,53 @@ export const ApplicationCard: React.FunctionComponent<ApplicationCardProps> = ({
                 </Flex>
             </Flex>
             <Box mt="auto" />
-            <Flex flexDirection={"row"} alignItems={"flex-start"} zIndex={1}>
+            <Flex flexDirection="row" alignItems="flex-start" zIndex={1}>
                 {buildTags(app.tags).map((tag, idx) => <Tag label={tag} key={idx} />)}
             </Flex>
         </AppCard>
     );
 
     function onFavoriteClick(e: React.MouseEvent<HTMLDivElement, MouseEvent>): void {
-        if (!!onFavorite) {
-            e.preventDefault();
-            onFavorite(metadata.name, metadata.version);
-        }
+        e.preventDefault();
+        onFavorite?.(metadata.name, metadata.version);
     }
 };
 
-export const CardToolContainer = styled(Box) <{appImage: string}>`
-    padding-bottom: 10px;
-    padding-bottom: 10px;
-    padding-left: 210px;
-    padding-right: 10px;
-    width: 100%;
-    height: 200px;
+export const CardToolContainer = styled(Box)`
     display: grid;
-    gridAutoFlow: column;
     flex-direction: column;
     align-items: flex-start;
-    border-radius: 5px;//${props => props.theme.radius};
+    border-radius: 5px;
     overflow: hidden;
-    box-shadow: ${p => p.theme.shadows["sm"]};
-
-    will-change: transform;
-
-    // Background
-    &:before {
-        pointer-events: none;
-        content: "";
-        position: absolute;
-        width: 120%;
-        height: 280%;
-        top: 0;
-        left: 0;
-        z-index: -1;
-        background-color: ${props => props.theme.colors.appCard};
-        background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSI1MCI+CiAgPGcgdHJhbnNmb3JtPSJzY2FsZSgwLjUpIj4KPHBhdGggZD0iTTI4IDY2TDAgNTBMMCAxNkwyOCAwTDU2IDE2TDU2IDUwTDI4IDY2TDI4IDEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYzlkM2RmNDQiIHN0cm9rZS13aWR0aD0iMS41Ij48L3BhdGg+CjxwYXRoIGQ9Ik0yOCAwTDI4IDM0TDAgNTBMMCA4NEwyOCAxMDBMNTYgODRMNTYgNTBMMjggMzQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2M5ZDNkZjQ0IiBzdHJva2Utd2lkdGg9IjQiPjwvcGF0aD4KICA8L2c+Cjwvc3ZnPg==");
-        background-repeat: repeat;
-        transform: rotate(15deg) translate(0,-65%);
-        transform-origin: 0 0;
-    }
-
-    &:after {
-        content: "";
-        position: absolute;
-        width: 200px;
-        height: 100%;
-        top: 0;
-        left: 0;
-        z-index: 1;
-        background-image: url(${props => props.appImage});
-        background-size: contain;
-        background-position: center;
-        border-radius-image: ${props => props.theme.radius};
-        pointer-events: none; //needed for star-badge
-    }
-
+    width: 100%;
 `;
 
-export const SmallCard = styled(Link) <{color1: string, color2: string, color3: string}>`
+export const SmallCard = styled(Link) <{color1: string; color2: string; color3: string}>`
     display: flex;
     padding: 10px;
     width: 150px;
     height: 50px;
-
-    font-size: ${p => p.theme.fontSizes[1]};
+    border-radius: 5px;
+    font-size: ${theme.fontSizes[1]};
     text-align: center;
     align-items: center;
     justify-content: center;
     background-color: ${p => p.color2};
-    // background: linear-gradient(180deg, ${p => `${p.color1}, ${p.color3}`});
-    // background: radial-gradient(ellipse at bottom left, ${p => `${p.color3}, ${p.color1}`});
     border-radius: 5px
 
-    box-shadow: ${p => p.theme.shadows["sm"]};
+    box-shadow: ${theme.shadows.sm};
 
-    transition: transform ${p => `${p.theme.timingFunctions.easeIn} ${p.theme.duration.fastest} ${p.theme.transitionDelays.xsmall}`};
+    transition: transform ${theme.timingFunctions.easeIn} ${theme.duration.fastest} ${theme.transitionDelays.xsmall};
     will-change: transform;
 
     &:hover {
-        transition: transform ${p => `${p.theme.timingFunctions.easeOut} ${p.theme.duration.fastest} ${p.theme.transitionDelays.xsmall}`};
-        transform: scale(1.02);
-        box-shadow: ${p => p.theme.shadows["md"]};
-        color: ${p => p.theme.colors.white};
+        transition: transform ${theme.timingFunctions.easeOut} ${theme.duration.fastest} ${theme.transitionDelays.xsmall};
+        box-shadow: ${theme.shadows.md};
+        color: var(--white, #f00);
     }
 `;
 
+/* TODO: Limit is too arbitrary currently. Find better solution. */
 function buildTags(tags: string[]): string[] {
     let limit = 40;
     if (tags.join().length < limit && tags.length < 4) return tags;

@@ -1,13 +1,13 @@
 import styled from "styled-components";
 import {
   AlignItemsProps, color, ColorProps, height, HeightProps,
-  maxHeight, MaxHeightProps, maxWidth,
-  MaxWidthProps, minHeight, MinHeightProps,
-  minWidth, MinWidthProps, overflow, OverflowProps, space,
-  SpaceProps, textAlign, TextAlignProps,
-  TopProps, width, WidthProps, zIndex, ZIndexProps
+  maxHeight, MaxHeightProps, maxWidth, MaxWidthProps,
+  minHeight, MinHeightProps, minWidth, MinWidthProps,
+  overflow, OverflowProps, space, SpaceProps,
+  textAlign, TextAlignProps, TopProps, width, WidthProps,
+  zIndex, ZIndexProps, background, BackgroundProps
 } from "styled-system";
-import theme from "./theme";
+import {cursor} from "Utilities/StyledComponentsUtilities";
 import {Cursor} from "./Types";
 
 export type BoxProps =
@@ -15,6 +15,7 @@ export type BoxProps =
   WidthProps &
   MinWidthProps &
   ColorProps &
+  BackgroundProps &
   AlignItemsProps &
   TopProps &
   HeightProps &
@@ -36,14 +37,14 @@ interface FlexShrinkProps {
   flexShrink?: number;
 }
 
-const flexGrow = ({flexGrow}: FlexGrowProps) => flexGrow ? {flexGrow} : null;
-const flexShrink = ({flexShrink}: FlexShrinkProps) => flexShrink ? {flexShrink} : null;
+const useFlexGrow = ({flexGrow}: FlexGrowProps) => flexGrow ? {flexGrow} : null;
+const useFlexShrink = ({flexShrink}: FlexShrinkProps) => flexShrink ? {flexShrink} : null;
 
 const Box = styled.div<BoxProps>`
-  cursor: ${props => props.cursor};
-  ${zIndex};
-  ${flexGrow}
-  ${flexShrink}
+  ${cursor}
+  ${zIndex}
+  ${useFlexGrow}
+  ${useFlexShrink}
   ${space}
   ${width}
   ${minWidth}
@@ -54,13 +55,9 @@ const Box = styled.div<BoxProps>`
   ${color}
   ${textAlign}
   ${overflow}
+  ${background}
 `;
 
 Box.displayName = "Box";
-
-Box.defaultProps = {
-  theme,
-  cursor: "auto"
-};
 
 export default Box;

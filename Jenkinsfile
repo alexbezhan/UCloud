@@ -1,5 +1,5 @@
 properties([
-    buildDiscarder(logRotator(numToKeepStr: '20')),
+    buildDiscarder(logRotator(numToKeepStr: '30')),
 ])
 
 def label = "worker-${UUID.randomUUID().toString()}"
@@ -34,7 +34,30 @@ volumes: [
                 )
             }
 
-            sendAlert("Testing")
+            String frontendResult = runBuild("frontend-web/Jenkinsfile")
+            String backendResult = runBuild("backend/Jenkinsfile")
+            boolean hasError = false
+
+            if (frontendResult.startsWith("FAILURE")) {
+                sendAlert(frontendResult)
+                hasError = true
+            }
+
+            if (backendResult.startsWith("FAILURE")) {
+                sendAlert(backendResult)
+                hasError = true
+            }
+
+            junit '**/build/test-results/**/*.xml'
+            jacoco(
+                execPattern: '**/**.exec',
+                exclusionPattern: '**/src/test/**/*.class,**/AuthMockingKt.class,**/DatabaseSetupKt.class',
+                sourcePattern: '**/src/main/kotlin/**'
+            )
+
+            if (hasError) {
+                error('Job failed - message have been sent.')
+            }
         }
     }
 }
@@ -57,10 +80,5 @@ def sendAlert(String alertMessage) {
         [string(credentialsId: "slackToken", variable: "slackToken")]
     ) {
         slackSend(channel: "devalerts", message: alertMessage, tokenCredentialId: 'slackToken')
-        //slackSend(
-        //    baseUrl: 'https://sdu-escience.slack.com/services/hooks/jenkins-ci/',
-        //    message: alertMessage,
-        //    token: "$slackToken"
-        //)
     }
 }

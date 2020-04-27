@@ -1,8 +1,7 @@
 import {JobState, RunsSortBy} from "Applications/index";
 import {APICallParameters} from "Authentication/DataHook";
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {SortOrder} from "Files";
-import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {buildQueryString} from "Utilities/URIUtilities";
 import {b64EncodeUnicode} from "Utilities/XHRUtils";
@@ -87,6 +86,117 @@ export function createApplicationTag(props: CreateApplicationTagProps): APICallP
     };
 }
 
+export enum ApplicationAccessRight {
+    LAUNCH = "LAUNCH"
+}
+
+export enum LicenseServerAccessRight {
+    READ = "READ",
+    READ_WRITE = "READ_WRITE"
+}
+
+export enum UserEntityType {
+    USER = "USER",
+    PROJECT_GROUP = "PROJECT_GROUP"
+}
+
+export interface AccessEntity {
+    user: string | null;
+    project: string | null;
+    group: string | null;
+}
+
+export interface UserEntity {
+    id: string;
+    type: UserEntityType;
+}
+
+export interface ApplicationPermissionEntry {
+    entity: UserEntity;
+    permission: ApplicationAccessRight;
+}
+
+export interface UpdateApplicationPermissionEntry {
+    entity: UserEntity;
+    rights: ApplicationAccessRight;
+    revoke: boolean;
+}
+
+export interface UpdateApplicationPermissionProps {
+    applicationName: string;
+    changes: UpdateApplicationPermissionEntry[];
+}
+
+export interface UpdateLicenseServerPermissionEntry {
+    entity: AccessEntity;
+    rights: LicenseServerAccessRight;
+    revoke: boolean;
+}
+
+export interface UpdateLicenseServerPermissionProps {
+    serverId: string;
+    changes: UpdateLicenseServerPermissionEntry[];
+}
+
+export interface DeleteLicenseServerProps {
+    id: string;
+}
+
+export interface LicenseServerTagProps {
+    serverId: string;
+    tag: string;
+}
+
+export function addLicenseServerTag(props: LicenseServerTagProps): APICallParameters<LicenseServerTagProps> {
+    return {
+        reloadId: Math.random(),
+        method: "POST",
+        path: "/app/license/tag/add",
+        payload: props,
+        parameters: props
+    };
+}
+
+export function deleteLicenseServerTag(props: LicenseServerTagProps): APICallParameters<LicenseServerTagProps> {
+    return {
+        reloadId: Math.random(),
+        method: "POST",
+        path: "/app/license/tag/delete",
+        payload: props,
+        parameters: props
+    };
+}
+
+export function updateLicenseServerPermission(props: UpdateLicenseServerPermissionProps): APICallParameters<UpdateLicenseServerPermissionProps> {
+    return {
+        reloadId: Math.random(),
+        method: "POST",
+        path: "/app/license/updateAcl",
+        payload: props,
+        parameters: props
+    };
+}
+
+export function deleteLicenseServer(props: DeleteLicenseServerProps): APICallParameters<DeleteLicenseServerProps> {
+    return {
+        reloadId: Math.random(),
+        method: "DELETE",
+        path: "/app/license",
+        payload: props,
+        parameters: props
+    };
+}
+
+export function updateApplicationPermission(props: UpdateApplicationPermissionProps): APICallParameters<UpdateApplicationPermissionProps> {
+    return {
+        reloadId: Math.random(),
+        method: "POST",
+        path: "/hpc/apps/updateAcl",
+        payload: props,
+        parameters: props
+    };
+}
+
 export type DeleteApplicationTagProps = CreateApplicationTagProps;
 
 export function deleteApplicationTag(props: DeleteApplicationTagProps): APICallParameters<DeleteApplicationTagProps> {
@@ -107,10 +217,25 @@ export function machineTypes(): APICallParameters {
     };
 }
 
+export interface ListLicenseServersProps {
+    tags: string[];
+}
+
+export function licenseServers(props: ListLicenseServersProps): APICallParameters {
+    return {
+        reloadId: Math.random(),
+        method: "GET",
+        path: "/api/app/license/list",
+        payload: props,
+        parameters: props
+    };
+}
+
 export interface MachineReservation {
     name: string;
     cpu: number | null;
     memoryInGigs: number | null;
+    gpu: number | null;
 }
 
 export type AppOrTool = "APPLICATION" | "TOOL";
@@ -122,12 +247,12 @@ export interface UploadLogoProps {
 }
 
 export async function uploadLogo(props: UploadLogoProps): Promise<boolean> {
-    const token = await Cloud.receiveAccessTokenOrRefreshIt();
+    const token = await Client.receiveAccessTokenOrRefreshIt();
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         const request = new XMLHttpRequest();
         const context = props.type === "APPLICATION" ? "apps" : "tools";
-        request.open("POST", Cloud.computeURL("/api", `/hpc/${context}/uploadLogo`));
+        request.open("POST", Client.computeURL("/api", `/hpc/${context}/uploadLogo`));
         request.setRequestHeader("Authorization", `Bearer ${token}`);
         request.responseType = "text";
         request.setRequestHeader("Upload-Name", b64EncodeUnicode(props.name));
@@ -138,11 +263,12 @@ export async function uploadLogo(props: UploadLogoProps): Promise<boolean> {
                     try {
                         message = JSON.parse(request.responseText).why;
                     } catch (e) {
+                        // tslint:disable-next-line: no-console
                         console.log(e);
                         // Do nothing
                     }
 
-                    snackbarStore.addSnack({message, type: SnackType.Failure});
+                    snackbarStore.addFailure(message);
                     resolve(false);
                 } else {
                     resolve(true);
@@ -175,12 +301,12 @@ export interface UploadDocumentProps {
 }
 
 export async function uploadDocument(props: UploadDocumentProps): Promise<boolean> {
-    const token = await Cloud.receiveAccessTokenOrRefreshIt();
+    const token = await Client.receiveAccessTokenOrRefreshIt();
 
     return new Promise((resolve, reject) => {
         const request = new XMLHttpRequest();
         const context = props.type === "APPLICATION" ? "apps" : "tools";
-        request.open("PUT", Cloud.computeURL("/api", `/hpc/${context}`));
+        request.open("PUT", Client.computeURL("/api", `/hpc/${context}`));
         request.setRequestHeader("Authorization", `Bearer ${token}`);
         request.responseType = "text";
         request.onreadystatechange = () => {
@@ -194,7 +320,7 @@ export async function uploadDocument(props: UploadDocumentProps): Promise<boolea
                         console.log(request.responseText);
                         // Do nothing
                     }
-                    snackbarStore.addSnack({message, type: SnackType.Failure});
+                    snackbarStore.addFailure(message);
                     resolve(false);
                 } else {
                     resolve(true);

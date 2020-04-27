@@ -2,31 +2,31 @@ import styled from "styled-components";
 import {ButtonStyleProps, height, HeightProps, SizeProps, space, SpaceProps, width, WidthProps} from "styled-system";
 import theme, {Theme, ThemeColor} from "./theme";
 
-const size = (p: {size: string; theme: Theme;}) => {
+const size = (p: {size: string; theme: Theme}) => {
   switch (p.size) {
     case "tiny":
       return {
-        fontSize: `${p.theme.fontSizes[0]}px`,
+        fontSize: `${theme.fontSizes[0]}px`,
         padding: "5px 10px"
       };
     case "small":
       return {
-        fontSize: `${p.theme.fontSizes[0]}px`,
+        fontSize: `${theme.fontSizes[0]}px`,
         padding: "7px 12px"
       };
     case "medium":
       return {
-        fontSize: `${p.theme.fontSizes[1]}px`,
+        fontSize: `${theme.fontSizes[1]}px`,
         padding: "9.5px 18px"
       };
     case "large":
       return {
-        fontSize: `${p.theme.fontSizes[2]}px`,
+        fontSize: `${theme.fontSizes[2]}px`,
         padding: "12px 22px"
       };
     default:
       return {
-        fontSize: `${p.theme.fontSizes[1]}px`,
+        fontSize: `${theme.fontSizes[1]}px`,
         padding: "9.5px 18px"
       };
   }
@@ -34,11 +34,18 @@ const size = (p: {size: string; theme: Theme;}) => {
 
 export const fullWidth = (props: {fullWidth?: boolean}) => props.fullWidth ? {width: "100%"} : null;
 
+export const attached = (props: {attached?: boolean}) => props.attached ?
+  `border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -5px;`
+ : null;
+
 export interface ButtonProps extends ButtonStyleProps, HeightProps, SpaceProps, SizeProps, WidthProps {
   fullWidth?: boolean;
   textColor?: ThemeColor;
   lineHeight?: number | string;
   title?: string;
+  attached?: boolean;
 }
 
 const Button = styled.button<ButtonProps>`
@@ -49,16 +56,16 @@ const Button = styled.button<ButtonProps>`
   text-align: center;
   text-decoration: none;
   font-family: inherit;
-  font-weight: ${props => props.theme.bold};
+  font-weight: ${theme.bold};
   line-height: ${props => props.lineHeight};
   cursor: pointer;
-  border-radius: ${props => props.theme.radius};
-  background-color: ${props => props.theme.colors[props.color!]};
-  color: ${props => props.theme.colors[props.textColor!]};
+  border-radius: ${theme.radius};
+  background-color: var(--${p => p.color}, #f00);
+  color: var(--${p => p.textColor}, #f00);
   border-width: 0;
   border-style: solid;
 
-  transition: ${p => `${p.theme.timingFunctions.easeInOut} ${p.theme.transitionDelays.small}`};
+  transition: ${theme.timingFunctions.easeInOut} ${theme.transitionDelays.small};
 
   &:disabled {
     opacity: 0.25;
@@ -72,11 +79,10 @@ const Button = styled.button<ButtonProps>`
     transform: scale(1.03);
   }
 
-  ${fullWidth} ${size} ${space} ${height} ${width};
+  ${attached} ${fullWidth} ${size} ${space} ${height} ${width};
 `;
 
 Button.defaultProps = {
-  theme,
   textColor: "white",
   color: "blue",
   lineHeight: 1.5

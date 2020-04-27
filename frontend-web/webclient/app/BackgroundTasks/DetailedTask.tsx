@@ -1,17 +1,9 @@
-import {Task, TaskUpdate} from "BackgroundTasks/api";
+import {TaskUpdate} from "BackgroundTasks/api";
 import {ReduxObject} from "DefaultObjects";
 import * as React from "react";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {connect} from "react-redux";
-import {
-    Area,
-    AreaChart,
-    CartesianGrid,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis
-} from "recharts";
+import {Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis} from "recharts";
 import styled from "styled-components";
 import Box from "ui-components/Box";
 import Flex from "ui-components/Flex";
@@ -51,17 +43,17 @@ const DetailedTask: React.FunctionComponent<DetailedTaskOwnProps & DetailedTaskS
     }, [isScrollLocked, ref]);
 
     return (
-        <Box height={"100%"}>
-            <Flex flexDirection={"column"} height={"100%"}>
-                <Heading.h2>{task.newTitle ? task.newTitle : "Task"}</Heading.h2>
+        <Box height="100%">
+            <Flex flexDirection="column" height="100%">
+                <Heading.h2>{task.newTitle ?? "Task"}</Heading.h2>
 
-                <p><b>Status:</b> {task.newStatus || "No recent status update."}</p>
+                <p><b>Status:</b> {task.newStatus ?? "No recent status update."}</p>
 
                 {!task.progress ?
-                    <IndeterminateProgressBar color={"green"} label={task.newTitle ? task.newTitle : ""}/> : (
+                    <IndeterminateProgressBar color="green" label={task.newTitle ?? ""} /> : (
                         <ProgressBar
                             active={true}
-                            color={"green"}
+                            color="green"
                             label={
                                 `${task.progress.title}: ${task.progress.current} of ${task.progress.maximum} ` +
                                 `(${((task.progress.current / task.progress.maximum) * 100).toFixed(2)}%)`
@@ -79,9 +71,9 @@ const DetailedTask: React.FunctionComponent<DetailedTaskOwnProps & DetailedTaskS
                         <>
                             <Flex key={lastElement.title}>
                                 <Box flexGrow={1}>{lastElement.title}</Box>
-                                <Box>
+                                <div>
                                     {lastElement.asText}
-                                </Box>
+                                </div>
                             </Flex>
                             <Container aspect={16 / 9} maxHeight={200}>
                                 <AreaChart data={speeds}>
@@ -91,8 +83,8 @@ const DetailedTask: React.FunctionComponent<DetailedTaskOwnProps & DetailedTaskS
                                         domain={["dataMin", "dataMax"]}
                                         tickFormatter={() => ""}
                                     />
-                                    <YAxis dataKey="speed" type={"number"}/>
-                                    <CartesianGrid strokeDasharray="3 3"/>
+                                    <YAxis dataKey="speed" type={"number"} />
+                                    <CartesianGrid strokeDasharray="3 3" />
                                     <Area
                                         isAnimationActive={false}
                                         type="monotone"

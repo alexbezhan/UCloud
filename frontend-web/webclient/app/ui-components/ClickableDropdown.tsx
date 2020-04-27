@@ -6,7 +6,7 @@ import Box from "./Box";
 import {Dropdown, DropdownContent} from "./Dropdown";
 
 interface ClickableDropdownState {open: boolean;}
-interface ClickableDropdownProps {
+interface ClickableDropdownProps<T> {
     children?: any;
     keepOpenOnClick?: boolean;
     trigger: React.ReactNode;
@@ -18,39 +18,40 @@ interface ClickableDropdownProps {
     top?: string | number;
     bottom?: string | number;
     right?: string | number;
-    options?: Array<{text: string; value: string;}>;
+    options?: {text: string; value: T}[];
     chevron?: boolean;
     overflow?: string;
     colorOnHover?: boolean;
     squareTop?: boolean;
-    keepOpenOnOutsideClick?: boolean
-    onChange?: (value: string) => void;
+    keepOpenOnOutsideClick?: boolean;
+    onChange?: (value: T) => void;
+    onTriggerClick?: () => void;
 }
 
-class ClickableDropdown extends React.Component<ClickableDropdownProps, ClickableDropdownState> {
+class ClickableDropdown<T extends string> extends React.Component<ClickableDropdownProps<T>, ClickableDropdownState> {
     private ref = React.createRef<HTMLDivElement>();
 
-    constructor(props: Readonly<ClickableDropdownProps>) {
+    constructor(props: Readonly<ClickableDropdownProps<T>>) {
         super(props);
         this.state = {open: false};
         let neither = true;
-        if (!!props.children) neither = false;
+        if (props.children) neither = false;
         if (!!props.onChange && !!props.options) neither = false;
         if (neither) throw Error("Clickable dropdown must have either children prop or options and onChange");
         document.addEventListener("mousedown", this.handleClickOutside);
         document.addEventListener("keydown", this.handleEscPress);
     }
 
-    public componentWillUnmount = () => {
+    public componentWillUnmount = (): void => {
         document.removeEventListener("mousedown", this.handleClickOutside);
         document.removeEventListener("keydown", this.handleEscPress);
-    }
+    };
 
-    public render() {
-        const {keepOpenOnClick, onChange, ...props} = this.props;
+    public render(): JSX.Element {
+        const {keepOpenOnClick, onChange, onTriggerClick, ...props} = this.props;
         let children: React.ReactNode[] = [];
         if (props.options !== undefined && onChange) {
-            children = props.options.map((opt, i) =>
+            children = props.options.map((opt, i) => (
                 <Box
                     cursor="pointer"
                     width="auto"
@@ -59,19 +60,21 @@ class ClickableDropdown extends React.Component<ClickableDropdownProps, Clickabl
                     pl="15px"
                     mr="-17px"
                     onClick={() => onChange!(opt.value)}
-                >{opt.text}</Box>
-            );
+                >
+                    {opt.text}
+                </Box>
+            ));
         } else if (props.children) {
             children = props.children;
         }
-        const emptyChildren = React.Children.map(children, it => it).length === 0;
+        const emptyChildren = (React.Children.map(children, it => it) ?? []).length === 0;
         const width = this.props.fullWidth ? "100%" : this.props.width;
         return (
             <Dropdown data-tag="dropdown" ref={this.ref} fullWidth={this.props.fullWidth}>
-                <Text.TextSpan cursor="pointer" onClick={() => this.setState(() => ({open: !this.state.open}))}>
+                <Text.TextSpan cursor="pointer" onClick={() => {onTriggerClick?.(); this.setState(() => ({open: !this.state.open}))}}>
                     {this.props.trigger}{props.chevron ? <Icon name="chevronDown" size=".7em" ml=".7em" /> : null}
                 </Text.TextSpan>
-                {!emptyChildren ?
+                {emptyChildren || !this.state.open ? null : (
                     <DropdownContent
                         overflow={"visible"}
                         squareTop={this.props.squareTop}
@@ -80,9 +83,11 @@ class ClickableDropdown extends React.Component<ClickableDropdownProps, Clickabl
                         width={width}
                         hover={false}
                         visible={this.state.open}
-                        onClick={() => !keepOpenOnClick ? this.setState(() => ({open: false})) : null}>
+                        onClick={() => !keepOpenOnClick ? this.setState(() => ({open: false})) : null}
+                    >
                         {children}
-                    </DropdownContent> : null}
+                    </DropdownContent>
+                )}
             </Dropdown>
         );
     }
@@ -93,11 +98,11 @@ class ClickableDropdown extends React.Component<ClickableDropdownProps, Clickabl
         if (this.ref.current && !this.ref.current.contains(event.target) && this.state.open) {
             this.setState(() => ({open: false}));
         }
-    }
+    };
 
-    private handleEscPress = (event: {keyCode: KeyCode;}) => {
+    private handleEscPress = (event: {keyCode: KeyCode}): void => {
         if (event.keyCode === KeyCode.ESC && this.state.open) this.setState(() => ({open: false}));
-    }
+    };
 }
 
 export default ClickableDropdown;

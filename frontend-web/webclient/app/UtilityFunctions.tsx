@@ -1,35 +1,69 @@
-import {Cloud as currentCloud} from "Authentication/SDUCloudObject";
+import {Client as currentClient} from "Authentication/HttpClientInstance";
 import {SensitivityLevel} from "DefaultObjects";
-import {Acl, File, FileType, SortBy} from "Files";
+import {Acl, File, FileType, SortBy, UserEntity} from "Files";
 import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {dateToString} from "Utilities/DateUtilities";
-import {getFilenameFromPath, replaceHomeFolder, sizeToString, isDirectory} from "Utilities/FileUtilities";
+import {getFilenameFromPath, isDirectory, replaceHomeOrProjectFolder, sizeToString} from "Utilities/FileUtilities";
 import {HTTP_STATUS_CODES} from "Utilities/XHRUtils";
+import HttpClient from "Authentication/lib";
+
+export function toggleCssColors(light: boolean): void {
+    if (light) {
+        setCSSVariable("--white", "#fff");
+        setCSSVariable("--tableRowHighlight", "var(--lightBlue, #f00)");
+        setCSSVariable("--black", "#000");
+        setCSSVariable("--text", "#1e252e");
+        setCSSVariable("--lightGray", "#f5f7f9");
+        setCSSVariable("--lightBlue", "#f0f6ff");
+        setCSSVariable("--midGray", "#c9d3df");
+        setCSSVariable("--paginationDisabled", "var(--lightGray, #f00)");
+        setCSSVariable("--paginationHoverColor", "var(--lightBlue, #f00)");
+        setCSSVariable("--appCard", "#ebeff3");
+        setCSSVariable("--borderGray", "var(--midGray, #f00)");
+    } else {
+        setCSSVariable("--white", "#282c35");
+        setCSSVariable("--tableRowHighlight", "#000");
+        setCSSVariable("--black", "#a4a5a9");
+        setCSSVariable("--text", "#e5e5e6");
+        setCSSVariable("--lightGray", "#111");
+        setCSSVariable("--lightBlue", "#000");
+        setCSSVariable("--midGray", "#555");
+        setCSSVariable("--paginationDisabled", "#111");
+        setCSSVariable("--paginationHoverColor", "#444");
+        setCSSVariable("--appCard", "#060707");
+        setCSSVariable("--borderGray", "#111");
+    }
+}
+
+function setCSSVariable(varName: string, value: string): void {
+    document.documentElement.style.setProperty(varName, value);
+}
 
 /**
  * Sets theme based in input. Either "light" or "dark".
  * @param {boolean} isLightTheme Signifies if the currently selected theme is "light".
  */
-
 export const setSiteTheme = (isLightTheme: boolean): void => {
     const lightTheme = isLightTheme ? "light" : "dark";
+    toggleCssColors(lightTheme === "light");
     window.localStorage.setItem("theme", lightTheme);
 };
 
 /**
- * Returns whether or not the value "light", "dark" or null is stored.
+ * Returns whether the value "light" or "dark" is stored.
+ * If neither are, the OS theme preference is used.
  * @returns {boolean} True if "light" or null is stored, otherwise "dark".
  */
-export const isLightThemeStored = (): boolean => {
+export function isLightThemeStored(): boolean {
     const theme = window.localStorage.getItem("theme");
-    if (theme === "dark") return false;
-    else return true;
-};
+    if (theme == null) return getUserThemePreference() === "light";
+    return theme === "light";
+}
 
 /**
  * Capitalizes the input string
- * @param str string to be lowercased and capitalized
+ * @param str string to be capitalized
  * @return {string}
  */
 export const capitalized = (str: string): string => str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -40,7 +74,8 @@ export const capitalized = (str: string): string => str.charAt(0).toUpperCase() 
  * @return {string}
  */
 export const getMembersString = (acls: Acl[]): string => {
-    const filteredAcl = acls.filter(it => it.entity !== currentCloud.activeUsername);
+    const withoutProjectAcls = acls.filter(it => typeof it.entity === "string" || "username" in it.entity);
+    const filteredAcl = withoutProjectAcls.filter(it => (it.entity as UserEntity).username !== currentClient.activeUsername);
     if (filteredAcl.length > 0) {
         return `${acls.length + 1} members`;
     } else {
@@ -54,8 +89,6 @@ export function sortingColumnToValue(sortBy: SortBy, file: File): string {
             return prettierString(file.fileType);
         case SortBy.PATH:
             return getFilenameFromPath(file.path);
-        case SortBy.CREATED_AT:
-            return dateToString(file.createdAt!);
         case SortBy.MODIFIED_AT:
             return dateToString(file.modifiedAt!);
         case SortBy.SIZE:
@@ -70,7 +103,7 @@ export function sortingColumnToValue(sortBy: SortBy, file: File): string {
     }
 }
 
-export const extensionTypeFromPath = (path: string) => extensionType(extensionFromPath(path));
+export const extensionTypeFromPath = (path: string): ExtensionType => extensionType(extensionFromPath(path));
 export const extensionFromPath = (path: string): string => {
     const splitString = path.split(".");
     return splitString[splitString.length - 1];
@@ -114,6 +147,9 @@ export const extensionType = (ext: string): ExtensionType => {
         case "toc":
         case "jar":
         case "exe":
+        case "xml":
+        case "json":
+        case "yml":
             return "code";
         case "png":
         case "gif":
@@ -124,10 +160,9 @@ export const extensionType = (ext: string): ExtensionType => {
         case "jpg":
             return "image";
         case "txt":
-        case "xml":
-        case "json":
+        case "doc":
+        case "docx":
         case "csv":
-        case "yml":
         case "plist":
             return "text";
         case "pdf":
@@ -137,7 +172,6 @@ export const extensionType = (ext: string): ExtensionType => {
         case "ogg":
         case "aac":
         case "pcm":
-        case "aac":
             return "audio";
         case "mpg":
         case "mp4":
@@ -159,23 +193,91 @@ export const extensionType = (ext: string): ExtensionType => {
     }
 };
 
+export const isExtPreviewSupported = (ext: string): boolean => {
+    switch (ext) {
+        case "md":
+        case "swift":
+        case "kt":
+        case "kts":
+        case "js":
+        case "jsx":
+        case "ts":
+        case "tsx":
+        case "java":
+        case "py":
+        case "python":
+        case "tex":
+        case "r":
+        case "c":
+        case "h":
+        case "cc":
+        case "hh":
+        case "c++":
+        case "h++":
+        case "hpp":
+        case "cpp":
+        case "cxx":
+        case "hxx":
+        case "html":
+        case "lhs":
+        case "hs":
+        case "sql":
+        case "sh":
+        case "iol":
+        case "ol":
+        case "col":
+        case "bib":
+        case "toc":
+        case "png":
+        case "gif":
+        case "tiff":
+        case "eps":
+        case "ppm":
+        case "svg":
+        case "jpg":
+        case "txt":
+        case "xml":
+        case "json":
+        case "csv":
+        case "yml":
+        case "yaml":
+        case "plist":
+        case "pdf":
+        case "wav":
+        case "mp3":
+        case "ogg":
+        case "aac":
+        case "pcm":
+        case "mp4":
+        case "mov":
+        case "wmv":
+            return true;
+        default:
+            return false;
+    }
+};
+
 export interface FtIconProps {
     type: FileType;
     ext?: string;
 }
 
-export const iconFromFilePath = (filePath: string, type: FileType, homeFolder: string): FtIconProps => {
+export const iconFromFilePath = (
+    filePath: string,
+    type: FileType,
+    client: HttpClient
+): FtIconProps => {
     const icon: FtIconProps = {type: "FILE"};
 
     switch (type) {
-        case "SHARED_FS":
-            icon.type = "SHARED_FS";
-            return icon;
-
         case "DIRECTORY":
-            const homeFolderReplaced = replaceHomeFolder(filePath, homeFolder);
-            switch (homeFolderReplaced) {
+            const replaced = replaceHomeOrProjectFolder(filePath, client);
+
+            const project = (replaced.startsWith("Projects/") ? replaced.split("/")[1] : "") ?? "";
+
+            switch (replaced) {
                 case "Home/Jobs":
+                case `Projects/${project}/Jobs`:
                     icon.type = "RESULTFOLDER";
                     break;
                 case "Home/Favorites":
@@ -188,6 +290,7 @@ export const iconFromFilePath = (filePath: string, type: FileType, homeFolder: s
                     icon.type = "FSFOLDER";
                     break;
                 case "Home/Trash":
+                case `Projects/${project}/Trash`:
                     icon.type = "TRASHFOLDER";
                     break;
                 default:
@@ -212,45 +315,39 @@ export const iconFromFilePath = (filePath: string, type: FileType, homeFolder: s
  *
  * @param params: { status, min, max } (both inclusive)
  */
-export const inRange = ({status, min, max}: {status: number, min: number, max: number}): boolean =>
+export const inRange = ({status, min, max}: {status: number; min: number; max: number}): boolean =>
     status >= min && status <= max;
 export const inSuccessRange = (status: number): boolean => inRange({status, min: 200, max: 299});
-export const removeTrailingSlash = (path: string) => path.endsWith("/") ? path.slice(0, path.length - 1) : path;
-export const addTrailingSlash = (path: string) => {
+export const removeTrailingSlash = (path: string): string => path.endsWith("/") ? path.slice(0, path.length - 1) : path;
+export const addTrailingSlash = (path: string): string => {
     if (!path) return path;
     else return path.endsWith("/") ? path : `${path}/`;
 };
 
 export const shortUUID = (uuid: string): string => uuid.substring(0, 8).toUpperCase();
-export const is5xxStatusCode = (status: number) => inRange({status, min: 500, max: 599});
+export const is5xxStatusCode = (status: number): boolean => inRange({status, min: 500, max: 599});
 export const blankOrUndefined = (value?: string): boolean => value == null || value.length === 0 || /^\s*$/.test(value);
 
-export const ifPresent = (f: any, handler: (f: any) => void) => {
+export function ifPresent<T>(f: T | undefined, handler: (f: T) => void): void {
     if (f) handler(f);
-};
+}
 
-// FIXME The frontend can't handle downloading multiple files currently. When fixed, remove === 1 check.
-export const downloadAllowed = (files: File[]) =>
-    files.length === 1 && files.every(f => f.sensitivityLevel !== "SENSITIVE");
+export const downloadAllowed = (files: File[]): boolean => files.every(f => f.sensitivityLevel !== "SENSITIVE");
 
 /**
- * Capizalises the input string and replaces _ (underscores) with whitespace.
+ * Capitalizes the input string and replaces _ (underscores) with whitespace.
  * @param str
  */
-export const prettierString = (str: string) => capitalized(str).replace(/_/g, " ");
+export const prettierString = (str: string): string => capitalized(str).replace(/_/g, " ");
 
 export function defaultErrorHandler(
-    error: {request: XMLHttpRequest, response: any}
+    error: {request: XMLHttpRequest; response: any}
 ): number {
     const request: XMLHttpRequest = error.request;
     // FIXME must be solvable more elegantly
-    let why: string | null = null;
+    let why: string | null = error.response?.why;
 
-    if (!!error.response && !!error.response.why) {
-        why = error.response.why;
-    }
-
-    if (!!request) {
+    if (request) {
         if (!why) {
             switch (request.status) {
                 case 400:
@@ -265,7 +362,7 @@ export function defaultErrorHandler(
             }
         }
 
-        snackbarStore.addSnack({message: why, type: SnackType.Failure});
+        snackbarStore.addFailure(why);
         return request.status;
     }
     return 500;
@@ -277,12 +374,10 @@ export function sortByToPrettierString(sortBy: SortBy): string {
             return "Members";
         case SortBy.FILE_TYPE:
             return "File Type";
-        case SortBy.CREATED_AT:
-            return "Created at";
         case SortBy.MODIFIED_AT:
             return "Modified at";
         case SortBy.PATH:
-            return "Path";
+            return "Filename";
         case SortBy.SIZE:
             return "Size";
         case SortBy.SENSITIVITY_LEVEL:
@@ -292,9 +387,9 @@ export function sortByToPrettierString(sortBy: SortBy): string {
     }
 }
 
-export function requestFullScreen(el: Element, onFailure: () => void) {
-    // @ts-ignore - Safari compatibility
-    if (el.webkitRequestFullScreen) el.webkitRequestFullscreen();
+export function requestFullScreen(el: Element, onFailure: () => void): void {
+    // @ts-ignore
+    if (el.webkitRequestFullScreen) el.webkitRequestFullScreen();
     else if (el.requestFullscreen) el.requestFullscreen();
     else onFailure();
 }
@@ -310,9 +405,9 @@ export function timestampUnixMs(): number {
 
 export function humanReadableNumber(
     value: number,
-    sectionDelim: string = ",",
-    decimalDelim: string = ".",
-    numDecimals: number = 2
+    sectionDelim = ",",
+    decimalDelim = ".",
+    numDecimals = 2
 ): string {
     const regex = new RegExp("\\d(?=(\\d{3})+" + (numDecimals > 0 ? "\\D" : "$") + ")", "g");
     const fixedNumber = value.toFixed(numDecimals);
@@ -327,9 +422,9 @@ interface CopyToClipboard {
     message: string;
 }
 
-export function copyToClipboard({value, message}: CopyToClipboard) {
+export function copyToClipboard({value, message}: CopyToClipboard): void {
     const input = document.createElement("input");
-    input.value = value || "";
+    input.value = value ?? "";
     document.body.appendChild(input);
     input.select();
     document.execCommand("copy");
@@ -338,7 +433,7 @@ export function copyToClipboard({value, message}: CopyToClipboard) {
 }
 
 export function errorMessageOrDefault(
-    err: {request: XMLHttpRequest, response: any} | {status: number, response: string},
+    err: {request: XMLHttpRequest; response: any} | {status: number; response: string} | string,
     defaultMessage: string
 ): string {
     try {
@@ -347,7 +442,7 @@ export function errorMessageOrDefault(
             return err.response;
         } else {
             if (err.response.why) return err.response.why;
-            return HTTP_STATUS_CODES[err.request.status] || defaultMessage;
+            return HTTP_STATUS_CODES[err.request.status] ?? defaultMessage;
         }
     } catch {
         return defaultMessage;
@@ -360,13 +455,41 @@ export function delay(ms: number): Promise<void> {
     });
 }
 
-export const inDevEnvironment = () => process.env.NODE_ENV === "development";
+export const inDevEnvironment = (): boolean => process.env.NODE_ENV === "development";
 
 export const generateId = ((): (target: string) => string => {
     const store = new Map<string, number>();
-    return (target = "default-target") => {
-        const idCount = (store.get(target) || 0) + 1;
+    return (target = "default-target"): string => {
+        const idCount = (store.get(target) ?? 0) + 1;
         store.set(target, idCount);
         return `${target}${idCount}`;
     };
 })();
+
+export function stopPropagation(e: {stopPropagation(): void}): void {
+    e.stopPropagation();
+}
+
+export function preventDefault(e: {preventDefault(): void}): void {
+    e.preventDefault();
+}
+
+export function stopPropagationAndPreventDefault(e: {preventDefault(): void; stopPropagation(): void}): void {
+    preventDefault(e);
+    stopPropagation(e);
+}
+
+export function displayErrorMessageOrDefault(e: any, fallback: string): void {
+    snackbarStore.addFailure(errorMessageOrDefault(e, fallback));
+}
+
+export function shouldHideSidebarAndHeader(): boolean {
+    return ["/app/login", "/app/login/wayf"]
+        .includes(window.location.pathname) && window.location.search === "?dav=true";
+}
+
+export function getUserThemePreference(): "light" | "dark" {
+    // options: dark, light and no-preference
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+    return "light";
+}

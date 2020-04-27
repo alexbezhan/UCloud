@@ -1,12 +1,13 @@
-import {Action} from "redux";
+import HttpClient from "Authentication/lib";
 import {emptyPage} from "DefaultObjects";
-import Cloud from "Authentication/lib"
+import {Action} from "redux";
+import {IconName} from "ui-components/Icon";
 
 export interface SidebarOption {
-    name: string
-    icon: string
-    href: string
-    children?: SidebarOption
+    name: string;
+    icon: string;
+    href: string;
+    children?: SidebarOption;
 }
 
 export interface PaginationRequest {
@@ -22,11 +23,6 @@ export interface Page<T> {
     items: T[];
 }
 
-export interface TimeRange {
-    minTimeStamp?: number
-    maxTimeStamp?: number
-}
-
 export function singletonToPage<T>(item?: T | null, itemsPerPage: number = 50): Page<T> {
     if (item === undefined || item === null) return emptyPage;
     return {
@@ -39,15 +35,15 @@ export function singletonToPage<T>(item?: T | null, itemsPerPage: number = 50): 
 }
 
 export function arrayToPage<T>(items: T[], itemsPerPage: number = 50, page: number = 0): Page<T> {
-    if (items.length > itemsPerPage) throw "Not yet implemented";
-    if (page !== 0) throw "Not yet implemented";
+    if (items.length > itemsPerPage) throw Error("Not yet implemented");
+    if (page !== 0) throw Error("Not yet implemented");
 
     return {
         itemsInTotal: items.length,
-        itemsPerPage: itemsPerPage,
+        itemsPerPage,
         pagesInTotal: 1,
         pageNumber: page,
-        items: items
+        items
     };
 }
 
@@ -57,37 +53,32 @@ export enum AccessRight {
 }
 
 export class AccessRights {
-    static READ_RIGHTS = [AccessRight.READ];
-    static WRITE_RIGHTS = [AccessRight.READ, AccessRight.WRITE]
-}
-
-export interface DropdownOption {
-    name: string
-    value: string
+    public static READ_RIGHTS = [AccessRight.READ];
+    public static WRITE_RIGHTS = [AccessRight.READ, AccessRight.WRITE];
 }
 
 export interface ClearRefresh {
-    clearRefresh: () => void
+    clearRefresh: () => void;
 }
 
-export type SetLoadingAction<T> = PayloadAction<T, {loading: boolean}>
-export type Error<T> = PayloadAction<T, {error?: string, statusCode?: number}>
-export type ReceivePage<T1, T2> = PayloadAction<T1, {page: Page<T2>}>
-export interface PayloadAction<T1, T2> extends Action<T1> {payload: T2}
+export type SetLoadingAction<T> = PayloadAction<T, {loading: boolean}>;
+export type Error<T> = PayloadAction<T, {error?: string, statusCode?: number}>;
+export interface PayloadAction<T1, T2> extends Action<T1> {payload: T2;}
 
 export interface Dictionary<V> {
     [key: string]: V;
 }
 
 export interface PredicatedOperation<T> {
-    predicate: (listItems: T[], cloud: Cloud) => boolean
-    onTrue: Operation<T>
-    onFalse: Operation<T>
+    predicate: (listItems: T[], client: HttpClient) => boolean;
+    onTrue: Operation<T>;
+    onFalse: Operation<T>;
 }
-export type Operation<T> = {
-    text: string
-    onClick: (listItems: T[], cloud: Cloud) => void
-    disabled: (listItems: T[], cloud: Cloud) => boolean
-    icon?: string
-    color?: string
+
+export interface Operation<T> {
+    text: string;
+    onClick: (listItems: T[], client: HttpClient) => void;
+    disabled: (listItems: T[], client: HttpClient) => boolean;
+    icon: IconName;
+    color?: string;
 }

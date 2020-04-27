@@ -1,0 +1,15 @@
+{
+    "PRODUCT_NAME": "UCloud",
+    "VERSION_TEXT": "",
+    "DEV_SITE": "dev.cloud.sdu.dk",
+    "STAGING_SITE": "staging.dev.cloud.sdu.dk",
+    "PRODUCTION_SITE": "cloud.sdu.dk",
+    "DEV_WEBDAV_URL": "https://webdav.dev.cloud.sdu.dk/",
+    "PRODUCTION_WEBDAV_URL": "https://dav.cloud.sdu.dk/",
+    "STATUS_PAGE": "https://status.cloud.sdu.dk",
+    "DATA_PROTECTION_TEXT": "SDU Data Protection",
+    "DATA_PROTECTION_LINK": "https://www.sdu.dk/en/om_sdu/om_dette_websted/databeskyttelse",
+    "PREVIEW_MAX_SIZE": 5000000,
+    "SUPPORT_EMAIL": "support@escience.sdu.dk",
+    "SITE_DOCUMENTATION_URL": "https://docs.cloud.sdu.dk/"
+}

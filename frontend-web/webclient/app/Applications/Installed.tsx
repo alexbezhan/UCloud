@@ -1,5 +1,5 @@
 import {FullAppInfo, WithAppFavorite, WithAppMetadata} from "Applications";
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {ReduxObject} from "DefaultObjects";
 import {loadingEvent} from "LoadableContent";
 import Spinner from "LoadingIcon/LoadingIcon";
@@ -31,26 +31,26 @@ type InstalledStateProps = ReduxType;
 
 type InstalledProps = InstalledOperations & InstalledStateProps;
 
-function Installed(props: InstalledProps & {header: any}) {
+function Installed(props: InstalledProps & {header: React.ReactNode}): JSX.Element | null {
 
     React.useEffect(() => {
         props.onInit();
         props.fetchItems(0, 25);
-        props.setRefresh(() => refresh());
-        return () => props.setRefresh();
+        if (props.header !== null) props.setRefresh(() => refresh());
+        return () => {if (props.header !== null) props.setRefresh();};
     }, []);
 
-    function refresh() {
+    function refresh(): void {
         const {content} = props.applications;
-        const pageNumber = !!content ? content.pageNumber : 0;
-        const itemsPerPage = !!content ? content.itemsPerPage : 25;
-        props.setRefresh(() => props.fetchItems(pageNumber, itemsPerPage));
+        const pageNumber = content?.pageNumber ?? 0;
+        const itemsPerPage = content?.itemsPerPage ?? 25;
+        if (props.header !== null) props.setRefresh(() => props.fetchItems(pageNumber, itemsPerPage));
     }
 
 
     async function onFavorite(name: string, version: string): Promise<void> {
         try {
-            await Cloud.post(hpcFavoriteApp(name, version));
+            await Client.post(hpcFavoriteApp(name, version));
             const page = props.applications.content as Page<WithAppMetadata & WithAppFavorite>;
             const pageNumber = page.pageNumber < (page.itemsInTotal - 1) / page.itemsPerPage ?
                 page.pageNumber : Math.max(page.pageNumber - 1, 0);
@@ -60,33 +60,52 @@ function Installed(props: InstalledProps & {header: any}) {
         }
     }
 
+    function onItemsPerPageChange(items: number): void {
+        props.fetchItems(0, items);
+    }
+
+    function pageRenderer(page: Page<FullAppInfo>): JSX.Element {
+        return (
+            <Box mt="5px">
+                <ApplicationPage onFavorite={onFavoriteApp} page={page} />
+            </Box>
+        );
+    }
+
+    function onFavoriteApp(name: string, version: string): void {
+        onFavorite(name, version);
+    }
+
     const page = props.applications.content as Page<FullAppInfo>;
-    const itemsPerPage = !!page ? page.itemsPerPage : 25;
+    const itemsPerPage = page?.itemsPerPage ?? 25;
     const main = (
         <Box maxWidth="98%">
             <Spacer
                 left={<Heading.h2>Favorites</Heading.h2>}
-                right={props.applications.loading ? null : <Pagination.EntriesPerPageSelector
-                    content="Apps per page"
-                    entriesPerPage={itemsPerPage}
-                    onChange={itemsPerPage => props.fetchItems(0, itemsPerPage)}
-                />} />
+                right={props.applications.loading ? null : (
+                    <Pagination.EntriesPerPageSelector
+                        content="Apps per page"
+                        entriesPerPage={itemsPerPage}
+                        onChange={onItemsPerPageChange}
+                    />
+                )}
+            />
             <Pagination.List
                 loading={props.applications.loading}
                 page={page}
                 onPageChanged={pageNumber => props.fetchItems(pageNumber, page.itemsPerPage)}
-                pageRenderer={page => <Box mt="5px">
-                    <InstalledPage onFavorite={(name, version) => onFavorite(name, version)} page={page} />
-                </Box>}
+                pageRenderer={pageRenderer}
             />
         </Box >
     );
 
     if (!props.applications.content) {
         if (props.applications.error) {
-            return (<Heading.h2>
-                {props.applications.error.statusCode} - {props.applications.error.errorMessage}
-            </Heading.h2>);
+            return (
+                <Heading.h2>
+                    {props.applications.error.statusCode} - {props.applications.error.errorMessage}
+                </Heading.h2>
+            );
         }
         return (<Spinner />);
     } else if (props.applications.content.itemsInTotal === 0) {
@@ -96,23 +115,23 @@ function Installed(props: InstalledProps & {header: any}) {
     }
 }
 
-interface InstalledPageProps {
+interface ApplicationPageProps {
     page: Page<FullAppInfo>;
     onFavorite: (name: string, version: string) => void;
 }
 
-const InstalledPage: React.FunctionComponent<InstalledPageProps> = props => (
+export const ApplicationPage: React.FunctionComponent<ApplicationPageProps> = props => (
     <GridCardGroup>
         {props.page.items.map((it, idx) => (
             <ApplicationCard
                 onFavorite={props.onFavorite}
                 app={it}
                 key={idx}
-                isFavorite={it.favorite}
                 linkToRun
+                isFavorite={it.favorite}
                 tags={it.tags}
-            />)
-        )}
+            />
+        ))}
     </GridCardGroup>
 );
 
@@ -124,7 +143,7 @@ const mapDispatchToProps = (dispatch: Dispatch<Actions.Type | HeaderActions | St
 
     fetchItems: async (pageNumber: number, itemsPerPage: number) => {
         dispatch({type: Actions.Tag.RECEIVE_APP, payload: loadingEvent(true)});
-        dispatch(await Actions.fetch(itemsPerPage, pageNumber))
+        dispatch(await Actions.fetch(itemsPerPage, pageNumber));
     },
 
     setRefresh: refresh => dispatch(setRefreshFunction(refresh))

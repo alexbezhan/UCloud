@@ -2,13 +2,12 @@ import * as React from "react";
 import styled from "styled-components";
 import {Box, Icon} from ".";
 import {BoxProps} from "./Box";
-import theme from "./theme";
 
 interface CheckboxProps extends React.InputHTMLAttributes<HTMLInputElement> {
   disabled?: boolean;
 }
 
-function Checkbox(props: CheckboxProps) {
+function Checkbox(props: CheckboxProps): JSX.Element {
   const {disabled, size} = props;
   return (
     <CheckBoxWrapper disabled={!!disabled}>
@@ -29,15 +28,16 @@ const CheckBoxWrapper = styled(Box) <CheckBoxWrapper>`
   vertical-align: middle;
   cursor: pointer;
   color: ${props => props.disabled ? props.theme.colors.borderGray : props.theme.colors.gray};
+  margin-right: .5em;
   svg[data-name="checked"] {
     display: none;
   }
   > input:checked {
     & ~ svg[data-name="checked"] {
       display: inline-block;
-      color: ${props => props.disabled
-    ? props.theme.colors.borderGray
-    : props.theme.colors.blue};
+      color: var(--${props => props.disabled
+    ? "borderGray"
+    : "blue"}, #f00);
     }
     & ~ svg[data-name="empty"] {
       display: none;
@@ -56,8 +56,7 @@ Checkbox.displayName = "Checkbox";
 Checkbox.defaultProps = {
   size: 20,
   checked: false,
-  disabled: false,
-  theme
+  disabled: false
 };
 
 export default Checkbox;

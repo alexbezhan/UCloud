@@ -1,31 +1,28 @@
-import {Cloud} from "Authentication/SDUCloudObject";
-import {
-    SET_ALL_LOADING,
-    RECEIVE_DASHBOARD_FAVORITES,
-    RECEIVE_RECENT_JOBS,
-    RECEIVE_RECENT_FILES,
-    DASHBOARD_FAVORITE_ERROR,
-    DASHBOARD_RECENT_JOBS_ERROR,
-    DASHBOARD_RECENT_FILES_ERROR
-} from "./DashboardReducer";
-import {SetLoadingAction} from "Types";
-import {Analysis} from "Applications";
+import {JobWithStatus} from "Applications";
+import {Client} from "Authentication/HttpClientInstance";
 import {File} from "Files";
-import {hpcJobsQuery} from "Utilities/ApplicationUtilities";
-import {PayloadAction} from "Types";
-import {recentFilesQuery, favoritesQuery} from "Utilities/FileUtilities";
 import {Action} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {SnackType} from "Snackbar/Snackbars";
+import {Page, PayloadAction, SetLoadingAction} from "Types";
+import {hpcJobsQuery} from "Utilities/ApplicationUtilities";
+import {favoritesQuery} from "Utilities/FileUtilities";
+import {errorMessageOrDefault} from "UtilityFunctions";
+import {
+    DASHBOARD_FAVORITE_ERROR,
+    DASHBOARD_RECENT_JOBS_ERROR,
+    RECEIVE_DASHBOARD_FAVORITES,
+    RECEIVE_RECENT_JOBS,
+    SET_ALL_LOADING,
+} from "./DashboardReducer";
 
-
-export type DashboardActions = Action<DashboardError> | ReceiveFavoritesProps | ReceiveRecentFilesProps |
+export type DashboardActions = DashboardErrorAction | ReceiveFavoritesProps |
     SetLoadingAction<typeof SET_ALL_LOADING> | ReceiveRecentAnalyses;
 
-type DashboardError = 
+type DashboardError =
     typeof DASHBOARD_FAVORITE_ERROR |
-    typeof DASHBOARD_RECENT_JOBS_ERROR |
-    typeof DASHBOARD_RECENT_FILES_ERROR;
+    typeof DASHBOARD_RECENT_JOBS_ERROR;
+
+type DashboardErrorAction = PayloadAction<DashboardError, {error?: string}>;
 
 /**
  * Sets all dashboard lists as either loading or not loading
@@ -36,8 +33,11 @@ export const setAllLoading = (loading: boolean): SetLoadingAction<typeof SET_ALL
     payload: {loading}
 });
 
-export const setErrorMessage = (type: DashboardError): Action<typeof type> => ({
-    type
+export const setErrorMessage = (type: DashboardError, error?: string): DashboardErrorAction => ({
+    type,
+    payload: {
+        error
+    }
 });
 
 /**
@@ -45,18 +45,15 @@ export const setErrorMessage = (type: DashboardError): Action<typeof type> => ({
  */
 export const fetchFavorites = async (): Promise<ReceiveFavoritesProps | Action<DashboardError>> => {
     try {
-        const {response} = await Cloud.get(favoritesQuery());
-        return receiveFavorites(response.items.slice(0, 10))
-    } catch {
-        snackbarStore.addSnack({
-            message: "Failed to fetch favorites. Please try again later.",
-            type: SnackType.Failure
-        });
-        return setErrorMessage(DASHBOARD_FAVORITE_ERROR);
+        const {response} = await Client.get<Page<File>>(favoritesQuery(0, 10));
+        return receiveFavorites(response.items);
+    } catch (err) {
+        snackbarStore.addFailure("Failed to fetch favorites. Please try again later.");
+        return setErrorMessage(DASHBOARD_FAVORITE_ERROR, errorMessageOrDefault(err, "An error occurred fetching favorites"));
     }
 };
 
-type ReceiveFavoritesProps = PayloadAction<typeof RECEIVE_DASHBOARD_FAVORITES, {content: File[]}>
+type ReceiveFavoritesProps = PayloadAction<typeof RECEIVE_DASHBOARD_FAVORITES, {content: File[]}>;
 /**
  * Returns an action containing favorites
  * @param {File[]} content The list of favorites retrieved
@@ -66,54 +63,24 @@ export const receiveFavorites = (content: File[]): ReceiveFavoritesProps => ({
     payload: {content}
 });
 
-
-type ReceiveRecentFilesProps = PayloadAction<typeof RECEIVE_RECENT_FILES, {content: File[]}>
-/**
- * Fetches the contents of the users homefolder and returns 10 of them.
- */
-export const fetchRecentFiles = async (): Promise<ReceiveRecentFilesProps | Action<DashboardError>> => {
-    try {
-        const {response} = await Cloud.get(recentFilesQuery);
-        return receiveRecentFiles(response.recentFiles);
-    } catch {
-        snackbarStore.addSnack({
-            message: "Failed to fetch recent files. Please try again later.",
-            type: SnackType.Failure
-        });
-        return setErrorMessage(DASHBOARD_RECENT_FILES_ERROR);
-    }
-};
-
-/**
-* Returns an action containing recently used files
-* @param {File[]} content The list of recently used files retrieved
-*/
-export const receiveRecentFiles = (content: File[]): ReceiveRecentFilesProps => ({
-    type: RECEIVE_RECENT_FILES,
-    payload: {content}
-});
-
 /**
  * Fetches the 10 latest updated analyses
  */
 export const fetchRecentAnalyses = async (): Promise<ReceiveRecentAnalyses | Action<DashboardError>> => {
     try {
-        const {response} = await Cloud.get(hpcJobsQuery(10, 0));
-        return receiveRecentAnalyses(response.items)
-    } catch {
-        snackbarStore.addSnack({
-            message: "Could not retrieve recent jobs.",
-            type: SnackType.Failure
-        });
-        return setErrorMessage(DASHBOARD_RECENT_JOBS_ERROR);
+        const {response} = await Client.get(hpcJobsQuery(10, 0));
+        return receiveRecentAnalyses(response.items);
+    } catch (err) {
+        snackbarStore.addFailure("Could not retrieve recent jobs.");
+        return setErrorMessage(DASHBOARD_RECENT_JOBS_ERROR, errorMessageOrDefault(err, "An error occurred fetching recent analyses."));
     }
 };
-type ReceiveRecentAnalyses = PayloadAction<typeof RECEIVE_RECENT_JOBS, {content: Analysis[]}>
+type ReceiveRecentAnalyses = PayloadAction<typeof RECEIVE_RECENT_JOBS, {content: JobWithStatus[]}>;
 /**
-* Returns an action containing most recently updated analyses
-* @param {Analyses[]} content The list of recently updated analyses
-*/
-export const receiveRecentAnalyses = (content: Analysis[]): ReceiveRecentAnalyses => ({
+ * Returns an action containing most recently updated analyses
+ * @param {JobState[]} content The list of recently updated analyses
+ */
+export const receiveRecentAnalyses = (content: JobWithStatus[]): ReceiveRecentAnalyses => ({
     type: RECEIVE_RECENT_JOBS,
     payload: {content}
 });

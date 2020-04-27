@@ -1,7 +1,7 @@
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {MainContainer} from "MainContainer/MainContainer";
 import {setActivePage, setLoading, SetStatusLoading} from "Navigation/Redux/StatusActions";
-import PromiseKeeper from "PromiseKeeper";
+import {usePromiseKeeper} from "PromiseKeeper";
 import * as React from "react";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
@@ -9,103 +9,57 @@ import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {Button, Input, Label} from "ui-components";
 import * as Heading from "ui-components/Heading";
-import Link from "ui-components/Link";
 import {SidebarPages} from "ui-components/Sidebar";
-import VerticalButtonGroup from "ui-components/VerticalButtonGroup";
 import {defaultErrorHandler} from "UtilityFunctions";
 import {UserCreationState} from ".";
 
 const initialState: UserCreationState = {
-    submitted: false,
     username: "",
     password: "",
     repeatedPassword: "",
+    email: "",
     usernameError: false,
-    passwordError: false
+    passwordError: false,
+    emailError: false
 };
 
-function UserCreation(props: UserCreationOperations) {
-    // Use reducer instead, or break into smaller ones.
+function UserCreation(props: UserCreationOperations): JSX.Element | null {
+    // FIXME: Use reducer instead, or break into smaller ones.
     const [state, setState] = React.useState(initialState);
-    const [promiseKeeper] = React.useState(new PromiseKeeper());
+    const [submitted, setSubmitted] = React.useState(false);
+    const promiseKeeper = usePromiseKeeper();
 
     React.useEffect(() => {
         props.setActivePage();
-        return () => promiseKeeper.cancelPromises();
     }, []);
 
-    function updateFields(field: keyof UserCreationState, value: string) {
-        if (field === "username") state.usernameError = false;
-        else if (field === "password" || field === "repeatedPassword") state.passwordError = false;
-        setState({...state, [field]: value});
-    }
-
-    async function submit(e: React.SyntheticEvent) {
-        e.preventDefault();
-
-        let usernameError = false;
-        let passwordError = false;
-        const {username, password, repeatedPassword} = state;
-        if (!username) usernameError = true;
-        if (!password || password !== repeatedPassword) passwordError = true;
-        setState({...state, usernameError, passwordError});
-        if (!usernameError && !passwordError) {
-            try {
-                props.setLoading(true);
-                await promiseKeeper.makeCancelable(
-                    Cloud.post("/auth/users/register", {username, password}, "")
-                ).promise;
-                snackbarStore.addSnack({message: `User '${username}' successfully created`, type: SnackType.Success});
-                setState(() => initialState);
-            } catch (e) {
-                const status = defaultErrorHandler(e);
-                if (status === 400) {
-                    snackbarStore.addSnack({
-                        message: "User already exists",
-                        type: SnackType.Information
-                    });
-                    setState({...state, usernameError: true});
-                }
-            } finally {
-                props.setLoading(false);
-            }
-        }
-    }
-
-    if (!Cloud.userIsAdmin) return null;
+    if (!Client.userIsAdmin) return null;
 
     const {
         usernameError,
         passwordError,
+        emailError,
         username,
         password,
         repeatedPassword,
-        submitted
+        email
     } = state;
 
     return (
         <MainContainer
             header={<Heading.h1>User Creation</Heading.h1>}
             headerSize={64}
-            sidebar={
-                <VerticalButtonGroup>
-                    <Link to={"/applications/studio"}>
-                        <Button type={"button"}>
-                            Application Studio
-                        </Button>
-                    </Link>
-                </VerticalButtonGroup>
-            }
-            main={
+            main={(
                 <>
                     <p>Admins can create new users on this page.</p>
-                    <form onSubmit={e => submit(e)}>
+                    <form autoComplete="off" onSubmit={e => submit(e)}>
                         <Label mb="1em">
                             Username
                             <Input
+                                autocomplete="off"
                                 value={username}
-                                color={usernameError ? "red" : "gray"}
-                                onChange={({target: {value}}) => updateFields("username", value)}
+                                error={usernameError}
+                                onChange={e => updateField("username", e.target.value)}
                                 placeholder="Username..."
                             />
                         </Label>
@@ -114,8 +68,8 @@ function UserCreation(props: UserCreationOperations) {
                             <Input
                                 value={password}
                                 type="password"
-                                color={passwordError ? "red" : "gray"}
-                                onChange={({target: {value}}) => updateFields("password", value)}
+                                error={passwordError}
+                                onChange={e => updateField("password", e.target.value)}
                                 placeholder="Password..."
                             />
                         </Label>
@@ -124,21 +78,76 @@ function UserCreation(props: UserCreationOperations) {
                             <Input
                                 value={repeatedPassword}
                                 type="password"
-                                color={passwordError ? "red" : "gray"}
-                                onChange={({target: {value}}) => updateFields("repeatedPassword", value)}
+                                error={passwordError}
+                                onChange={e => updateField("repeatedPassword", e.target.value)}
                                 placeholder="Repeat password..."
+                            />
+                        </Label>
+                        <Label mb="1em">
+                            Email
+                            <Input
+                                value={email}
+                                type="email"
+                                error={emailError}
+                                onChange={e => updateField("email", e.target.value)}
+                                placeholder="Email..."
                             />
                         </Label>
                         <Button
                             type="submit"
                             color="green"
                             disabled={submitted}
-                        >Create user</Button>
+                        >
+                            Create user
+                        </Button>
                     </form>
                 </>
-            }
+            )}
         />
     );
+
+    function updateField(field: keyof UserCreationState, value: string) {
+        if (field === "username") state.usernameError = false;
+        else if (field === "password" || field === "repeatedPassword") state.passwordError = false;
+        else if (field === "email") state.emailError = false
+        setState({...state, [field]: value});
+    }
+
+    async function submit(e: React.SyntheticEvent) {
+        e.preventDefault();
+
+        let hasUsernameError = false;
+        let hasPasswordError = false;
+        let hasEmailError = false;
+        const {username, password, repeatedPassword, email} = state;
+        if (!username) hasUsernameError = true;
+        if (!password || password !== repeatedPassword) {
+            hasPasswordError = true;
+            snackbarStore.addFailure("Passwords do not match.");
+        }
+        if (!email) {
+            hasEmailError = true;
+            snackbarStore.addFailure("Email is required")
+        }
+        setState({...state, usernameError: hasUsernameError, passwordError: hasPasswordError, emailError: hasEmailError});
+        if (!hasUsernameError && !hasPasswordError && !hasEmailError) {
+            try {
+                props.setLoading(true);
+                setSubmitted(true);
+                await promiseKeeper.makeCancelable(
+                    Client.post("/auth/users/register", {username, password, email}, "")
+                ).promise;
+                snackbarStore.addSnack({message: `User '${username}' successfully created`, type: SnackType.Success});
+                setState(initialState);
+            } catch (e) {
+                const status = defaultErrorHandler(e);
+                if (status === 409) setState({...state, usernameError: true});
+            } finally {
+                props.setLoading(false);
+                setSubmitted(false);
+            }
+        }
+    }
 }
 
 interface UserCreationOperations extends SetStatusLoading {

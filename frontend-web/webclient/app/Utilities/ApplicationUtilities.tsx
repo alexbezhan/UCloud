@@ -4,21 +4,25 @@ import {
     ApplicationParameter,
     JobState,
     ParameterTypes,
-    RunsSortBy
+    RunsSortBy,
+    JobWithStatus
 } from "Applications";
 import {RangeRef} from "Applications/Widgets/RangeParameters";
-import Cloud from "Authentication/lib";
+import HttpClient from "Authentication/lib";
 import {SortOrder} from "Files";
 import * as React from "react";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {Page} from "Types";
 import {addStandardDialog} from "UtilityComponents";
 import {errorMessageOrDefault, removeTrailingSlash} from "UtilityFunctions";
-import {expandHomeFolder} from "./FileUtilities";
+import {expandHomeOrProjectFolder} from "./FileUtilities";
 
 export const hpcJobQueryPost = "/hpc/jobs";
 
-export const hpcJobQuery = (id: string) => `/hpc/jobs/${encodeURIComponent(id)}`;
+export const hpcJobQuery = (id: string): string => `/hpc/jobs/${encodeURIComponent(id)}`;
+
+export const toolImageQuery = (toolName: string, cacheBust?: string): string =>
+    `/hpc/tools/logo/${toolName}?cacheBust=${cacheBust}`;
 
 export function hpcJobsQuery(
     itemsPerPage: number,
@@ -38,37 +42,18 @@ export function hpcJobsQuery(
     return query;
 }
 
-export function advancedSearchQuery(): string {
-    return "/hpc/apps/advancedSearch";
-}
+export const advancedSearchQuery = "/hpc/apps/advancedSearch";
 
-export const hpcFavoriteApp = (name: string, version: string) =>
+export const hpcFavoriteApp = (name: string, version: string): string =>
     `/hpc/apps/favorites/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
-
-export const hpcFavorites = (itemsPerPage: number, pageNumber: number) =>
-    `/hpc/apps/favorites?itemsPerPage=${itemsPerPage}&page=${pageNumber}`;
-
-export const hpcApplicationsQuery = (page: number, itemsPerPage: number) =>
-    `/hpc/apps?page=${page}&itemsPerPage=${itemsPerPage}`;
-
-interface HPCApplicationsSearchQuery {
-    query: string;
-    page: number;
-    itemsPerPage: number;
-}
-
-export const hpcApplicationsTagSearchQuery = ({query, page, itemsPerPage}: HPCApplicationsSearchQuery): string =>
-    `/hpc/apps/searchTags?query=${encodeURIComponent(query)}&page=${page}&itemsPerPage=${itemsPerPage}`;
 
 export const cancelJobQuery = `hpc/jobs`;
 
-export const cancelJobDialog = (
-    {jobId, onConfirm, jobCount = 1}: {
-        jobCount?: number,
-        jobId: string,
-        onConfirm: () => void
-    }
-): void =>
+export const cancelJobDialog = ({jobId, onConfirm, jobCount = 1}: {
+    jobCount?: number;
+    jobId: string;
+    onConfirm: () => void;
+}): void =>
     addStandardDialog({
         title: `Cancel job${jobCount > 1 ? "s" : ""}?`,
         message: jobCount === 1 ? `Cancel job: ${jobId}?` : "Cancel jobs?",
@@ -77,32 +62,35 @@ export const cancelJobDialog = (
         onConfirm
     });
 
-export const cancelJob = (cloud: Cloud, jobId: string): Promise<{request: XMLHttpRequest, response: void}> =>
-    cloud.delete(cancelJobQuery, {jobId});
+export const cancelJob = (client: HttpClient, jobId: string): Promise<{request: XMLHttpRequest; response: void}> =>
+    client.delete(cancelJobQuery, {jobId});
+
+export function isRunExpired(run: JobWithStatus): boolean {
+    /* FIXME: This is not great in the long run. If this changes in the backend, it's very awkward to keep updated. */
+    return run.status === "Job did not complete within deadline.";
+}
 
 interface FavoriteApplicationFromPage<T> {
     name: string;
     version: string;
-    page: Page<{metadata: ApplicationMetadata, favorite: boolean} & T>;
-    cloud: Cloud;
+    page: Page<{metadata: ApplicationMetadata; favorite: boolean} & T>;
+    client: HttpClient;
 }
 
 /**
  * Favorites an application.
  * @param {Application} Application the application to be favorited
- * @param {Cloud} cloud The cloud instance for requests
+ * @param {HttpClient} client The http client instance for requests
  */
-export async function favoriteApplicationFromPage<T>(
-    {
-        name,
-        version,
-        page,
-        cloud
-    }: FavoriteApplicationFromPage<T>
-): Promise<Page<T>> {
+export async function favoriteApplicationFromPage<T>({
+    name,
+    version,
+    page,
+    client
+}: FavoriteApplicationFromPage<T>): Promise<Page<T>> {
     const a = page.items.find(it => it.metadata.name === name && it.metadata.version === version)!;
     try {
-        await cloud.post(hpcFavoriteApp(name, version));
+        await client.post(hpcFavoriteApp(name, version));
         a.favorite = !a.favorite;
     } catch (e) {
         snackbarStore.addFailure(errorMessageOrDefault(e, `An error ocurred favoriting ${name}`));
@@ -126,19 +114,23 @@ interface ExtractParameters {
     siteVersion: number;
 }
 
-export const findKnownParameterValues = (
-    {
-        nameToValue,
-        allowedParameterKeys,
-        siteVersion
-    }: ExtractParameters
-): StringMap => {
+export const findKnownParameterValues = ({
+    nameToValue,
+    allowedParameterKeys,
+    siteVersion
+}: ExtractParameters): StringMap => {
     const extractedParameters = {};
     if (siteVersion === 1) {
         allowedParameterKeys.forEach(({name, type}) => {
             if (nameToValue[name] !== undefined) {
                 if (typeMatchesValue(type, nameToValue[name])) {
-                    extractedParameters[name] = nameToValue[name];
+                    if (typeof nameToValue[name] === "boolean") {
+                        extractedParameters[name] = nameToValue[name] ? "Yes" : "No";
+                    } else if (typeof nameToValue[name] === "object") {
+                        extractedParameters[name] = (nameToValue[name] as any).source;
+                    } else {
+                        extractedParameters[name] = nameToValue[name];
+                    }
                 }
             }
         });
@@ -146,32 +138,42 @@ export const findKnownParameterValues = (
     return extractedParameters;
 };
 
-export const isFileOrDirectoryParam = ({type}: {type: string}) => type === "input_file" || type === "input_directory";
+export const isFileOrDirectoryParam = ({type}: {type: string}): boolean =>
+    type === "input_file" || type === "input_directory";
 
-const typeMatchesValue = (type: ParameterTypes, parameter: string | [number, number]): boolean => {
+
+type ParameterValueTypes = string | [number, number] | boolean | {source: string};
+const typeMatchesValue = (type: ParameterTypes, parameter: ParameterValueTypes): boolean => {
     switch (type) {
         case ParameterTypes.Boolean:
-            return parameter === "Yes" || parameter === "No" || parameter === "";
+            return parameter === "Yes" ||
+                parameter === "No" ||
+                parameter === "" ||
+                parameter === true ||
+                parameter === false;
         case ParameterTypes.Integer:
             return parseInt(parameter as string, 10) % 1 === 0;
         case ParameterTypes.FloatingPoint:
             return typeof parseFloat(parameter as string) === "number";
         case ParameterTypes.Range:
             return typeof parameter === "object" && "size" in parameter;
-        case ParameterTypes.Text:
+        case ParameterTypes.Enumeration:
+            /* FIXME: Need we do more? */
+            return typeof parameter === "string";
         case ParameterTypes.InputDirectory:
         case ParameterTypes.InputFile:
-        case ParameterTypes.SharedFileSystem:
+            return typeof parameter === "string" || "source" in (parameter as any);
+        case ParameterTypes.Text:
+        case ParameterTypes.LicenseServer:
         case ParameterTypes.Peer:
             return typeof parameter === "string";
-
     }
 };
 
 interface ExtractedParameters {
     [key: string]: string | number | boolean |
-    {source: string, destination: string;} |
-    {min: number, max: number} |
+    {source: string; destination: string} |
+    {min: number; max: number} |
     {fileSystemId: string} |
     {jobId: string};
 }
@@ -181,21 +183,22 @@ export type ParameterValues = Map<string, React.RefObject<HTMLInputElement | HTM
 interface ExtractParametersFromMap {
     map: ParameterValues;
     appParameters: ApplicationParameter[];
-    cloud: Cloud;
+    client: HttpClient;
 }
 
-export function extractValuesFromWidgets({map, appParameters, cloud}: ExtractParametersFromMap): ExtractedParameters {
+export function extractValuesFromWidgets({map, appParameters, client}: ExtractParametersFromMap): ExtractedParameters {
     const extracted: ExtractedParameters = {};
     map.forEach((r, key) => {
         const parameter = appParameters.find(it => it.name === key);
         if (!r.current) return;
-        if (("value" in r.current && !r.current.value) || ("checkValidity" in r.current && !r.current.checkValidity())) return;
+        if (("value" in r.current && !r.current.value) || ("checkValidity" in r.current && !r.current.checkValidity()))
+            return;
         if (!parameter) return;
         if ("value" in r.current) {
             switch (parameter.type) {
                 case ParameterTypes.InputDirectory:
                 case ParameterTypes.InputFile:
-                    const expandedValue = expandHomeFolder(r.current.value, cloud.homeFolder);
+                    const expandedValue = expandHomeOrProjectFolder(r.current.value, client);
                     extracted[key] = {
                         source: expandedValue,
                         destination: removeTrailingSlash(expandedValue).split("/").pop()!
@@ -212,6 +215,11 @@ export function extractValuesFromWidgets({map, appParameters, cloud}: ExtractPar
                         default:
                             return;
                     }
+                case ParameterTypes.Enumeration:
+                    if (parameter.options.map(it => it.value).includes(r.current.value)) {
+                        extracted[key] = r.current.value;
+                    }
+                    return;
                 case ParameterTypes.Integer:
                     extracted[key] = parseInt(r.current.value, 10);
                     return;
@@ -221,37 +229,36 @@ export function extractValuesFromWidgets({map, appParameters, cloud}: ExtractPar
                 case ParameterTypes.Text:
                     extracted[key] = r.current.value;
                     return;
-                case ParameterTypes.SharedFileSystem:
-                    extracted[key] = {fileSystemId: r.current.value};
-                    return;
                 case ParameterTypes.Peer:
                     extracted[key] = {jobId: r.current.value};
                     return;
+                case ParameterTypes.LicenseServer:
+                    extracted[key] = r.current.value;
+                    return;
             }
         } else {
-            switch (parameter.type) {
-                case ParameterTypes.Range:
-                    const {bounds} = r.current.state;
-                    extracted[key] = {min: bounds[0], max: bounds[1]};
-                    return;
+            if (parameter.type === ParameterTypes.Range) {
+                const {bounds} = r.current.state;
+                extracted[key] = {min: bounds[0], max: bounds[1]};
+                return;
             }
         }
     });
     return extracted;
 }
 
-export const inCancelableState = (state: JobState) =>
-    state === JobState.VALIDATED ||
-    state === JobState.PREPARED ||
-    state === JobState.SCHEDULED ||
-    state === JobState.RUNNING;
-
+export const inCancelableState = (state: JobState): boolean => [
+    JobState.VALIDATED,
+    JobState.PREPARED,
+    JobState.SCHEDULED,
+    JobState.RUNNING
+].includes(state);
 
 export function validateOptionalFields(
     invocation: ApplicationInvocationDescription,
     parameters: ParameterValues
 ): boolean {
-    const optionalErrors = [] as string[];
+    const optionalErrors: string[] = [];
     const optionalParams = invocation.parameters.filter(it => it.optional && it.visible).map(it =>
         ({name: it.name, title: it.title})
     );
@@ -259,6 +266,9 @@ export function validateOptionalFields(
         const {current} = parameters.get(it.name)!;
         if (current == null || !("checkValidity" in current)) return;
         if (("checkValidity" in current! && !current!.checkValidity())) optionalErrors.push(it.title);
+
+        /* FIXME/ERROR/TODO */
+        // Do we need to do anything for enumeration?
     });
 
     if (optionalErrors.length > 0) {
@@ -269,7 +279,6 @@ export function validateOptionalFields(
         );
         return false;
     }
-
     return true;
 }
 
@@ -283,15 +292,12 @@ export function checkForMissingParameters(
     requiredParams.forEach(rParam => {
         const parameterValue = parameters[rParam.name];
         if (parameterValue == null) missingParameters.push(rParam.title);
-        else if ([PT.Boolean, PT.FloatingPoint, PT.Integer, PT.Text].includes[rParam.type] &&
+        else if ([PT.Boolean, PT.FloatingPoint, PT.Integer, PT.Text, PT.Enumeration].includes[rParam.type] &&
             !["number", "string", "boolean"].includes(typeof parameterValue)) {
             missingParameters.push(rParam.title);
         } else if (rParam.type === ParameterTypes.InputDirectory || rParam.type === ParameterTypes.InputFile) {
+            // tslint:disable-next-line: no-string-literal
             if (!parameterValue["source"]) {
-                missingParameters.push(rParam.title);
-            }
-        } else if (rParam.type === ParameterTypes.SharedFileSystem) {
-            if (!parameterValue["fileSystemId"]) {
                 missingParameters.push(rParam.title);
             }
         }

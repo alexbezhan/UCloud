@@ -9,7 +9,6 @@ import {
     width,
     WidthProps
 } from "styled-system";
-import {Theme} from "./theme";
 import {Cursor} from "./Types";
 
 export const Table = styled.table<WidthProps & MinWidthProps & ColorProps>`
@@ -36,11 +35,11 @@ export const TableCell = styled.td<TextAlignProps>`
 
 TableCell.displayName = "TableCell";
 
-const highlighted = ({highlighted, theme}: {highlighted?: boolean, theme: Theme}) =>
-    highlighted ? {backgroundColor: theme.colors.tableRowHighlight} : null;
+const isHighlighted = ({highlighted}: {highlighted?: boolean}): {backgroundColor: string} | null =>
+    highlighted ? {backgroundColor: "--var(tableRowHighlight)"} : null;
 
-export const TableRow = styled.tr<{highlighted?: boolean, contentAlign?: string, cursor?: Cursor} & ColorProps>`
-    ${highlighted};
+export const TableRow = styled.tr<{highlighted?: boolean; contentAlign?: string; cursor?: Cursor} & ColorProps>`
+    ${isHighlighted};
     cursor: ${props => props.cursor};
 
     & > ${TableCell} {
@@ -59,7 +58,7 @@ TableRow.defaultProps = {
 TableRow.displayName = "TableRow";
 
 export const TableHeader = styled.thead`
-    background-color: ${({theme}) => theme.colors.white};
+    background-color: var(--white, #f00);
     padding-top: 11px;
     padding-bottom: 11px;
 `;

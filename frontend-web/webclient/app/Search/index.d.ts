@@ -1,7 +1,4 @@
-import {
-    DetailedApplicationSearchReduxState,
-    FullAppInfo
-} from "Applications";
+import {DetailedApplicationSearchReduxState, FullAppInfo} from "Applications";
 import {HeaderSearchType} from "DefaultObjects";
 import {AdvancedSearchRequest, DetailedFileSearchReduxState, File} from "Files";
 import {AdvancedSearchRequest as AppSearchRequest} from "Applications";
@@ -10,9 +7,14 @@ import {match} from "react-router-dom";
 import {Page} from "Types";
 import {RouterLocationProps} from "Utilities/URIUtilities";
 
-export interface SearchProps extends SimpleSearchOperations, SimpleSearchStateProps, RouterLocationProps {
+export interface SearchProps extends SimpleSearchOperations, SimpleSearchStateProps {
     match: match<{priority: string}>;
+    /* If extends interface with these, Jest complains */
     history: History;
+    location: {
+        // TODO There is more here
+        search: string
+    };
 }
 
 export interface SimpleSearchStateProps {

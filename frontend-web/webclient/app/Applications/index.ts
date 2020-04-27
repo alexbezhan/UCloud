@@ -1,12 +1,11 @@
-import {SharedFileSystemMount} from "Applications/FileSystems";
-import {AnalysisReduxObject, ResponsiveReduxObject} from "DefaultObjects";
+import {AnalysisReduxObject} from "DefaultObjects";
 import {File, SortOrder} from "Files";
 import {History} from "history";
 import {SetStatusLoading} from "Navigation/Redux/StatusActions";
 import PromiseKeeper from "PromiseKeeper";
 import * as React from "react";
 import {match} from "react-router";
-import {Page} from "Types";
+import {Page, PaginationRequest} from "Types";
 import {ParameterValues} from "Utilities/ApplicationUtilities";
 
 /** @deprecated */
@@ -26,16 +25,10 @@ export enum JobState {
     CANCELLING = "CANCELLING"
 }
 
-export interface AdvancedSearchRequest {
-    name?: string;
-    version?: string;
-    versionRange?: [string, string];
-    description?: string;
+export interface AdvancedSearchRequest extends PaginationRequest {
+    query?: string;
     tags?: string[];
-
-    // FIXME: replace with PaginationRequest
-    itemsPerPage: number;
-    page: number;
+    showAllVersions: boolean;
 }
 
 export function isJobStateFinal(state: JobState): boolean {
@@ -63,7 +56,7 @@ export interface JobWithStatus {
     checked?: boolean;
 }
 
-export type AnalysesStateProps = AnalysisReduxObject & {responsive: ResponsiveReduxObject};
+export type AnalysesStateProps = AnalysisReduxObject;
 export type AnalysesProps = AnalysesStateProps & AnalysesOperations;
 
 type FetchJobsOperation = (
@@ -101,17 +94,17 @@ interface ApplicationTool {
     createdAt: number;
     modifiedAt: number;
     description: {
-        info: ApplicationInfo
-        container: string
-        defaultNumberOfNodes: number
-        defaultTasksPerNode: number
-        defaultAllocationTime: MaxTime
-        requiredModules: string[]
-        authors: string[]
-        title: string
-        description: string
-        backend: string
-        license: string
+        info: ApplicationInfo;
+        container: string;
+        defaultNumberOfNodes: number;
+        defaultTasksPerNode: number;
+        defaultAllocationTime: MaxTime;
+        requiredModules: string[];
+        authors: string[];
+        title: string;
+        description: string;
+        backend: string;
+        license: string;
     };
 }
 
@@ -126,7 +119,7 @@ export interface ApplicationDescription {
     authors: string[];
     title: string;
     description: string;
-    invocation: any[]; // FIXME: Add type
+    invocation: Invocation[];
     parameters: ApplicationParameter[];
     outputFileGlobs: string[];
     website?: string;
@@ -154,7 +147,6 @@ export interface JobSchedulingOptionsForInput {
 }
 
 export interface AdditionalMountedFolder {
-    readOnly: boolean;
     ref: React.RefObject<HTMLInputElement>;
     defaultValue?: string;
 }
@@ -164,6 +156,11 @@ export interface AdditionalPeer {
     jobIdRef: React.RefObject<HTMLInputElement>;
 }
 
+export interface LicenseServerId {
+    id: string;
+    name: string;
+}
+
 export interface RunAppState {
     promises: PromiseKeeper;
     jobSubmitted: boolean;
@@ -171,13 +168,15 @@ export interface RunAppState {
     application?: FullAppInfo;
     parameterValues: ParameterValues;
     schedulingOptions: JobSchedulingOptionsForInput;
+    useUrl: boolean;
+    url: React.RefObject<HTMLInputElement>;
     favorite: boolean;
     favoriteLoading: boolean;
     mountedFolders: AdditionalMountedFolder[];
     additionalPeers: AdditionalPeer[];
     fsShown: boolean;
-    sharedFileSystems: {mounts: SharedFileSystemMount[]};
     previousRuns: Page<File>;
+    unknownParameters: string[];
     reservation: React.RefObject<HTMLInputElement>;
 }
 
@@ -186,13 +185,13 @@ export interface RunOperations extends SetStatusLoading {
 }
 
 export interface RunAppProps extends RunOperations {
-    match: match<{appName: string, appVersion: string}>;
+    match: match<{appName: string; appVersion: string}>;
     history: History;
     updatePageTitle: () => void;
 }
 
 export interface NumberParameter extends BaseParameter {
-    defaultValue: {value: number, type: "double" | "int"} | null;
+    defaultValue: {value: number; type: "double" | "int"} | null;
     min: number | null;
     max: number | null;
     step: number | null;
@@ -200,10 +199,20 @@ export interface NumberParameter extends BaseParameter {
 }
 
 export interface BooleanParameter extends BaseParameter {
-    defaultValue: {value: boolean, type: "bool"} | null;
+    defaultValue: {value: boolean; type: "bool"} | null;
     trueValue?: string | null;
     falseValue?: string | null;
     type: ParameterTypes.Boolean;
+}
+
+interface EnumOption {
+    name: string;
+    value: string;
+}
+export interface EnumerationParameter extends BaseParameter {
+    default: {value: string; type: "enum"} | null;
+    options: EnumOption[];
+    type: ParameterTypes.Enumeration;
 }
 
 export interface InputFileParameter extends BaseParameter {
@@ -217,13 +226,13 @@ export interface InputDirectoryParameter extends BaseParameter {
 }
 
 export interface TextParameter extends BaseParameter {
-    defaultValue: {value: string, type: "string"} | null;
+    defaultValue: {value: string; type: "string"} | null;
     type: ParameterTypes.Text;
 }
 
 export interface RangeParameter extends BaseParameter {
     type: ParameterTypes.Range;
-    defaultValue: {min: number; max: number;};
+    defaultValue: {min: number; max: number};
     min: number;
     max: number;
 }
@@ -233,11 +242,9 @@ export interface PeerParameter extends BaseParameter {
     type: ParameterTypes.Peer;
 }
 
-export interface SharedFileSystemParameter extends BaseParameter {
-    fsType: "EPHEMERAL" | "PERSISTENT";
-    mountLocation: string;
-    exportToPeers: boolean;
-    type: ParameterTypes.SharedFileSystem;
+export interface LicenseServerParameter extends BaseParameter {
+    type: ParameterTypes.LicenseServer;
+    tagged: string[];
 }
 
 interface BaseParameter {
@@ -258,7 +265,8 @@ export type ApplicationParameter =
     TextParameter |
     RangeParameter |
     PeerParameter |
-    SharedFileSystemParameter;
+    LicenseServerParameter |
+    EnumerationParameter;
 
 type Invocation = WordInvocation | VarInvocation;
 
@@ -284,26 +292,28 @@ export enum ParameterTypes {
     FloatingPoint = "floating_point",
     Text = "text",
     Boolean = "boolean",
+    Enumeration = "enumeration",
     Range = "range",
     Peer = "peer",
-    SharedFileSystem = "shared_file_system"
+    LicenseServer = "license_server"
 }
 
 export interface DetailedApplicationSearchReduxState {
     hidden: boolean;
-    appName: string;
-    appVersion: string;
+    appQuery: string;
     tags: Set<string>;
+    showAllVersions: boolean;
     error?: string;
     loading: boolean;
 }
 
 export interface DetailedApplicationOperations {
-    setAppName: (n: string) => void;
-    setVersionName: (v: string) => void;
+    setAppQuery: (n: string) => void;
     addTag: (tag: string) => void;
     removeTag: (tag: string) => void;
     clearTags: () => void;
+    setSearch: (search: string) => void;
+    setShowAllVersions: () => void;
     // tslint:disable-next-line:ban-types
     fetchApplications: (b: AdvancedSearchRequest, c?: Function) => void;
 }
@@ -316,6 +326,7 @@ export interface ApplicationMetadata {
     title: string;
     description: string;
     website?: string;
+    public: boolean;
 }
 
 export enum ApplicationType {
@@ -332,7 +343,13 @@ export interface ApplicationInvocationDescription {
     applicationType: ApplicationType;
     shouldAllowAdditionalMounts: boolean;
     shouldAllowAdditionalPeers: boolean;
+    licenseServers: string[];
     allowMultiNode: boolean;
+    container: null | {
+        changeWorkingDirectory: boolean;
+        runAsRoot: boolean;
+        runAsRealUser: boolean;
+    };
 }
 
 export interface Tool {

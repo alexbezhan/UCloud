@@ -14,8 +14,8 @@ export interface ParameterProps {
 }
 
 export const BaseParameter: React.FunctionComponent<{
-    parameter: Types.ApplicationParameter,
-    onRemove?: () => void
+    parameter: Types.ApplicationParameter;
+    onRemove?: () => void;
 }> = ({parameter, children, onRemove}) => (
     <Box mt={"1em"}>
         <Label fontSize={1} htmlFor={parameter.name}>
@@ -24,15 +24,15 @@ export const BaseParameter: React.FunctionComponent<{
                     {parameter.title}
                     {parameter.optional ? null : <MandatoryField />}
                 </Flex>
-                {!parameter.optional || !onRemove ? null :
+                {!parameter.optional || !onRemove ? null : (
                     <>
-                        <Box ml="auto"/>
+                        <Box ml="auto" />
                         <Text color="red" cursor="pointer" mb="4px" onClick={onRemove}>
                             Remove
                             <Icon ml="6px" size={16} name="close" />
                         </Text>
                     </>
-                }
+                )}
             </Flex>
         </Label>
         {children}

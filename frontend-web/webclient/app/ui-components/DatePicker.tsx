@@ -11,12 +11,12 @@ export const DatePicker = styled(ReactDatePicker) <InputProps>`
     width: 100%;
     font-family: inherit;
     color: inherit;
-    font-size: ${ theme.fontSizes[1]}px;
+    font-size: ${theme.fontSizes[1]}px;
     background-color: transparent;
     border-radius: ${theme.radius};
     border-width: 0px;
     border-style: solid;
-    border-color: ${p => p.theme.colors.borderGray};
+    border-color: var(--borderGray, #f00);
 
     padding-top: 14px;
     padding-bottom: 14px;
@@ -26,7 +26,7 @@ export const DatePicker = styled(ReactDatePicker) <InputProps>`
     margin: 0;
 
     ::placeholder {
-      color: ${p => p.theme.colors.gray};
+      color: var(--gray, #f00);
     }
 
     ::-ms-clear {

@@ -1,7 +1,6 @@
-import {ResponsiveReduxObject, SensitivityLevelMap} from "DefaultObjects";
+import {SensitivityLevelMap} from "DefaultObjects";
 import * as React from "react";
-import {ClearRefresh, Operation, Page, PredicatedOperation} from "Types";
-import {RouterLocationProps} from "Utilities/URIUtilities";
+import {Operation, PredicatedOperation} from "Types";
 import {Times} from "./Redux/DetailedFileSearchActions";
 
 export enum SortOrder {
@@ -16,15 +15,11 @@ export type FileType = |
     "SHARESFOLDER" |
     "TRASHFOLDER" |
     "FSFOLDER" |
-    "RESULTFOLDER" |
-    "SHARED_FS";
+    "RESULTFOLDER";
 
 export interface File {
     fileType: FileType;
     path: string;
-    creator: string | null;
-    fileId: string | null;
-    createdAt: number | null;
     modifiedAt: number | null;
     ownerName: string | null;
     size: number | null;
@@ -33,10 +28,21 @@ export interface File {
     sensitivityLevel: SensitivityLevelMap | null;
     ownSensitivityLevel: SensitivityLevelMap | null;
     mockTag?: string;
+    permissionAlert: boolean | null;
+    isRepo?: boolean;
+}
+
+export interface UserEntity {
+    username: string;
+}
+
+export interface ProjectEntity {
+    group: string;
+    projectId: string;
 }
 
 export interface Acl {
-    entity: string;
+    entity: ProjectEntity | UserEntity | string;
     rights: string[];
     group: boolean;
 }
@@ -45,7 +51,6 @@ export interface Acl {
 export enum SortBy {
     FILE_TYPE = "fileType",
     PATH = "path",
-    CREATED_AT = "createdAt",
     MODIFIED_AT = "modifiedAt",
     SIZE = "size",
     ACL = "acl",
@@ -56,78 +61,12 @@ export enum FileResource {
     FAVORITED = "favorited",
     FILE_TYPE = "fileType",
     PATH = "path",
-    CREATED_AT = "createdAt",
     MODIFIED_AT = "modifiedAt",
     OWNER_NAME = "ownerName",
     SIZE = "size",
     ACL = "acl",
     SENSITIVITY_LEVEL = "sensitivityLevel",
     OWN_SENSITIVITY_LEVEL = "ownSensitivityLevel",
-    FILE_ID = "fileId",
-    CREATOR = "creator"
-}
-
-export type FilesProps = FilesStateProps & FilesOperations & RouterLocationProps;
-
-export interface FilesStateProps {
-    path: string;
-    page: Page<File>;
-    loading: boolean;
-    fileSelectorShown: boolean;
-    fileSelectorLoading: boolean;
-    disallowedPaths: string[];
-    fileSelectorCallback: (file: File) => void;
-    fileSelectorPath: string;
-    fileSelectorPage: Page<File>;
-    fileSelectorIsFavorites: boolean;
-    sortBy: SortBy;
-    sortOrder: SortOrder;
-    error?: string;
-    fileSelectorError?: string;
-    favFilesCount: number;
-    renamingCount: number;
-    sensitivityCount: number;
-    aclCount: number;
-    fileCount: number;
-    leftSortingColumn: SortBy;
-    rightSortingColumn: SortBy;
-    invalidPath: boolean;
-    responsive?: ResponsiveReduxObject;
-}
-
-export interface FilesOperations extends ClearRefresh {
-    onInit: () => void;
-    onFileSelectorErrorDismiss: () => void;
-    dismissError: () => void;
-    fetchFiles: (
-        path: string,
-        itemsPerPage: number,
-        pageNumber: number,
-        sortOrder: SortOrder,
-        sortBy: SortBy,
-        attrs: FileResource[],
-        index?: number
-    ) => void;
-    fetchPageFromPath: (
-        path: string,
-        itemsPerPage: number,
-        sortOrder: SortOrder,
-        sortBy: SortBy,
-        attrs: FileResource[]
-    ) => void;
-    fetchSelectorFiles: (path: string, pageNumber: number, itemsPerPage: number) => void;
-    fetchFileSelectorFavorites: (pageNumber: number, itemsPerPage: number) => void;
-    setFileSelectorCallback: (callback: (file: File) => void) => void;
-    checkFile: (checked: boolean, path: string) => void;
-    setLoading: (loading: boolean) => void;
-    updateFiles: (files: Page<File>) => void;
-    updatePath: (path: string) => void;
-    showFileSelector: (open: boolean) => void;
-    checkAllFiles: (checked: boolean) => void;
-    setDisallowedPaths: (disallowedPaths: string[]) => void;
-    showUploader: () => void;
-    setUploaderCallback: (callback: (s: string) => void) => void;
-    createFolder: () => void;
 }
 
 export interface FileSelectorProps {
@@ -138,64 +77,6 @@ export interface FileSelectorProps {
     trigger: React.ReactNode;
     visible: boolean;
     disallowedPaths?: string[];
-}
-
-export enum FileSource {
-    HOME,
-    FAVORITES,
-    SHARES
-}
-
-export interface FilesTableProps {
-    onNavigationClick?: (path: string) => void;
-    canNavigateFiles?: boolean;
-    sortOrder: SortOrder;
-    onDropdownSelect?: (sortOrder: SortOrder, sortBy: SortBy, index?: number) => void;
-    sortingColumns: SortBy[];
-    files: File[];
-    masterCheckbox?: React.ReactNode;
-    sortingIcon?: (name: SortBy) => "arrowUp" | "arrowDown" | undefined;
-    sortFiles: (sortOrder: SortOrder, sortBy: SortBy) => void;
-    onRenameFile?: (key: number, file: File, name: string) => void;
-    onCreateFolder?: (key: number, name: string) => void;
-    onCheckFile: (c: boolean, f: File) => void;
-    refetchFiles: () => void;
-    sortBy: SortBy;
-    onFavoriteFile?: (f: File[]) => void;
-    fileOperations: FileOperation[];
-    responsive: ResponsiveReduxObject;
-    notStickyHeader?: boolean;
-}
-
-export interface FilesTableHeaderProps {
-    toSortingIcon?: (s: SortBy) => "arrowUp" | "arrowDown" | undefined;
-    sortFiles?: (sortOrder: SortOrder, sortBy: SortBy) => void;
-    sortOrder: SortOrder;
-    sortBy: SortBy;
-    masterCheckbox?: React.ReactNode;
-    sortingColumns: SortBy[];
-    onDropdownSelect?: (sortOrder: SortOrder, sortBy: SortBy, index: number) => void;
-    customEntriesWidth?: string;
-    notStickyHeader?: boolean;
-}
-
-export interface FilenameAndIconsProps {
-    size?: number | string;
-    canNavigateFiles: boolean;
-    file: File;
-    hasCheckbox: boolean;
-    onRenameFile?: (key: number, file: File, name: string) => void;
-    onCheckFile?: (c: boolean) => void;
-    onFavoriteFile?: (files: File[]) => void;
-    onNavigationClick?: (path: string) => void;
-}
-
-export interface MoveCopyOperations {
-    showFileSelector: (show: boolean) => void;
-    setDisallowedPaths: (paths: string[]) => void;
-    setFileSelectorCallback: (callback: (file: File) => void) => void;
-    fetchPageFromPath: (path: string) => void;
-    fetchFilesPage: (path: string) => void;
 }
 
 export interface FileOptionsProps {
@@ -235,6 +116,7 @@ export interface DetailedFileSearchOperations {
     setFilename: (filename: string) => void;
     setLoading: (loading: boolean) => void;
     setTimes: (times: Times) => void;
+    setSearch: (search: string) => void;
 }
 
 export type DetailedFileSearchStateProps = DetailedFileSearchReduxState & DetailedFileSearchOperations;
@@ -245,12 +127,9 @@ export interface DetailedFileSearchReduxState {
     hidden: boolean;
     allowFolders: boolean;
     allowFiles: boolean;
-    fileName: string;
     extensions: Set<string>;
     tags: Set<string>;
     sensitivities: Set<SensitivityLevel>;
-    createdBefore?: Date;
-    createdAfter?: Date;
     modifiedBefore?: Date;
     modifiedAfter?: Date;
     includeShares: boolean;
@@ -258,22 +137,13 @@ export interface DetailedFileSearchReduxState {
     loading: boolean;
 }
 
-export type ContextBarProps = ContextButtonsProps & FileOptionsProps & {invalidPath: boolean};
-
 export type PossibleTime = "createdBefore" | "createdAfter" | "modifiedBefore" | "modifiedAfter";
-
-export interface ResponsiveTableColumnProps extends SortByDropdownProps {
-    iconName?: "arrowUp" | "arrowDown";
-    minWidth?: number;
-    notSticky?: boolean;
-}
 
 export interface AdvancedSearchRequest {
     fileName?: string;
     extensions?: string[];
     fileTypes: [FileType?, FileType?];
-    createdAt?: {after?: number, before?: number};
-    modifiedAt?: {after?: number, before?: number};
+    modifiedAt?: {after?: number; before?: number};
     sensitivity?: SensitivityLevel[];
     includeShares?: boolean;
     itemsPerPage?: number;

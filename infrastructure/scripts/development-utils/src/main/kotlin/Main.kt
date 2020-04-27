@@ -29,7 +29,7 @@ fun printHelp(): Nothing {
              
              Args:
              
-               --include <serviceName>: Optiona. A service to include.
+               --include <serviceName>: Optional. A service to include.
                --exclude <serviceName>: Optional. A service to exclude.
                --target <serviceName>: Required. Sets the target of this program. 
                --help: This message.
@@ -151,7 +151,7 @@ fun main(args: Array<String>) {
         scriptBuilder.append(
             """
                 cd ${authService.directory.absolutePath}
-                prefixed "auth" gradle run -PappArgs='["--dev", "--config-dir", "$sducloudConfig", "--config-dir", "${configDir.absolutePath}", "--config", "${authConfigFile.absolutePath}", "--save-config", "$refreshConfig"]'
+                prefixed "auth" gradle run --args='--dev --config-dir $sducloudConfig --config-dir ${configDir.absolutePath} --config ${authConfigFile.absolutePath} --save-config $refreshConfig'
                 
                 while [ ! -f $refreshConfig ]; do sleep 1; done
                 
@@ -163,7 +163,7 @@ fun main(args: Array<String>) {
         servicesToStart.filter { it.service.name != "auth" }.joinToString("\n") { (service, dir) ->
             """
                 cd ${dir.absolutePath}
-                prefixed "${service.name}" gradle run -PappArgs='["--dev", "--config-dir", "$sducloudConfig", "--config-dir", "${configDir.absolutePath}"]'
+                prefixed "${service.name}" gradle run --args='--dev --config-dir $sducloudConfig --config-dir ${configDir.absolutePath}'
                 
             """.trimIndent()
         }

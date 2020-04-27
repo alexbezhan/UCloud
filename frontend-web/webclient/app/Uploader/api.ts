@@ -1,7 +1,6 @@
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {Sensitivity} from "DefaultObjects";
 import {STATUS_CODES} from "http";
-import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {b64EncodeUnicode} from "Utilities/XHRUtils";
 import {inSuccessRange} from "UtilityFunctions";
@@ -9,32 +8,30 @@ import {inSuccessRange} from "UtilityFunctions";
 const timeBetweenUpdates = 150;
 
 interface UploadArgs {
-    location: string
-    file: File
-    sensitivity: Sensitivity
-    policy: UploadPolicy
-    onProgress?: (e: ProgressEvent) => void,
-    onError?: (error: string) => void
+    location: string;
+    file: File;
+    sensitivity: Sensitivity;
+    policy: UploadPolicy;
+    onProgress?: (e: ProgressEvent) => void;
+    onError?: (error: string) => void;
 }
 
-export const multipartUpload = async (
-    {
-        location,
-        file,
-        sensitivity,
-        policy,
-        onProgress,
-        onError
-    }: UploadArgs
-): Promise<XMLHttpRequest> => {
-    const token = await Cloud.receiveAccessTokenOrRefreshIt();
+export const multipartUpload = async ({
+    location,
+    file,
+    sensitivity,
+    policy,
+    onProgress,
+    onError
+}: UploadArgs): Promise<XMLHttpRequest> => {
+    const token = await Client.receiveAccessTokenOrRefreshIt();
 
-    let request = new XMLHttpRequest();
-    request.open("POST", Cloud.computeURL("/api", "/files/upload/file"));
+    const request = new XMLHttpRequest();
+    request.open("POST", Client.computeURL("/api", "/files/upload/file"));
     request.onreadystatechange = () => {
         if (!inSuccessRange(request.status) && request.status !== 0) {
             !!onError ? onError(`Upload failed: ${statusToError(request.status)}`) :
-                snackbarStore.addSnack({message: statusToError(request.status), type: SnackType.Failure})
+                snackbarStore.addFailure(statusToError(request.status));
         }
     };
     request.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -57,25 +54,23 @@ export const multipartUpload = async (
     return request;
 };
 
-export const bulkUpload = async (
-    {
-        location,
-        file,
-        sensitivity,
-        policy,
-        onProgress,
-        onError
-    }: UploadArgs
-): Promise<XMLHttpRequest> => {
-    const token = await Cloud.receiveAccessTokenOrRefreshIt();
+export const bulkUpload = async ({
+    location,
+    file,
+    sensitivity,
+    policy,
+    onProgress,
+    onError
+}: UploadArgs): Promise<XMLHttpRequest> => {
+    const token = await Client.receiveAccessTokenOrRefreshIt();
     const format = formatFromFileName(file.name);
 
-    let request = new XMLHttpRequest();
-    request.open("POST", Cloud.computeURL("/api", "/files/upload/archive"));
+    const request = new XMLHttpRequest();
+    request.open("POST", Client.computeURL("/api", "/files/upload/archive"));
     request.onreadystatechange = () => {
         if (!inSuccessRange(request.status))
             !!onError ? onError(`Upload failed: ${statusToError(request.status)}`) :
-                snackbarStore.addSnack({message: statusToError(request.status), type: SnackType.Failure})
+                snackbarStore.addFailure(statusToError(request.status));
     };
     request.setRequestHeader("Authorization", `Bearer ${token}`);
     let nextProgressUpdate = new Date().getTime();
@@ -119,7 +114,7 @@ function statusToError(status: number) {
             return "Internal Server Error Occurred";
         }
         default:
-            return "An error ocurred."
+            return "An error occurred.";
     }
 }
 

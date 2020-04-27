@@ -3,20 +3,25 @@ import {useCloudAPI} from "Authentication/DataHook";
 import * as React from "react";
 import {useEffect, useState} from "react";
 import styled from "styled-components";
+import {theme} from "ui-components";
 import Box from "ui-components/Box";
 import ClickableDropdown from "ui-components/ClickableDropdown";
 import Icon from "ui-components/Icon";
 import {HiddenInputField} from "ui-components/Input";
 
-export const MachineTypes: React.FunctionComponent<{ inputRef: React.RefObject<HTMLInputElement> }> = props => {
+export const MachineTypes: React.FunctionComponent<{
+    inputRef: React.RefObject<HTMLInputElement>;
+    runAsRoot: boolean;
+}> = props => {
     const [machines] = useCloudAPI<MachineReservation[]>(machineTypes(), []);
     const [selected, setSelected] = useState<string>("");
 
     const selectedMachineFromList = machines.data.find(it => it.name === selected);
-    const selectedMachine = selectedMachineFromList ? selectedMachineFromList : {
-        name: "Unspecified",
+    const selectedMachine: MachineReservation = selectedMachineFromList ? selectedMachineFromList : {
+        name: "Default",
         memoryInGigs: null,
-        cpu: null
+        cpu: null,
+        gpu: null
     };
 
     useEffect(() => {
@@ -28,46 +33,55 @@ export const MachineTypes: React.FunctionComponent<{ inputRef: React.RefObject<H
         current.value = selected;
     }, [props.inputRef, selected]);
 
-    return <ClickableDropdown
-        fullWidth
-        trigger={
-            <MachineDropdown>
-                <MachineBox machine={selectedMachine}/>
+    const filteredMachines = machines.data.filter(m => !(m.name === "Unspecified" && props.runAsRoot));
 
-                <Icon name={"chevronDown"}/>
-                <HiddenInputField ref={props.inputRef}/>
-            </MachineDropdown>
-        }
-    >
-        {machines.data.map(machine => {
-            return <Box key={machine.name} onClick={() => setSelected(machine.name)}>
-                <MachineBox machine={machine}/>
-            </Box>;
-        })}
-    </ClickableDropdown>;
+    return (
+        <ClickableDropdown
+            fullWidth
+            trigger={(
+                <MachineDropdown>
+                    <MachineBox machine={selectedMachine} />
+
+                    <Icon name="chevronDown" />
+                    <HiddenInputField ref={props.inputRef} />
+                </MachineDropdown>
+            )}
+        >
+            {filteredMachines.map(machine => (
+                <Box key={machine.name} onClick={() => setSelected(machine.name)}>
+                    <MachineBox machine={machine} />
+                </Box>
+            ))}
+        </ClickableDropdown>
+    );
 };
 
-const MachineBox: React.FunctionComponent<{ machine: MachineReservation }> = ({machine}) => {
-    return <p style={{cursor: "pointer"}}>
-        <b>{machine.name}</b><br/>
+const MachineBox: React.FunctionComponent<{machine: MachineReservation}> = ({machine}) => (
+    <p style={{cursor: "pointer"}}>
+        <b>{machine.name}</b><br />
         {!machine.cpu || !machine.memoryInGigs ?
-            "Uses leftover CPU and memory. Recommended for most applications."
+            "Uses all available CPU and memory. Recommended for most applications."
             : null
         }
-        {machine.cpu && machine.memoryInGigs ?
+        {machine.cpu && machine.memoryInGigs ? (
             <>
-                CPU: {machine.cpu}<br/>
+                CPU: {machine.cpu}<br />
                 Memory: {machine.memoryInGigs} GB memory
+                </>
+        ) : null}
+        {machine.gpu ? (
+            <>
+                <br />
+                GPU: {machine.gpu}
             </>
-            : null
-        }
-    </p>;
-};
+        ) : null}
+    </p>
+);
 
 const MachineDropdown = styled(Box)`
     cursor: pointer;
     border-radius: 5px;
-    border: ${({theme}) => theme.borderWidth} solid ${({theme}) => theme.colors.midGray};
+    border: ${theme.borderWidth} solid var(--midGray, #f00);
     padding: 15px;
     width: 100%;
 

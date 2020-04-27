@@ -3,7 +3,7 @@ import {OptionalParameters} from "Applications/OptionalParameters";
 import {InputDirectoryParameter} from "Applications/Widgets/FileParameter";
 import {AdditionalPeerParameter} from "Applications/Widgets/PeerParameter";
 import {callAPI} from "Authentication/DataHook";
-import {Cloud} from "Authentication/SDUCloudObject";
+import {Client} from "Authentication/HttpClientInstance";
 import {emptyPage} from "DefaultObjects";
 import {dialogStore} from "Dialog/DialogStore";
 import {File as CloudFile, FileResource, SortBy, SortOrder} from "Files";
@@ -19,10 +19,19 @@ import {Dispatch} from "redux";
 import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
-import {AccessRight, Page} from "Types";
-import {Box, Button, ContainerForText, Flex, Label, OutlineButton, VerticalButtonGroup} from "ui-components";
+import {Page} from "Types";
+import {
+    Box,
+    Button,
+    ContainerForText,
+    Flex,
+    Label,
+    OutlineButton,
+    VerticalButtonGroup,
+    Checkbox
+} from "ui-components";
 import BaseLink from "ui-components/BaseLink";
-import ClickableDropdown from "ui-components/ClickableDropdown";
+import Error from "ui-components/Error";
 import * as Heading from "ui-components/Heading";
 import Input, {HiddenInputField} from "ui-components/Input";
 import Link from "ui-components/Link";
@@ -37,12 +46,10 @@ import {
 } from "Utilities/ApplicationUtilities";
 import {removeEntry} from "Utilities/CollectionUtilities";
 import {
-    allFilesHasAccessRight,
     checkIfFileExists,
-    expandHomeFolder,
+    expandHomeOrProjectFolder,
     fetchFileContent,
     fileTablePage, getFilenameFromPath,
-    statFileOrNull,
     statFileQuery
 } from "Utilities/FileUtilities";
 import {addStandardDialog} from "UtilityComponents";
@@ -57,11 +64,14 @@ import {
     RunAppState,
     RunOperations,
     WithAppInvocation,
-    WithAppMetadata,
+    WithAppMetadata
 } from ".";
+import {PRODUCT_NAME} from "../../site.config.json";
 import {AppHeader} from "./View";
 import {Parameter} from "./Widgets/Parameter";
 import {RangeRef} from "./Widgets/RangeParameters";
+import {TextSpan} from "ui-components/Text";
+import Warning from "ui-components/Warning";
 
 const hostnameRegex = new RegExp(
     "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*" +
@@ -71,11 +81,11 @@ const hostnameRegex = new RegExp(
 class Run extends React.Component<RunAppProps, RunAppState> {
     constructor(props: Readonly<RunAppProps>) {
         super(props);
+
         this.state = {
             promises: new PromiseKeeper(),
             jobSubmitted: false,
             initialSubmit: false,
-
             parameterValues: new Map(),
             mountedFolders: [],
             additionalPeers: [],
@@ -87,30 +97,30 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 },
                 numberOfNodes: 1,
                 tasksPerNode: 1,
-                name: React.createRef()
+                name: React.createRef(),
             },
+
+            useUrl: false,
+            url: React.createRef(),
             favorite: false,
             favoriteLoading: false,
             fsShown: false,
             previousRuns: emptyPage,
             reservation: React.createRef(),
-
-            sharedFileSystems: {mounts: []}
+            unknownParameters: []
         };
     }
 
-    public componentDidMount() {
+    public componentDidMount(): void {
         this.props.updatePageTitle();
         const name = this.props.match.params.appName;
         const version = this.props.match.params.appVersion;
-        this.state.promises.makeCancelable(
-            this.retrieveApplication(name, version)
-        );
+        this.state.promises.makeCancelable(this.retrieveApplication(name, version));
     }
 
-    public componentWillUnmount = () => this.state.promises.cancelPromises();
+    public componentWillUnmount = (): void => this.state.promises.cancelPromises();
 
-    public componentDidUpdate(prevProps: Readonly<RunAppProps>, prevState: Readonly<RunAppState>) {
+    public componentDidUpdate(prevProps: Readonly<RunAppProps>, prevState: Readonly<RunAppState>): void {
         if (prevProps.match.params.appName !== this.props.match.params.appName ||
             prevProps.match.params.appVersion !== this.props.match.params.appVersion) {
             this.state.promises.makeCancelable(
@@ -123,19 +133,19 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         }
     }
 
-    public render() {
+    public render(): JSX.Element {
         const {application, jobSubmitted, schedulingOptions, parameterValues} = this.state;
-        if (!application) return <MainContainer main={<LoadingIcon size={18} />} />;
+        if (!application) return <MainContainer main={<LoadingIcon size={36}/>}/>;
 
         const parameters = application.invocation.parameters;
         const mandatory = parameters.filter(parameter => !parameter.optional);
         const visible = parameters.filter(parameter =>
-            parameter.optional && (parameter.visible === true || parameterValues.get(parameter.name)!.current != null)
+            parameter.optional && (parameter.visible === true || parameterValues.get(parameter.name)?.current != null)
         );
         const optional = parameters.filter(parameter =>
-            parameter.optional && parameter.visible !== true && parameterValues.get(parameter.name)!.current == null);
+            parameter.optional && parameter.visible !== true && parameterValues.get(parameter.name)?.current == null);
 
-        const onParameterChange = (parameter: ApplicationParameter, isVisible: boolean) => {
+        const onParameterChange = (parameter: ApplicationParameter, isVisible: boolean): void => {
             parameter.visible = isVisible;
             if (!isVisible) {
                 parameterValues.set(parameter.name, React.createRef<HTMLSelectElement | HTMLInputElement>());
@@ -143,11 +153,13 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             this.setState(() => ({application: this.state.application}));
         };
 
-        const mapParamToComponent = (parameter: ApplicationParameter) => {
+        const mapParamToComponent = (parameter: ApplicationParameter): JSX.Element => {
             const ref = parameterValues.get(parameter.name)!;
-            function handleParamChange() {
+
+            function handleParamChange(): void {
                 onParameterChange(parameter, false);
             }
+
             return (
                 <Parameter
                     key={parameter.name}
@@ -162,13 +174,14 @@ class Run extends React.Component<RunAppProps, RunAppState> {
 
         const mandatoryParams = mandatory.map(mapParamToComponent);
         const visibleParams = visible.map(mapParamToComponent);
+        const {unknownParameters} = this.state;
 
         return (
             <MainContainer
                 headerSize={48}
                 header={(
-                    <Flex ml="50px">
-                        <AppHeader slim application={application} />
+                    <Flex mx={["0px", "0px", "0px", "0px", "0px", "50px"]}>
+                        <AppHeader slim application={application}/>
                     </Flex>
                 )}
 
@@ -202,7 +215,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 additional={(
                     <FileSelector
                         onFileSelect={it => {
-                            if (!!it) this.onImportFileSelected(it);
+                            if (it) this.onImportFileSelected(it);
                             this.setState(() => ({fsShown: false}));
                         }}
                         trigger={null}
@@ -217,12 +230,12 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                 this.state.previousRuns.items.length <= 0 ? null : (
                                     <RunSection>
                                         <Label>Load parameters from a previous run:</Label>
-                                        <Flex flexDirection={"row"} flexWrap={"wrap"}>
+                                        <Flex flexDirection="row" flexWrap="wrap">
                                             {
                                                 this.state.previousRuns.items.slice(0, 5).map((file, idx) => (
-                                                    <Box mr={"0.8em"} key={idx}>
+                                                    <Box mr="0.8em" key={idx}>
                                                         <BaseLink
-                                                            href={"#"}
+                                                            href="#"
                                                             onClick={async e => {
                                                                 e.preventDefault();
 
@@ -249,11 +262,21 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                         </Flex>
                                     </RunSection>
                                 )}
+                            {!unknownParameters.length ? null : (
+                                <Error
+                                    error={"Could not add parameters:\n\t" + unknownParameters.join(", \n\t")}
+                                    clearError={() => this.setState(() => ({unknownParameters: []}))}
+                                />
+                            )}
+
                             <RunSection>
                                 <JobSchedulingOptions
                                     onChange={this.onJobSchedulingParamsChange}
                                     options={schedulingOptions}
                                     reservationRef={this.state.reservation}
+                                    urlEnabled={this.state.useUrl}
+                                    setUrlEnabled={() => this.setState({useUrl: !this.state.useUrl})}
+                                    url={this.state.url}
                                     app={application}
                                 />
                             </RunSection>
@@ -275,7 +298,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                             {
                                 !application.invocation.shouldAllowAdditionalMounts ? null : (
                                     <RunSection>
-                                        <Flex alignItems={"center"}>
+                                        <Flex alignItems="center">
                                             <Box flexGrow={1}>
                                                 <Heading.h4>Select additional folders to use</Heading.h4>
                                             </Box>
@@ -283,7 +306,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                             <Button
                                                 type="button"
                                                 ml="5px"
-                                                lineHeight={"16px"}
+                                                lineHeight="16px"
                                                 onClick={() => this.addFolder()}
                                             >
                                                 Add folder
@@ -294,43 +317,33 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                             {this.state.mountedFolders.length !== 0 ? (
                                                 <>
                                                     Your files will be available at <code>/work/</code>.
-                                                    You can view changes to your {" "}
-                                                    <Link
-                                                        to={fileTablePage(Cloud.homeFolder)}
-                                                        target={"_blank"}
-                                                    >
-                                                        files
-                                                    </Link> {" "}
-                                                    at the end of the job.
                                                 </>
                                             ) : (
-                                                    <>
-                                                        If you need to use your {" "}
-                                                        <Link
-                                                            to={fileTablePage(Cloud.homeFolder)}
-                                                            target={"_blank"}
-                                                        >
-                                                            files
-                                                        </Link>
-                                                        {" "}
-                                                        in this job then click {" "}
-                                                        <BaseLink
-                                                            href={"#"}
-                                                            onClick={e => {
-                                                                e.preventDefault();
-                                                                this.addFolder();
-                                                            }}>
-                                                            "Add folder"
-                                                        </BaseLink>
-                                                        {" "}
-                                                        to select the relevant
-                                                        files.
+                                                <>
+                                                    If you need to use your {" "}
+                                                    <Link
+                                                        to={fileTablePage(Client.homeFolder)}
+                                                        target="_blank"
+                                                    >
+                                                        files
+                                                    </Link>
+                                                    {" "}
+                                                    in this job then click {" "}
+                                                    <BaseLink
+                                                        href="#"
+                                                        onClick={e => {
+                                                            e.preventDefault();
+                                                            this.addFolder();
+                                                        }}
+                                                    >
+                                                        "Add folder"
+                                                    </BaseLink>
+                                                    {" "}
+                                                    to select the relevant
+                                                    files.
                                                 </>
-                                                )}
+                                            )}
                                         </Box>
-
-                                        {this.state.mountedFolders.every(it => it.readOnly) ? "" :
-                                            "Note: Giving folders read/write access will make the startup and shutdown of the application longer."}
 
                                         {this.state.mountedFolders.map((entry, i) => (
                                             <Box key={i} mb="7px">
@@ -339,7 +352,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                                     defaultValue={entry.defaultValue}
                                                     initialSubmit={false}
                                                     parameterRef={entry.ref}
-                                                    unitWidth={"180px"}
+                                                    unitWidth="180px"
                                                     onRemove={() => {
                                                         this.setState(s => ({
                                                             mountedFolders: removeEntry(s.mountedFolders, i)
@@ -353,24 +366,6 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                                         description: "",
                                                         defaultValue: "",
                                                         visible: true,
-                                                        unitName: (
-                                                            <ClickableDropdown
-                                                                chevron
-                                                                width="180px"
-                                                                onChange={key => {
-                                                                    const {mountedFolders} = this.state;
-                                                                    mountedFolders[i].readOnly = key === "READ";
-                                                                    this.setState(() => ({mountedFolders}));
-                                                                }}
-                                                                trigger={entry.readOnly ?
-                                                                    "Read only" : "Read/Write"
-                                                                }
-                                                                options={[
-                                                                    {text: "Read only", value: "READ"},
-                                                                    {text: "Read/Write", value: "READ/WRITE"}
-                                                                ]}
-                                                            />
-                                                        ),
                                                     }}
                                                 />
                                             </Box>
@@ -385,8 +380,8 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                             <Heading.h4>Connect to other jobs</Heading.h4>
                                         </Box>
                                         <Button
-                                            type={"button"}
-                                            lineHeight={"16px"}
+                                            type="button"
+                                            lineHeight="16px"
                                             onClick={() => this.connectToJob()}
                                         >
                                             Connect to job
@@ -399,20 +394,21 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                                                 File systems used by the <b>job</b> are automatically added to this job.
                                             </>
                                         ) : (
-                                                <>
-                                                    If you need to use the services of another job click{" "}
-                                                    <BaseLink
-                                                        href={"#"}
-                                                        onClick={e => {
-                                                            e.preventDefault();
-                                                            this.connectToJob();
-                                                        }}>
-                                                        "Connect to job".
-                                                    </BaseLink>
-                                                    {" "}
-                                                    These services include networking and shared application file systems.
+                                            <>
+                                                If you need to use the services of another job click{" "}
+                                                <BaseLink
+                                                    href="#"
+                                                    onClick={e => {
+                                                        e.preventDefault();
+                                                        this.connectToJob();
+                                                    }}
+                                                >
+                                                    "Connect to job".
+                                                </BaseLink>
+                                                {" "}
+                                                This includes networking.
                                             </>
-                                            )}
+                                        )}
                                     </Box>
 
                                     {
@@ -446,24 +442,24 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         );
     }
 
-    private async fetchPreviousRuns() {
+    private async fetchPreviousRuns(): Promise<void> {
         if (this.state.application === undefined) return;
         try {
             const previousRuns = await callAPI<Page<CloudFile>>(listDirectory({
-                path: Cloud.homeFolder + `Jobs/${this.state.application.metadata.title}`,
+                path: Client.homeFolder + `Jobs/${this.state.application.metadata.title}`,
                 page: 0,
                 itemsPerPage: 25,
                 attrs: [FileResource.PATH],
                 order: SortOrder.DESCENDING,
-                sortBy: SortBy.CREATED_AT
+                sortBy: SortBy.MODIFIED_AT
             }));
-            this.setState(s => ({previousRuns}));
+            this.setState(() => ({previousRuns}));
         } catch {
             // Do nothing
         }
     }
 
-    private onJobSchedulingParamsChange = (field: string | number, value: number, timeField: string) => {
+    private onJobSchedulingParamsChange = (field: string | number, value: number, timeField: string): void => {
         const {schedulingOptions} = this.state;
         if (timeField) {
             schedulingOptions[field][timeField] = !isNaN(value) ? value : null;
@@ -471,18 +467,38 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             schedulingOptions[field] = value;
         }
         this.setState(() => ({schedulingOptions}));
-    }
+    };
 
-    private onSubmit = async (event: React.FormEvent) => {
+    private onSubmit = async (): Promise<void> => {
         if (!this.state.application) return;
         if (this.state.jobSubmitted) return;
         const {invocation} = this.state.application;
         this.setState(() => ({initialSubmit: true}));
 
+        if (this.state.useUrl) {
+            if (this.state.url.current == null || this.state.url.current.value == "") {
+                snackbarStore.addFailure(
+                    "Persistent URL is enabled, but not set",
+                    5000
+                );
+                this.setState(() => ({jobSubmitted: false}));
+                return;
+            }
+
+            if (this.state.url.current.value.length < 5) {
+                snackbarStore.addFailure(
+                    "URL identifier should be at least 5 characters",
+                    5000
+                );
+                this.setState(() => ({jobSubmitted: false}));
+                return;
+            }
+        }
+
         const parameters = extractValuesFromWidgets({
             map: this.state.parameterValues,
             appParameters: this.state.application!.invocation.parameters,
-            cloud: Cloud
+            client: Client
         });
 
         if (!checkForMissingParameters(parameters, invocation)) return;
@@ -496,34 +512,14 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         }
 
         const mounts = this.state.mountedFolders.filter(it => it.ref.current && it.ref.current.value).map(it => {
-            const expandedValue = expandHomeFolder(it.ref.current!.value, Cloud.homeFolder);
+            const expandedValue = expandHomeOrProjectFolder(it.ref.current!.value, Client);
             return {
                 source: expandedValue,
-                destination: removeTrailingSlash(expandedValue).split("/").pop()!,
-                readOnly: it.readOnly
+                destination: removeTrailingSlash(expandedValue).split("/").pop()!
             };
         });
 
-        {
-            // Validate additional mounts
-            for (const mount of mounts) {
-                if (!mount.readOnly) {
-                    const stat = await statFileOrNull(mount.source);
-                    if (stat !== null) {
-                        if (!allFilesHasAccessRight(AccessRight.WRITE, [stat])) {
-                            snackbarStore.addFailure(
-                                `Cannot mount ${mount.source} as read/write because share is read-only`,
-                                5000
-                            );
-
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
-        const peers = [] as Array<{name: string, jobId: string}>;
+        const peers = [] as Array<{ name: string; jobId: string }>;
         {
             // Validate additional mounts
             for (const peer of this.state.additionalPeers) {
@@ -558,9 +554,10 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         }
 
         const {name} = this.state.schedulingOptions;
-        const jobName = name.current && name.current.value;
+        const jobName = name.current?.value;
         let reservation = this.state.reservation.current ? this.state.reservation.current.value : null;
         if (reservation === "") reservation = null;
+        const urlName = this.state.url.current == null ? null : this.state.url.current.value;
 
         const job = {
             application: {
@@ -568,6 +565,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 version: this.state.application!.metadata.version
             },
             parameters,
+            url: urlName,
             numberOfNodes: this.state.schedulingOptions.numberOfNodes,
             tasksPerNode: this.state.schedulingOptions.tasksPerNode,
             maxTime,
@@ -575,28 +573,57 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             peers,
             reservation,
             type: "start",
-            name: !!jobName ? jobName : null
+            name: jobName !== "" ? jobName : null,
+            acceptSameDataRetry: false
         };
 
         try {
             this.setState({jobSubmitted: true});
             this.props.setLoading(true);
-            const req = await Cloud.post(hpcJobQueryPost, job);
+            const req = await Client.post(hpcJobQueryPost, job);
             this.props.history.push(`/applications/results/${req.response.jobId}`);
         } catch (err) {
-            snackbarStore.addFailure(errorMessageOrDefault(err, "An error ocurred submitting the job."));
-            this.setState(() => ({jobSubmitted: false}));
+            if (err.request.status === 409) {
+                addStandardDialog({
+                    title: "Job with same parameters already running",
+                    message: "You might be trying to run a duplicate job. Would you like to proceed?",
+                    cancelText: "No",
+                    confirmText: "Yes",
+                    onConfirm: async () => {
+                        const rerunJob = {
+                            ...job,
+                            acceptSameDataRetry: true
+                        };
+                        try {
+                            const rerunRequest = await Client.post(hpcJobQueryPost, rerunJob);
+                            this.props.history.push(`/applications/results/${rerunRequest.response.jobId}`);
+                        } catch (rerunErr) {
+                            snackbarStore.addFailure(
+                                errorMessageOrDefault(rerunErr, "An error occurred submitting the job.")
+                            );
+                        }
+                    },
+                    onCancel: async () => {
+                        this.setState(() => ({jobSubmitted: false}));
+                    }
+                });
+            } else {
+                snackbarStore.addFailure(
+                    errorMessageOrDefault(err, "An error occurred submitting the job.")
+                );
+                this.setState(() => ({jobSubmitted: false}));
+            }
         } finally {
             this.props.setLoading(false);
         }
-    }
+    };
 
-    private async toggleFavorite() {
+    private async toggleFavorite(): Promise<void> {
         if (!this.state.application) return;
         const {name, version} = this.state.application.metadata;
         this.setState(() => ({favoriteLoading: true}));
         try {
-            await this.state.promises.makeCancelable(Cloud.post(hpcFavoriteApp(name, version))).promise;
+            await this.state.promises.makeCancelable(Client.post(hpcFavoriteApp(name, version))).promise;
             this.setState(() => ({favorite: !this.state.favorite}));
         } catch (e) {
             snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred"));
@@ -609,7 +636,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         try {
             this.props.setLoading(true);
             const {response} = await this.state.promises.makeCancelable(
-                Cloud.get<FullAppInfo>(`/hpc/apps/${encodeURI(name)}/${encodeURI(version)}`)
+                Client.get<FullAppInfo>(`/hpc/apps/${encodeURI(name)}/${encodeURI(version)}`)
             ).promise;
             const app = response;
             const toolDescription = app.invocation.tool.tool.description;
@@ -618,7 +645,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
             app.invocation.parameters.forEach(it => {
                 if (Object.values(ParameterTypes).includes(it.type)) {
                     parameterValues.set(it.name, React.createRef<HTMLInputElement>());
-                } else if (it.type === "boolean") {
+                } else if (["boolean", "enumeration"].includes(it.type)) {
                     parameterValues.set(it.name, React.createRef<HTMLSelectElement>());
                 } else if (it.type === "range") {
                     parameterValues.set(it.name, React.createRef<RangeRef>());
@@ -632,8 +659,10 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                     maxTime: toolDescription.defaultTimeAllocation,
                     numberOfNodes: toolDescription.defaultNumberOfNodes,
                     tasksPerNode: toolDescription.defaultTasksPerNode,
-                    name: this.state.schedulingOptions.name
-                }
+                    name: this.state.schedulingOptions.name,
+                },
+                useUrl: this.state.useUrl,
+                url: this.state.url
             }));
         } catch (e) {
             snackbarStore.addFailure(errorMessageOrDefault(e, `An error occurred fetching ${name}`));
@@ -642,12 +671,12 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         }
     }
 
-    private importParameters(file: File) {
+    private importParameters(file: File): void {
         const thisApp = this.state.application;
         if (!thisApp) return;
 
         const fileReader = new FileReader();
-        fileReader.onload = async () => {
+        fileReader.onload = async (): Promise<void> => {
             const rawInputFile = fileReader.result as string;
             try {
                 const {
@@ -661,10 +690,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                 } = JSON.parse(rawInputFile);
                 // Verify metadata
                 if (application.name !== thisApp.metadata.name) {
-                    snackbarStore.addSnack({
-                        message: "Application name does not match",
-                        type: SnackType.Failure
-                    });
+                    snackbarStore.addFailure("Application name does not match");
                     return;
                 } else if (application.version !== thisApp.metadata.version) {
                     snackbarStore.addSnack({
@@ -684,26 +710,26 @@ class Run extends React.Component<RunAppProps, RunAppState> {
 
                 const parametersFromUser = Object.keys(userInputValues);
 
+                const unknownParameters = Object.keys(parameters).filter(it => !parametersFromUser.includes(it));
+                this.setState(() => ({unknownParameters: this.state.unknownParameters.concat(unknownParameters)}));
+
                 {
                     // Remove invalid input files from userInputValues
                     const fileParams = thisApp.invocation.parameters.filter(p => isFileOrDirectoryParam(p));
                     const invalidFiles: string[] = [];
                     for (const paramKey in fileParams) {
                         const param = fileParams[paramKey];
-                        if (!!userInputValues[param.name]) {
-                            const path = expandHomeFolder(userInputValues[param.name], Cloud.homeFolder);
-                            if (!await checkIfFileExists(path, Cloud)) {
+                        if (userInputValues[param.name]) {
+                            const path = expandHomeOrProjectFolder(userInputValues[param.name], Client);
+                            if (!await checkIfFileExists(path, Client)) {
                                 invalidFiles.push(userInputValues[param.name]);
-                                delete userInputValues[param.name];
+                                userInputValues[param.name] = "";
                             }
                         }
                     }
 
                     if (invalidFiles.length > 0) {
-                        snackbarStore.addSnack({
-                            message: `Extracted files don't exists: ${invalidFiles.join(", ")}`,
-                            type: SnackType.Failure
-                        });
+                        snackbarStore.addFailure(`The following files don't exists: ${invalidFiles.join(", ")}`);
                     }
                 }
 
@@ -712,9 +738,9 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                     const validMountFolders = [] as AdditionalMountedFolder[];
                     // tslint:disable-next-line:prefer-for-of
                     for (let i = 0; i < mountedFolders.length; i++) {
-                        if (await checkIfFileExists(expandHomeFolder(mountedFolders[i].ref, Cloud.homeFolder), Cloud)) {
+                        if (await checkIfFileExists(expandHomeOrProjectFolder(mountedFolders[i].ref, Client), Client)) {
                             const ref = React.createRef<HTMLInputElement>();
-                            validMountFolders.push({ref, readOnly: mountedFolders[i].readOnly});
+                            validMountFolders.push({ref});
                         }
                     }
 
@@ -730,6 +756,8 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                     parametersFromUser.forEach(key =>
                         thisApp.invocation.parameters.find(it => it.name === key)!.visible = true
                     );
+                    // Trigger changes in DOM.
+                    this.setState(() => ({application: thisApp}));
                 }
 
                 {
@@ -737,7 +765,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                     parametersFromUser.forEach(key => {
                         thisApp.invocation.parameters.find(it => it.name === key)!.visible = true;
                         const ref = this.state.parameterValues.get(key);
-                        if (ref && ref.current) {
+                        if (ref?.current) {
                             if ("value" in ref.current) ref.current.value = userInputValues[key];
                             else (ref.current.setState(() => ({bounds: userInputValues[key] as any})));
                             this.state.parameterValues.set(key, ref);
@@ -751,8 +779,11 @@ class Run extends React.Component<RunAppProps, RunAppState> {
                         maxTime,
                         numberOfNodes,
                         tasksPerNode,
-                        name: this.state.schedulingOptions.name
-                    })
+                        name: this.state.schedulingOptions.name,
+                    }),
+                    useUrl: this.state.useUrl,
+                    url: this.state.url
+
                 }));
             } catch (e) {
                 console.warn(e);
@@ -762,7 +793,7 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         fileReader.readAsText(file);
     }
 
-    private onImportFileSelected(file: {path: string}) {
+    private onImportFileSelected(file: { path: string }): void {
         if (!file.path.endsWith(".json")) {
             addStandardDialog({
                 title: "Continue?",
@@ -775,28 +806,27 @@ class Run extends React.Component<RunAppProps, RunAppState> {
         this.fetchAndImportParameters(file);
     }
 
-    private fetchAndImportParameters = async (file: {path: string}) => {
-        const fileStat = await Cloud.get<CloudFile>(statFileQuery(file.path));
+    private fetchAndImportParameters = async (file: { path: string }): Promise<void> => {
+        const fileStat = await Client.get<CloudFile>(statFileQuery(file.path));
         if (fileStat.response.size! > 5_000_000) {
-            snackbarStore.addFailure("File size exceeds 5 MB. This is not allowed not allowed.");
+            snackbarStore.addFailure("File size exceeds 5 MB. This is not allowed.");
             return;
         }
-        const response = await fetchFileContent(file.path, Cloud);
+        const response = await fetchFileContent(file.path, Client);
         if (response.ok) this.importParameters(new File([await response.blob()], "params"));
-    }
+    };
 
-    private addFolder() {
+    private addFolder(): void {
         this.setState(s => ({
             mountedFolders: s.mountedFolders.concat([
                 {
-                    ref: React.createRef<HTMLInputElement>(),
-                    readOnly: true
+                    ref: React.createRef<HTMLInputElement>()
                 }
             ])
         }));
     }
 
-    private connectToJob() {
+    private connectToJob(): void {
         this.setState(s => ({
             additionalPeers: s.additionalPeers.concat([{
                 jobIdRef: React.createRef(),
@@ -841,23 +871,90 @@ const SchedulingField: React.FunctionComponent<SchedulingFieldProps> = props => 
     </Label>
 );
 
+const ApplicationUrl: React.FunctionComponent<{
+    inputRef: React.RefObject<HTMLInputElement>;
+    enabled: boolean;
+    setEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+    jobName: React.RefObject<HTMLInputElement>;
+}> = props => {
+    const [url, setUrl] = React.useState<string>("");
+
+    React.useEffect(() => {
+        if (!props.inputRef) return;
+
+        const current = props.inputRef.current;
+        if (current === null) return;
+
+        current.value = url;
+    }, [props.inputRef, url]);
+
+    return (
+        <>
+            <div>
+                <Label mb={10}>
+                    <Checkbox size={28} checked={props.enabled} onChange={() => {
+                        props.setEnabled(!props.enabled);
+
+                        if (!props.enabled && props.jobName.current !== null) {
+                            setUrl(urlify(props.jobName.current!.value));
+                        }
+                    }}/>
+                    <TextSpan>Persistent URL</TextSpan>
+                </Label>
+            </div>
+
+            <div>
+                {props.enabled ? (
+                    <>
+                        <Warning
+                            warning="By enabling this setting, anyone with a link can gain access to the application."/>
+                        <Label mt={20}>
+                            <Flex>
+                                <TextSpan mt={10}>https://app-</TextSpan>
+                                <Input placeholder="Unique URL identifier" ref={props.inputRef} required/>
+                                <TextSpan mt={10}>.cloud.sdu.dk</TextSpan>
+                            </Flex>
+                        </Label>
+                    </>
+                ) : (<></>)}
+            </div>
+        </>
+    );
+};
+
+
 interface JobSchedulingOptionsProps {
+    /* FIXME: add typesafety */
     onChange: (a, b, c) => void;
     options: JobSchedulingOptionsForInput;
     app: WithAppMetadata & WithAppInvocation;
     reservationRef: React.RefObject<HTMLInputElement>;
+    urlEnabled: boolean;
+    setUrlEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+    url: React.RefObject<HTMLInputElement>;
 }
 
-const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
+function urlify(text: string): string {
+    return encodeURIComponent(text.substr(0, 32)).replace(new RegExp('%20', 'g'), '-').toLowerCase()
+}
+
+const JobSchedulingOptions = (props: JobSchedulingOptionsProps): JSX.Element | null => {
     if (!props.app) return null;
     const {maxTime, numberOfNodes, tasksPerNode, name} = props.options;
-
     return (
         <>
             <Flex mb="4px" mt="4px">
                 <Label>
                     Job name
-                    <Input ref={name} placeholder={"Example: Analysis with parameters XYZ"} />
+                    <Input
+                        ref={name}
+                        placeholder={"Example: Analysis with parameters XYZ"}
+                        onChange={(enteredName) => {
+                            if (props.url.current != null) {
+                                props.url.current!.value = urlify(enteredName.currentTarget.value)
+                            }
+                        }}
+                    />
                 </Label>
             </Flex>
 
@@ -871,7 +968,7 @@ const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
                     value={maxTime.hours}
                     onChange={props.onChange}
                 />
-                <Box ml="4px" />
+                <Box ml="4px"/>
                 <SchedulingField
                     min={0}
                     max={59}
@@ -881,7 +978,7 @@ const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
                     value={maxTime.minutes}
                     onChange={props.onChange}
                 />
-                <Box ml="4px" />
+                <Box ml="4px"/>
                 <SchedulingField
                     min={0}
                     max={59}
@@ -905,13 +1002,29 @@ const JobSchedulingOptions = (props: JobSchedulingOptionsProps) => {
                 </Flex>
             )}
 
-            <Box>
+            <div>
                 <Label>Machine type</Label>
-                <MachineTypes inputRef={props.reservationRef} />
-            </Box>
+                <MachineTypes
+                    runAsRoot={props.app.invocation.container?.runAsRoot ?? false}
+                    inputRef={props.reservationRef}
+                />
+            </div>
+
+            {props.app.invocation.applicationType == "WEB" ? (
+                <Box mb="4px" mt="1em">
+                    <ApplicationUrl
+                        inputRef={props.url}
+                        enabled={props.urlEnabled}
+                        setEnabled={props.setUrlEnabled}
+                        jobName={name}
+                    />
+                </Box>
+            ) : (<></>)}
+
         </>
     );
 };
+
 
 function extractJobInfo(jobInfo: JobSchedulingOptionsForInput): JobSchedulingOptionsForInput {
     const extractedJobInfo = {
@@ -936,13 +1049,13 @@ const mapDispatchToProps = (dispatch: Dispatch): RunOperations => ({
 
 export default connect(null, mapDispatchToProps)(Run);
 
-export function importParameterDialog(importParameters: (file: File) => void, showFileSelector: () => void) {
+export function importParameterDialog(importParameters: (file: File) => void, showFileSelector: () => void): void {
     dialogStore.addDialog((
-        <Box>
-            <Box>
+        <div>
+            <div>
                 <Button fullWidth as="label">
                     Upload file
-                <HiddenInputField
+                    <HiddenInputField
                         type="file"
                         onChange={e => {
                             if (e.target.files) {
@@ -954,15 +1067,16 @@ export function importParameterDialog(importParameters: (file: File) => void, sh
                                 }
                                 dialogStore.success();
                             }
-                        }} />
+                        }}
+                    />
                 </Button>
                 <Button mt="6px" fullWidth onClick={() => (dialogStore.success(), showFileSelector())}>
-                    Select file from SDUCloud
-            </Button>
-            </Box>
+                    Select file from {PRODUCT_NAME}
+                </Button>
+            </div>
             <Flex mt="20px">
                 <Button onClick={() => dialogStore.success()} color="red" mr="5px">Cancel</Button>
             </Flex>
-        </Box>
+        </div>
     ), () => undefined);
 }

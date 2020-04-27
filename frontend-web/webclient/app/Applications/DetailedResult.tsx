@@ -1,21 +1,21 @@
 import {useXTerm} from "Applications/xterm";
-import {Cloud, WSFactory} from "Authentication/SDUCloudObject";
+import {Client, WSFactory} from "Authentication/HttpClientInstance";
 import {EmbeddedFileTable} from "Files/FileTable";
 import {History} from "history";
 import LoadingIcon from "LoadingIcon/LoadingIcon";
 import {MainContainer} from "MainContainer/MainContainer";
 import {setRefreshFunction} from "Navigation/Redux/HeaderActions";
 import {setLoading, updatePageTitle} from "Navigation/Redux/StatusActions";
-import PromiseKeeper from "PromiseKeeper";
-import {useEffect, useState} from "react";
+import {usePromiseKeeper} from "PromiseKeeper";
 import * as React from "react";
+import {useEffect, useState} from "react";
 import {connect} from "react-redux";
 import {match} from "react-router";
 import {Link} from "react-router-dom";
 import {Dispatch} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
-import {Box, Button, Card, ContainerForText, ExternalLink, Flex, List} from "ui-components";
+import {Box, Button, Card, ContainerForText, ExternalLink, Flex, Hide, List} from "ui-components";
 import {Dropdown, DropdownContent} from "ui-components/Dropdown";
 import * as Heading from "ui-components/Heading";
 import Icon from "ui-components/Icon";
@@ -27,6 +27,7 @@ import {fileTablePage} from "Utilities/FileUtilities";
 import {errorMessageOrDefault, shortUUID} from "UtilityFunctions";
 import {ApplicationType, FollowStdStreamResponse, isJobStateFinal, JobState, JobWithStatus, WithAppInvocation} from ".";
 import {JobStateIcon} from "./JobStateIcon";
+import {runApplication} from "./Pages";
 import {pad} from "./View";
 
 interface DetailedResultOperations {
@@ -49,16 +50,14 @@ const DetailedResult: React.FunctionComponent<DetailedResultProps> = props => {
     const [interactiveLink, setInteractiveLink] = useState<string | null>(null);
     const [timeLeft, setTimeLeft] = useState<number>(-1);
     const [xtermRef, appendToXterm, resetXterm] = useXTerm();
-    const [promises] = useState(new PromiseKeeper());
+    const promises = usePromiseKeeper();
 
     const jobId = props.match.params.jobId;
-    const outputFolder = jobWithStatus && jobWithStatus.outputFolder ? jobWithStatus.outputFolder : "";
+    const outputFolder = jobWithStatus?.outputFolder ?? "";
 
-    useEffect(() => () => promises.cancelPromises(), []);
-
-    async function fetchJob() {
+    async function fetchJob(): Promise<void> {
         try {
-            const {response} = await promises.makeCancelable(Cloud.get<JobWithStatus>(hpcJobQuery(jobId))).promise;
+            const {response} = await promises.makeCancelable(Client.get<JobWithStatus>(hpcJobQuery(jobId))).promise;
             setJobWithStatus(response);
             setAppState(response.state);
             setStatus(response.status);
@@ -69,9 +68,9 @@ const DetailedResult: React.FunctionComponent<DetailedResultProps> = props => {
         }
     }
 
-    async function fetchWebLink() {
+    async function fetchWebLink(): Promise<void> {
         try {
-            const {response} = await promises.makeCancelable(Cloud.get(`/hpc/jobs/query-web/${jobId}`)).promise;
+            const {response} = await promises.makeCancelable(Client.get(`/hpc/jobs/query-web/${jobId}`)).promise;
             setInteractiveLink(response.path);
         } catch (e) {
             if (e.isCanceled) return;
@@ -79,10 +78,10 @@ const DetailedResult: React.FunctionComponent<DetailedResultProps> = props => {
         }
     }
 
-    async function fetchApplication() {
+    async function fetchApplication(): Promise<void> {
         if (jobWithStatus === null) return;
         try {
-            const {response} = await promises.makeCancelable(Cloud.get<WithAppInvocation>(
+            const {response} = await promises.makeCancelable(Client.get<WithAppInvocation>(
                 `/hpc/apps/${encodeURI(jobWithStatus.metadata.name)}/${encodeURI(jobWithStatus.metadata.version)}`
             )).promise;
             setApplication(response);
@@ -92,12 +91,12 @@ const DetailedResult: React.FunctionComponent<DetailedResultProps> = props => {
         }
     }
 
-    async function onCancelJob() {
+    async function onCancelJob(): Promise<void> {
         cancelJobDialog({
             jobId,
             onConfirm: async () => {
                 try {
-                    await cancelJob(Cloud, jobId);
+                    await cancelJob(Client, jobId);
                 } catch (e) {
                     snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred cancelling the job"));
                 }
@@ -126,8 +125,7 @@ const DetailedResult: React.FunctionComponent<DetailedResultProps> = props => {
                     }
                 });
             }
-        }
-        );
+        });
 
         return () => {
             connection.close();
@@ -156,7 +154,7 @@ const DetailedResult: React.FunctionComponent<DetailedResultProps> = props => {
 
     useEffect(() => {
         // Re-fetch job if we don't know about the output folder at the end of the job
-        if (appState === JobState.SUCCESS && outputFolder === "") {
+        if ((appState === JobState.SUCCESS || appState === JobState.FAILURE) && outputFolder === "") {
             fetchJob();
         }
 
@@ -174,120 +172,133 @@ const DetailedResult: React.FunctionComponent<DetailedResultProps> = props => {
         };
     }, [appState]);
 
-    return <MainContainer
-        main={application === null || jobWithStatus == null ? <LoadingIcon size={24} /> :
-            <ContainerForText>
-                <Panel>
-                    <StepGroup>
-                        <StepTrackerItem
-                            stateToDisplay={JobState.VALIDATED}
-                            currentState={appState}
-                            failedState={failedState} />
-                        <StepTrackerItem
-                            stateToDisplay={JobState.PREPARED}
-                            currentState={appState}
-                            failedState={failedState} />
-                        <StepTrackerItem
-                            stateToDisplay={JobState.SCHEDULED}
-                            currentState={appState}
-                            failedState={failedState} />
-                        <StepTrackerItem
-                            stateToDisplay={JobState.RUNNING}
-                            currentState={appState}
-                            failedState={failedState} />
-                        <StepTrackerItem
-                            stateToDisplay={JobState.TRANSFER_SUCCESS}
-                            currentState={appState}
-                            failedState={failedState} />
-                    </StepGroup>
-                </Panel>
-
-                <Panel width={1}>
-                    <Heading.h4>Job Information</Heading.h4>
-                    <Card height="auto" p="14px 14px 14px 14px">
-                        <List>
-                            {jobWithStatus === null || jobWithStatus.name === null ? null :
-                                <InfoBox><b>Name:</b> {jobWithStatus.name}</InfoBox>
-                            }
-
-                            <InfoBox>
-                                <b>Application:</b>{" "}
-                                {jobWithStatus.metadata.title} v{jobWithStatus.metadata.version}
-                            </InfoBox>
-
-                            <InfoBox><b>Status:</b> {status}</InfoBox>
-
-                            {appState !== JobState.SUCCESS ? null :
-                                <InfoBox>
-                                    Application has completed successfully.
-                                    Click <Link to={fileTablePage(outputFolder)}>here</Link> to go to the
-                                    output.
-                                </InfoBox>
-                            }
-
-                            {appState !== JobState.RUNNING || timeLeft <= 0 ? null :
-                                <InfoBox>
-                                    <b>Time remaining:</b>{" "}
-                                    <TimeRemaining timeInMs={timeLeft} />
-                                </InfoBox>
-                            }
-                        </List>
-                    </Card>
-                </Panel>
-
-                <Spacer width={1}
-                    left={
-                        appState !== JobState.RUNNING || interactiveLink === null ? null :
-                            <InteractiveApplicationLink
-                                type={application.invocation.applicationType}
-                                interactiveLink={interactiveLink} />
-                    }
-                    right={
-                        !inCancelableState(appState) ? null :
-                            <Button ml="8px" color="red" onClick={() => onCancelJob()}>Cancel job</Button>
-                    }
-                />
-
-                {outputFolder === "" || appState !== JobState.SUCCESS ? null :
+    return (
+        <MainContainer
+            main={application === null || jobWithStatus == null ? <LoadingIcon size={24} /> : (
+                <ContainerForText>
                     <Panel>
-                        <Heading.h4>Output Files</Heading.h4>
-                        <EmbeddedFileTable path={outputFolder}/>
+                        <StepGroup>
+                            <StepTrackerItem
+                                stateToDisplay={JobState.VALIDATED}
+                                currentState={appState}
+                                failedState={failedState}
+                            />
+                            <StepTrackerItem
+                                stateToDisplay={JobState.PREPARED}
+                                currentState={appState}
+                                failedState={failedState}
+                            />
+                            <StepTrackerItem
+                                stateToDisplay={JobState.SCHEDULED}
+                                currentState={appState}
+                                failedState={failedState}
+                            />
+                            <StepTrackerItem
+                                stateToDisplay={JobState.RUNNING}
+                                currentState={appState}
+                                failedState={failedState}
+                            />
+                            <StepTrackerItem
+                                stateToDisplay={JobState.TRANSFER_SUCCESS}
+                                currentState={appState}
+                                failedState={failedState}
+                            />
+                        </StepGroup>
                     </Panel>
-                }
 
-                {isJobStateFinal(appState) ? null :
-                    <Box width={1} mt={24}>
-                        <Flex flexDirection="column">
-                            <Box width={1} backgroundColor="midGray" mt={"12px"} pl={"12px"} style={{borderRadius: "5px 5px 0px 0px"}}>
-                                <Heading.h4>
-                                    Output
-                                    &nbsp;
+                    <Panel width={1}>
+                        <Heading.h4>Job Information</Heading.h4>
+                        <Card height="auto" p="14px 14px 14px 14px">
+                            <List>
+                                {jobWithStatus === null || jobWithStatus.name === null ? null : (
+                                    <InfoBox><b>Name:</b> {jobWithStatus.name}</InfoBox>
+                                )}
+
+                                <InfoBox>
+                                    <b>Application:</b>{" "}
+                                    {jobWithStatus.metadata.title} v{jobWithStatus.metadata.version}
+                                    <Link to={runApplication(jobWithStatus.metadata)}>
+                                        <Button ml="10px" px="10px" py="5px">Run app again</Button>
+                                    </Link>
+                                </InfoBox>
+
+                                <InfoBox><b>Status:</b> {status}</InfoBox>
+
+                                {appState !== JobState.SUCCESS ? null : (
+                                    <InfoBox>
+                                        Application has completed successfully.
+                                    Click <Link to={fileTablePage(outputFolder)}>
+                                            <Button px="10px" py="5px">here</Button>
+                                        </Link> to go to the output.
+                                    </InfoBox>
+                                )}
+
+                                {appState !== JobState.RUNNING || timeLeft <= 0 ? null : (
+                                    <InfoBox>
+                                        <b>Time remaining:</b>{" "}
+                                        <TimeRemaining timeInMs={timeLeft} />
+                                    </InfoBox>
+                                )}
+                            </List>
+                        </Card>
+                    </Panel>
+
+                    <Spacer
+                        width={1}
+                        left={
+                            appState !== JobState.RUNNING || interactiveLink === null ? null : (
+                                <InteractiveApplicationLink
+                                    type={application.invocation.applicationType}
+                                    interactiveLink={interactiveLink}
+                                />
+                            )}
+                        right={
+                            !inCancelableState(appState) ? null :
+                                <Button ml="8px" color="red" onClick={() => onCancelJob()}>Cancel job</Button>
+                        }
+                    />
+
+                    {outputFolder === "" || appState !== JobState.SUCCESS && appState !== JobState.FAILURE ? null : (
+                        <Panel width={1}>
+                            <Heading.h4>Output Files</Heading.h4>
+                            <EmbeddedFileTable path={outputFolder} />
+                        </Panel>
+                    )}
+
+                    {isJobStateFinal(appState) ? null : (
+                        <Box width={1} mt={24}>
+                            <Flex flexDirection="column">
+                                <Box width={1} backgroundColor="midGray" mt={"12px"} pl={"12px"} style={{borderRadius: "5px 5px 0px 0px"}}>
+                                    <Heading.h4>
+                                        Output
+                                        &nbsp;
                                     <Dropdown>
-                                        <Icon name="info" color="white" color2="black" size="1em" />
-                                        <DropdownContent
-                                            width="400px"
-                                            visible
-                                            colorOnHover={false}
-                                            color="white"
-                                            backgroundColor="black"
-                                        >
-                                            <TextSpan fontSize={1}>
-                                                Streams are collected
+                                            <Icon name="info" color="white" color2="black" size="1em" />
+                                            <DropdownContent
+                                                width="400px"
+                                                visible
+                                                colorOnHover={false}
+                                                color="white"
+                                                backgroundColor="black"
+                                            >
+                                                <TextSpan fontSize={1}>
+                                                    Streams are collected
                                                 from <code>stdout</code> and <code>stderr</code> of your application.
                                             </TextSpan>
-                                        </DropdownContent>
-                                    </Dropdown>
-                                </Heading.h4>
-                            </Box>
-                            <Box width={1} backgroundColor="lightGray">
-                                <div ref={xtermRef} />
-                            </Box>
-                        </Flex>
-                    </Box>
-                }
-            </ContainerForText>
-        }
-    />;
+                                            </DropdownContent>
+                                        </Dropdown>
+                                    </Heading.h4>
+                                </Box>
+                                <Box width={1} backgroundColor="lightGray">
+                                    <div ref={xtermRef} />
+                                </Box>
+                            </Flex>
+                        </Box>
+                    )}
+                </ContainerForText>
+            )}
+        />
+    );
 };
 
 const Panel = styled(Box)`
@@ -315,11 +326,13 @@ const InteractiveApplicationLink: React.FunctionComponent<{
 }> = props => {
     switch (props.type) {
         case ApplicationType.WEB:
-            return <ExternalLink href={props.interactiveLink}>
-                <Button color={"green"}>Go to web interface</Button>
-            </ExternalLink>;
+            return (
+                <ExternalLink href={props.interactiveLink}>
+                    <Button color="green">Go to web interface</Button>
+                </ExternalLink>
+            );
         case ApplicationType.VNC:
-            return <Link to={props.interactiveLink}><Button color={"green"}>Go to interface</Button></Link>;
+            return <Link to={props.interactiveLink}><Button color="green">Go to interface</Button></Link>;
         case ApplicationType.BATCH:
             return null;
     }
@@ -346,7 +359,7 @@ const stateToOrder = (state: JobState): 0 | 1 | 2 | 3 | 4 | 5 => {
     }
 };
 
-const isStateComplete = (state: JobState, currentState: JobState) =>
+const isStateComplete = (state: JobState, currentState: JobState): boolean =>
     stateToOrder(state) < stateToOrder(currentState);
 
 const stateToTitle = (state: JobState): string => {
@@ -371,9 +384,9 @@ const stateToTitle = (state: JobState): string => {
 };
 
 const StepTrackerItem: React.FunctionComponent<{
-    stateToDisplay: JobState,
-    currentState: JobState,
-    failedState: JobState | null
+    stateToDisplay: JobState;
+    currentState: JobState;
+    failedState: JobState | null;
 }> = ({stateToDisplay, currentState, failedState}) => {
     const active = stateToDisplay === currentState;
     const complete = isStateComplete(stateToDisplay, currentState);
@@ -382,12 +395,16 @@ const StepTrackerItem: React.FunctionComponent<{
 
     return (
         <Step active={active}>
-            {complete ?
-                <Icon name={thisFailed ? "close" : "check"} color={thisFailed ? "red" : "green"} mr="0.7em"
-                    size="30px" /> :
-                <JobStateIcon state={stateToDisplay} mr="0.7em" size="30px" />
-            }
-            <TextSpan fontSize={3}>{stateToTitle(stateToDisplay)}</TextSpan>
+            <JobStateIcon
+                isExpired={false}
+                state={stateToDisplay}
+                color={complete && thisFailed ? "red" : undefined}
+                mr="0.7em"
+                size="30px"
+            />
+            <Hide sm xs md lg>
+                <TextSpan fontSize={3}>{stateToTitle(stateToDisplay)}</TextSpan>
+            </Hide>
         </Step>
     );
 };
