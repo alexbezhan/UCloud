@@ -8,7 +8,10 @@ def initialize() {
     }
   } catch (e) {
     echo "Build Failed"
-    return 'FAILURE\n' + 'BackendFailed: \n' + currentBuild.rawBuild.getLog(50)
+    def log = currentBuild.rawBuild.getLog(50)
+    def startIndex = log.indexOf("FAILURE:")
+    def endIndex = log.indexOf("* Try:")
+    return 'FAILURE\n' + 'BackendFailed: \n' + log.subString(startIndex, endIndex+1)
   } finally {
     publishHTML([
         allowmissing: false,
