@@ -17,7 +17,7 @@ def initialize() {
     if (endIndex == -1) {
         endIndex = log.length()-1
     }
-    return 'FAILURE\n' + 'BackendFailed: \n' + log.subString(startIndex, endIndex)
+    return 'FAILURE\n' + 'BackendFailed: \n' + log.substring(startIndex, endIndex)
   } finally {
     publishHTML([
         allowmissing: false,
