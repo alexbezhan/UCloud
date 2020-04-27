@@ -9,9 +9,15 @@ def initialize() {
   } catch (e) {
     echo "Build Failed"
     def log = currentBuild.rawBuild.getLog(50)
-    def startIndex = log.indexOf("FAILURE:")
+    def startIndex = log.indexOf("FAILURE: Build failed with an exception")
     def endIndex = log.indexOf("* Try:")
-    return 'FAILURE\n' + 'BackendFailed: \n' + log.subString(startIndex, endIndex+1)
+    if (startIndex == -1) {
+        startIndex = 0
+    }
+    if (endIndex == -1) {
+        endIndex = log.length()-1
+    }
+    return 'FAILURE\n' + 'BackendFailed: \n' + log.subString(startIndex, endIndex)
   } finally {
     publishHTML([
         allowmissing: false,
