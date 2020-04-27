@@ -8,7 +8,7 @@ def initialize() {
     }
   } catch (e) {
     echo "Build Failed"
-    return 'FAILURE\n' + e.message
+    return 'FAILURE\n' + 'BackendFailed: \n' + currentBuild.rawBuild.getLog(50)
   } finally {
     publishHTML([
         allowmissing: false,
