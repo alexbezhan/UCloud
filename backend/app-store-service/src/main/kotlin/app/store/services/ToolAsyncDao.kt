@@ -199,20 +199,15 @@ class ToolAsyncDao {
     }
 
     suspend fun createLogo(ctx: DBContext, user: SecurityPrincipal, name: String, imageBytes: ByteArray) {
-        val tool =
-            ctx.withSession { session ->
-                findOwner(session, name) ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
+        ctx.withSession { session ->
+            val tool = findOwner(session, name) ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
+
+            if (tool != user.username && user.role != Role.ADMIN) {
+                throw RPCException.fromStatusCode(HttpStatusCode.Forbidden)
             }
 
-        if (tool != user.username && user.role != Role.ADMIN) {
-            throw RPCException.fromStatusCode(HttpStatusCode.Forbidden)
-        }
-
-        val logo = ctx.withSession { session ->
-            fetchLogo(session, name)
-        }
-        if (logo != null) {
-            ctx.withSession{ session ->
+            val logo = fetchLogo(session, name)
+            if (logo != null) {
                 session.sendPreparedStatement(
                     {
                         setParameter("appname", name)
@@ -224,27 +219,26 @@ class ToolAsyncDao {
                         WHERE (application = ?appname)
                     """.trimIndent()
                 )
-            }
-        } else {
-            ctx.withSession { session ->
+
+            } else {
                 session.insert(ToolLogoTable) {
                     set(ToolLogoTable.application, name)
                     set(ToolLogoTable.data, imageBytes)
                 }
+
             }
         }
     }
 
     suspend fun clearLogo(ctx: DBContext, user: SecurityPrincipal, name: String) {
-        val application =
-            ctx.withSession { session ->
-                findOwner(session, name) ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
-            }
-        if (application != user.username && user.role != Role.ADMIN) {
-            throw RPCException.fromStatusCode(HttpStatusCode.Forbidden)
-        }
-
         ctx.withSession { session ->
+            val application = findOwner(session, name) ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
+
+            if (application != user.username && user.role != Role.ADMIN) {
+                throw RPCException.fromStatusCode(HttpStatusCode.Forbidden)
+            }
+
+
             session.sendPreparedStatement(
                 {
                     setParameter("appname", name)

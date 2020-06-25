@@ -257,9 +257,13 @@ class AppStoreAsyncDao(
               AND (A.application -> 'applicationType' = '"WEB"'
                 OR A.application -> 'applicationType' = '"VNC"'
               ) and (
+                    0 < COUNT(*) FROM (
+                        SELECT * FROM JSONB_EACH(A.application -> 'fileExtensions')
+                    ) AS E WHERE E.value IN ?ext
+              )
         """
 
-        for (index in fileExtensions.indices) {
+        /*for (index in fileExtensions.indices) {
             query += """ A.application -> 'fileExtensions' @> jsonb_build_array(cast(?ext$index as text)) """
             if (index != fileExtensions.size - 1) {
                 query += "OR "
@@ -268,7 +272,7 @@ class AppStoreAsyncDao(
 
         query += """
               )
-        """
+        """*/
 
 
         return ctx.withSession { session ->
@@ -276,9 +280,10 @@ class AppStoreAsyncDao(
                 .sendPreparedStatement(
                     {
                         setParameter("user", user.username)
-                        fileExtensions.forEachIndexed { index, ext ->
+                        setParameter("ext", fileExtensions.toList())
+                        /*fileExtensions.forEachIndexed { index, ext ->
                             setParameter("ext$index", ext)
-                        }
+                        }*/
                     },
                     query
                 )
