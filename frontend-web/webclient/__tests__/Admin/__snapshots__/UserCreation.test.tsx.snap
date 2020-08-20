@@ -106,6 +106,10 @@ exports[`UserCreation Mount 1`] = `
   background-color: transparent;
 }
 
+.c6:disabled {
+  background-color: var(--FtFolderColor2,#f00);
+}
+
 .c6:focus {
   outline: 0;
   border-color: #006aff;
@@ -197,10 +201,12 @@ exports[`UserCreation Mount 1`] = `
       >
         Username
         <input
+          autoComplete="off"
           className="c6"
           id="default"
           onChange={[Function]}
           placeholder="Username..."
+          required={true}
           value=""
           width="100%"
         />
@@ -218,6 +224,7 @@ exports[`UserCreation Mount 1`] = `
           id="default"
           onChange={[Function]}
           placeholder="Password..."
+          required={true}
           type="password"
           value=""
           width="100%"
@@ -236,6 +243,7 @@ exports[`UserCreation Mount 1`] = `
           id="default"
           onChange={[Function]}
           placeholder="Repeat password..."
+          required={true}
           type="password"
           value=""
           width="100%"
@@ -254,6 +262,7 @@ exports[`UserCreation Mount 1`] = `
           id="default"
           onChange={[Function]}
           placeholder="Email..."
+          required={true}
           type="email"
           value=""
           width="100%"

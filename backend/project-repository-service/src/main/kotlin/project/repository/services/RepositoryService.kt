@@ -3,10 +3,7 @@ package dk.sdu.cloud.project.repository.services
 import com.fasterxml.jackson.module.kotlin.readValue
 import dk.sdu.cloud.SecurityPrincipal
 import dk.sdu.cloud.calls.RPCException
-import dk.sdu.cloud.calls.client.AuthenticatedClient
-import dk.sdu.cloud.calls.client.call
-import dk.sdu.cloud.calls.client.orRethrowAs
-import dk.sdu.cloud.calls.client.orThrow
+import dk.sdu.cloud.calls.client.*
 import dk.sdu.cloud.defaultMapper
 import dk.sdu.cloud.file.api.*
 import dk.sdu.cloud.project.api.*
@@ -141,7 +138,7 @@ class RepositoryService(private val serviceClient: AuthenticatedClient) {
             serviceClient
         ).orRethrowAs { throw RPCException("Unknown project", HttpStatusCode.NotFound) }
 
-        return if (!status.member.role.isAdmin()) {
+        val filesFromRepo = if (!status.member.role.isAdmin()) {
             val allRepos = listRepositories(username, project)
             allRepos.map { StorageFile(FileType.DIRECTORY, "/projects/$project/${it.name}") }
         } else {
@@ -150,6 +147,16 @@ class RepositoryService(private val serviceClient: AuthenticatedClient) {
                 userClient
             ).orThrow().items
         }
+
+        val myPersonalFiles = FileDescriptions.stat.call(
+            StatRequest(joinPath(projectHomeDirectory(project), PERSONAL_REPOSITORY, username)),
+            userClient
+        ).orNull()
+
+        return listOfNotNull(
+            myPersonalFiles,
+            filesFromRepo.find { it.path.fileName() == PERSONAL_REPOSITORY }
+        ) + filesFromRepo.filter { it.path.fileName() != PERSONAL_REPOSITORY }
     }
 
     suspend fun updatePermissions(

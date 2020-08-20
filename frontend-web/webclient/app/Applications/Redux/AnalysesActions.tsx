@@ -1,9 +1,9 @@
-import {AppState, JobState, JobWithStatus} from "Applications";
+import {JobState, JobWithStatus} from "Applications";
 import {Client} from "Authentication/HttpClientInstance";
 import {SortOrder} from "Files";
 import {Action} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Page, PayloadAction, SetLoadingAction} from "Types";
+import {SetLoadingAction} from "Types";
 import {hpcJobsQuery} from "Utilities/ApplicationUtilities";
 import {errorMessageOrDefault} from "UtilityFunctions";
 import {RunsSortBy} from "..";
@@ -42,7 +42,7 @@ export const fetchAnalyses = async (
         );
         return receiveAnalyses(response, sortBy, sortOrder);
     } catch (e) {
-        snackbarStore.addFailure(errorMessageOrDefault(e, "Retrieval of analyses failed, please try again later."));
+        snackbarStore.addFailure(errorMessageOrDefault(e, "Retrieval of analyses failed, please try again later."), false);
         return setError();
     }
 };

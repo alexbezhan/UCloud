@@ -1,15 +1,14 @@
 import {Client} from "Authentication/HttpClientInstance";
 import {MainContainer} from "MainContainer/MainContainer";
-import {setActivePage, setLoading, SetStatusLoading} from "Navigation/Redux/StatusActions";
+import {setLoading, SetStatusLoading, useTitle} from "Navigation/Redux/StatusActions";
 import {usePromiseKeeper} from "PromiseKeeper";
 import * as React from "react";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
-import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {Button, Input, Label} from "ui-components";
 import * as Heading from "ui-components/Heading";
-import {SidebarPages} from "ui-components/Sidebar";
+import {SidebarPages, useSidebarPage} from "ui-components/Sidebar";
 import {defaultErrorHandler} from "UtilityFunctions";
 import {UserCreationState} from ".";
 
@@ -23,15 +22,37 @@ const initialState: UserCreationState = {
     emailError: false
 };
 
-function UserCreation(props: UserCreationOperations): JSX.Element | null {
-    // FIXME: Use reducer instead, or break into smaller ones.
-    const [state, setState] = React.useState(initialState);
+type Action<T, B> = {payload: B; type: T};
+type UpdateUsername = Action<"UpdateUsername", {username: string}>;
+type UpdatePassword = Action<"UpdatePassword", {password: string}>;
+type UpdateRepeatedPassword = Action<"UpdateRepeatedPassword", {repeatedPassword: string}>;
+type UpdateEmail = Action<"UpdateEmail", {email: string}>;
+type UpdateErrors = Action<"UpdateErrors", {usernameError: boolean; passwordError: boolean; emailError: boolean}>;
+type Reset = Action<"Reset", {}>;
+type UserCreationActionType = |
+    UpdateUsername | UpdatePassword | UpdateRepeatedPassword | UpdateErrors | UpdateEmail | Reset;
+
+const reducer = (state: UserCreationState, action: UserCreationActionType): UserCreationState => {
+    switch (action.type) {
+        case "UpdateUsername":
+        case "UpdateRepeatedPassword":
+        case "UpdateErrors":
+        case "UpdateEmail":
+        case "UpdatePassword":
+            return {...state, ...action.payload};
+        case "Reset":
+            return initialState;
+
+    }
+};
+
+function UserCreation(props: SetStatusLoading): JSX.Element | null {
+    const [state, dispatch] = React.useReducer(reducer, initialState, () => initialState);
     const [submitted, setSubmitted] = React.useState(false);
     const promiseKeeper = usePromiseKeeper();
 
-    React.useEffect(() => {
-        props.setActivePage();
-    }, []);
+    useTitle("User Creation");
+    useSidebarPage(SidebarPages.Admin);
 
     if (!Client.userIsAdmin) return null;
 
@@ -56,10 +77,11 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
                         <Label mb="1em">
                             Username
                             <Input
-                                autocomplete="off"
+                                autoComplete="off"
                                 value={username}
                                 error={usernameError}
-                                onChange={e => updateField("username", e.target.value)}
+                                required
+                                onChange={e => dispatch({type: "UpdateUsername", payload: {username: e.target.value}})}
                                 placeholder="Username..."
                             />
                         </Label>
@@ -69,7 +91,8 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
                                 value={password}
                                 type="password"
                                 error={passwordError}
-                                onChange={e => updateField("password", e.target.value)}
+                                required
+                                onChange={e => dispatch({type: "UpdatePassword", payload: {password: e.target.value}})}
                                 placeholder="Password..."
                             />
                         </Label>
@@ -79,7 +102,8 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
                                 value={repeatedPassword}
                                 type="password"
                                 error={passwordError}
-                                onChange={e => updateField("repeatedPassword", e.target.value)}
+                                required
+                                onChange={e => dispatch({type: "UpdateRepeatedPassword", payload: {repeatedPassword: e.target.value}})}
                                 placeholder="Repeat password..."
                             />
                         </Label>
@@ -89,7 +113,8 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
                                 value={email}
                                 type="email"
                                 error={emailError}
-                                onChange={e => updateField("email", e.target.value)}
+                                required
+                                onChange={e => dispatch({type: "UpdateEmail", payload: {email: e.target.value}})}
                                 placeholder="Email..."
                             />
                         </Label>
@@ -106,14 +131,7 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
         />
     );
 
-    function updateField(field: keyof UserCreationState, value: string) {
-        if (field === "username") state.usernameError = false;
-        else if (field === "password" || field === "repeatedPassword") state.passwordError = false;
-        else if (field === "email") state.emailError = false
-        setState({...state, [field]: value});
-    }
-
-    async function submit(e: React.SyntheticEvent) {
+    async function submit(e: React.SyntheticEvent): Promise<void> {
         e.preventDefault();
 
         let hasUsernameError = false;
@@ -123,13 +141,17 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
         if (!username) hasUsernameError = true;
         if (!password || password !== repeatedPassword) {
             hasPasswordError = true;
-            snackbarStore.addFailure("Passwords do not match.");
+            snackbarStore.addFailure("Passwords do not match.", false);
         }
         if (!email) {
             hasEmailError = true;
-            snackbarStore.addFailure("Email is required")
+            snackbarStore.addFailure("Email is required", false);
         }
-        setState({...state, usernameError: hasUsernameError, passwordError: hasPasswordError, emailError: hasEmailError});
+        dispatch({
+            type: "UpdateErrors",
+            payload: {usernameError: hasUsernameError, passwordError: hasPasswordError, emailError: hasEmailError}
+        });
+
         if (!hasUsernameError && !hasPasswordError && !hasEmailError) {
             try {
                 props.setLoading(true);
@@ -137,11 +159,14 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
                 await promiseKeeper.makeCancelable(
                     Client.post("/auth/users/register", {username, password, email}, "")
                 ).promise;
-                snackbarStore.addSnack({message: `User '${username}' successfully created`, type: SnackType.Success});
-                setState(initialState);
-            } catch (e) {
-                const status = defaultErrorHandler(e);
-                if (status === 409) setState({...state, usernameError: true});
+                snackbarStore.addSuccess(`User '${username}' successfully created`, false);
+                dispatch({type: "Reset", payload: {}});
+            } catch (err) {
+                const status = defaultErrorHandler(err);
+                if (status === 409) dispatch({
+                    type: "UpdateErrors",
+                    payload: {usernameError: true, passwordError: false, emailError: false}
+                });
             } finally {
                 props.setLoading(false);
                 setSubmitted(false);
@@ -150,12 +175,7 @@ function UserCreation(props: UserCreationOperations): JSX.Element | null {
     }
 }
 
-interface UserCreationOperations extends SetStatusLoading {
-    setActivePage: () => void;
-}
-
-const mapDispatchToProps = (dispatch: Dispatch): UserCreationOperations => ({
-    setActivePage: () => dispatch(setActivePage(SidebarPages.Admin)),
+const mapDispatchToProps = (dispatch: Dispatch): SetStatusLoading => ({
     setLoading: loading => dispatch(setLoading(loading))
 });
 

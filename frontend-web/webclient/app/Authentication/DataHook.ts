@@ -1,6 +1,9 @@
 import {Client} from "Authentication/HttpClientInstance";
-import {useEffect, useReducer, useState} from "react";
+import {useCallback, useEffect, useMemo, useReducer, useState} from "react";
 import {defaultErrorHandler} from "UtilityFunctions";
+import {useGlobal, ValueOrSetter} from "Utilities/ReduxHooks";
+import {HookStore} from "DefaultObjects";
+import {usePromiseKeeper} from "PromiseKeeper";
 
 function dataFetchReducer(state, action) {
     switch (action.type) {
@@ -20,6 +23,7 @@ function dataFetchReducer(state, action) {
         case "FETCH_FAILURE":
             return {
                 ...state,
+                data: action.data,
                 loading: false,
                 error: action.error
             };
@@ -28,18 +32,19 @@ function dataFetchReducer(state, action) {
     }
 }
 
-export interface APICallParameters<Parameters = any, Payload = any> {
-    method?: "GET" | "POST" | "DELETE" | "PUT" | "PATCH" | "OPTIONS" | "HEAD";
-    path?: string;
-    payload?: Payload;
-    context?: string;
-    maxRetries?: number;
-    parameters?: Parameters;
-    disallowProjects?: boolean;
-    reloadId?: number; // Can be used to force an ID by setting this to a random value
-    noop?: boolean; // Used to indicate that this should not be run in a useCloudAPI hook.
-    withCredentials?: boolean;
-    projectOverride?: string;
+declare global {
+    export interface APICallParameters<Parameters = any, Payload = any> {
+        method?: "GET" | "POST" | "DELETE" | "PUT" | "PATCH" | "OPTIONS" | "HEAD";
+        path?: string;
+        payload?: Payload;
+        context?: string;
+        maxRetries?: number;
+        parameters?: Parameters;
+        reloadId?: number; // Can be used to force an ID by setting this to a random value
+        noop?: boolean; // Used to indicate that this should not be run in a useCloudAPI hook.
+        withCredentials?: boolean;
+        projectOverride?: string;
+    }
 }
 
 export interface APIError {
@@ -51,6 +56,11 @@ export interface APICallState<T> {
     loading: boolean;
     error?: APIError;
     data: T;
+}
+
+export interface APICallStateWithParams<T, Params = any> {
+    call: APICallState<T>;
+    parameters: APICallParameters<Params>;
 }
 
 export function mapCallState<T, T2>(state: APICallState<T>, mapper: (t: T) => T2): APICallState<T2> {
@@ -100,7 +110,7 @@ export function useCloudAPI<T, Parameters = any>(
     useEffect(() => {
         let didCancel = false;
         if (params.noop !== true) {
-            async function fetchData() {
+            async function fetchData(): Promise<void> {
                 if (params.path !== undefined) {
                     dispatch({type: "FETCH_INIT"});
 
@@ -118,7 +128,7 @@ export function useCloudAPI<T, Parameters = any>(
                                 why = e.response.why;
                             }
 
-                            dispatch({type: "FETCH_FAILURE", error: {why, statusCode}});
+                            dispatch({type: "FETCH_FAILURE", data: dataInitial, error: {why, statusCode}});
                         }
                     }
                 }
@@ -140,10 +150,62 @@ export function useCloudAPI<T, Parameters = any>(
     return [returnedState, doFetch, params];
 }
 
+
+export function useGlobalCloudAPI<T, Parameters = any>(
+    property: string,
+    callParametersInitial: APICallParameters<Parameters>,
+    dataInitial: T
+): [APICallState<T>, (params: APICallParameters<Parameters>) => void, APICallParameters<Parameters>] {
+    const defaultState: APICallStateWithParams<T, Parameters> = {
+        call: {
+            loading: false,
+            error: undefined,
+            data: dataInitial
+        }, parameters: callParametersInitial
+    };
+
+    const promises = usePromiseKeeper();
+
+    const [globalState, setGlobalState] =
+        useGlobal(property as keyof HookStore, defaultState as unknown as NonNullable<HookStore[keyof HookStore]>);
+    const state = globalState as unknown as APICallStateWithParams<T, Parameters>;
+    const setState = setGlobalState as unknown as (value: ValueOrSetter<APICallStateWithParams<T, Parameters>>) => void;
+
+    const doFetch = useCallback(async (parameters: APICallParameters) => {
+        if (promises.canceledKeeper) return;
+        setState(old => ({...old, parameters}));
+        if (parameters.noop !== true) {
+            if (parameters.path !== undefined) {
+                if (promises.canceledKeeper) return;
+                setState(old => ({...old, call: {...old.call, loading: true}}));
+
+                try {
+                    const result: T = await callAPI(parameters);
+
+                    if (promises.canceledKeeper) return;
+                    setState(old => ({...old, call: {...old.call, loading: false, data: result}}));
+                } catch (e) {
+                    const statusCode = e.request.status;
+                    let why = "Internal Server Error";
+                    if (!!e.response && e.response.why) {
+                        why = e.response.why;
+                    }
+
+                    if (promises.canceledKeeper) return;
+                    setState(old => ({...old, call: {...old.call, loading: false, error: {why, statusCode}}}));
+                }
+            }
+        }
+    }, [promises, setState]);
+
+    return [state.call, doFetch, state.parameters];
+}
+
 export function useAsyncCommand(): [boolean, <T = any>(call: APICallParameters) => Promise<T | null>] {
     const [isLoading, setIsLoading] = useState(false);
     let didCancel = false;
-    const sendCommand = <T>(call: APICallParameters): Promise<T | null> => {
+    const sendCommand = useCallback(<T>(call: APICallParameters): Promise<T | null> => {
+        // eslint-disable-next-line no-async-promise-executor
         return new Promise<T | null>(async (resolve, reject) => {
             if (didCancel) return;
 
@@ -161,7 +223,7 @@ export function useAsyncCommand(): [boolean, <T = any>(call: APICallParameters) 
 
             setIsLoading(false);
         });
-    };
+    }, [setIsLoading]);
 
     useEffect(() => {
         return () => {
@@ -184,7 +246,7 @@ export function useAsyncWork(): AsyncWorker {
         };
     }, []);
 
-    const startWork = async (fn: () => Promise<void>) => {
+    const startWork = async (fn: () => Promise<void>): Promise<void> => {
         if (didCancel) return;
         setError(undefined);
         setIsLoading(true);

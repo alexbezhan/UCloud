@@ -1,4 +1,3 @@
-import {Downtime} from "Admin/DowntimeManagement";
 import {
     AdvancedSearchRequest as AppSearchRequest,
     DetailedApplicationSearchReduxState,
@@ -9,7 +8,7 @@ import {setAppQuery} from "Applications/Redux/DetailedApplicationSearchActions";
 import {Client} from "Authentication/HttpClientInstance";
 import {UserAvatar} from "AvataaarLib/UserAvatar";
 import BackgroundTask from "BackgroundTasks/BackgroundTask";
-import {HeaderSearchType, KeyCode, ReduxObject} from "DefaultObjects";
+import {HeaderSearchType, KeyCode} from "DefaultObjects";
 import {AdvancedSearchRequest, DetailedFileSearchReduxState, File} from "Files";
 import DetailedFileSearch from "Files/DetailedFileSearch";
 import {setFilename} from "Files/Redux/DetailedFileSearchActions";
@@ -24,7 +23,6 @@ import {Dispatch} from "redux";
 import * as SearchActions from "Search/Redux/SearchActions";
 import {applicationSearchBody, fileSearchBody} from "Search/Search";
 import styled from "styled-components";
-import {Page} from "Types";
 import * as ui from "ui-components";
 import {DevelopmentBadgeBase} from "ui-components/Badge";
 import ClickableDropdown from "ui-components/ClickableDropdown";
@@ -44,7 +42,9 @@ import {
     stopPropagationAndPreventDefault
 } from "UtilityFunctions";
 import {DEV_SITE, STAGING_SITE, PRODUCT_NAME, STATUS_PAGE, VERSION_TEXT} from "../../site.config.json";
-import {AltContextSwitcher} from "Project/ContextSwitcher";
+import {ContextSwitcher} from "Project/ContextSwitcher";
+import {NewsPost} from "Dashboard/Dashboard";
+import {AutomaticGiftClaim} from "Gifts/AutomaticGiftClaim";
 
 interface HeaderProps extends HeaderStateToProps, HeaderOperations {
     toggleTheme(): void;
@@ -83,12 +83,12 @@ function Header(props: HeaderProps): JSX.Element | null {
     return (
         <HeaderContainer color="headerText" bg="headerBg">
             <Logo />
-            <AltContextSwitcher />
+            <ContextSwitcher />
             <ui.Box ml="auto" />
-            <ui.Hide xs sm md>
+            <ui.Hide xs sm md lg>
                 <Search />
             </ui.Hide>
-            <ui.Hide lg xxl xl>
+            <ui.Hide xxl xl>
                 <ui.Icon
                     name="search"
                     size="32"
@@ -99,7 +99,7 @@ function Header(props: HeaderProps): JSX.Element | null {
             </ui.Hide>
             <ui.Box mr="auto" />
             {upcomingDowntime !== -1 ? (
-                <Link to={`/downtime/detailed/${upcomingDowntime}`}>
+                <Link to={`/news/detailed/${upcomingDowntime}`}>
                     <ui.Tooltip
                         right="0"
                         bottom="1"
@@ -112,13 +112,16 @@ function Header(props: HeaderProps): JSX.Element | null {
                     </ui.Tooltip>
                 </Link>
             ) : null}
-            <DevelopmentBadge />
+            <ui.Hide xs sm md lg>
+                <DevelopmentBadge />
+            </ui.Hide>
             <BackgroundTask />
             <ui.Flex width="48px" justifyContent="center">
                 <Refresh spin={spin} onClick={refresh} headerLoading={props.statusLoading} />
             </ui.Flex>
             <ui.Support />
             <Notification />
+            <AutomaticGiftClaim/>
             <ClickableDropdown
                 colorOnHover={false}
                 width="200px"
@@ -141,7 +144,7 @@ function Header(props: HeaderProps): JSX.Element | null {
                 <ui.Box ml="-17px" mr="-17px" pl="15px">
                     <Link color="black" to="/users/settings">
                         <ui.Flex color="black">
-                            <ui.Icon name="properties" mr="0.5em" my="0.2em" size="1.3em" />
+                            <ui.Icon name="properties" color2="gray" mr="0.5em" my="0.2em" size="1.3em" />
                             <TextSpan>Settings</TextSpan>
                         </ui.Flex>
                     </Link>
@@ -149,13 +152,13 @@ function Header(props: HeaderProps): JSX.Element | null {
                 <ui.Flex ml="-17px" mr="-17px" pl="15px">
                     <Link to={"/users/avatar"}>
                         <ui.Flex color="black">
-                            <ui.Icon name="edit" mr="0.5em" my="0.2em" size="1.3em" />
+                            <ui.Icon name="user" color="black" color2="gray" mr="0.5em" my="0.2em" size="1.3em" />
                             <TextSpan>Edit Avatar</TextSpan>
                         </ui.Flex>
                     </Link>
                 </ui.Flex>
                 <ui.Flex ml="-17px" mr="-17px" pl="15px" onClick={() => Client.logout()}>
-                    <ui.Icon name="logout" mr="0.5em" my="0.2em" size="1.3em" />
+                    <ui.Icon name="logout" color2="gray" mr="0.5em" my="0.2em" size="1.3em" />
                     Logout
                 </ui.Flex>
                 <ui.Divider />
@@ -177,7 +180,7 @@ function Header(props: HeaderProps): JSX.Element | null {
     async function fetchDowntimes(): Promise<void> {
         try {
             if (!Client.isLoggedIn) return;
-            const result = await promises.makeCancelable(Client.get<Page<Downtime>>("/downtime/listPending")).promise;
+            const result = await promises.makeCancelable(Client.get<Page<NewsPost>>("/news/listDowntimes")).promise;
             if (result.response.itemsInTotal > 0) setUpcomingDowntime(result.response.items[0].id);
         } catch (err) {
             displayErrorMessageOrDefault(err, "Could not fetch upcoming downtimes.");
@@ -218,7 +221,10 @@ const LogoText = styled(ui.Text)`
 `;
 
 const Logo = (): JSX.Element => (
-    <Link to="/">
+    <Link
+        to="/"
+        width={[null, null, null, null, null, "190px"]}
+    >
         <ui.Flex alignItems="center" ml="15px">
             <ui.Icon name="logoEsc" size="38px" />
             <ui.Text color="headerText" fontSize={4} ml="8px">{PRODUCT_NAME}</ui.Text>
@@ -436,10 +442,8 @@ const mapStateToProps = ({header, avatar, ...rest}: ReduxObject): HeaderStateToP
 const isAnyLoading = (rO: ReduxObject): boolean =>
     rO.loading === true || rO.fileInfo.loading || rO.notifications.loading || rO.simpleSearch.filesLoading
     || rO.simpleSearch.applicationsLoading || rO.activity.loading
-    || rO.analyses.loading || rO.dashboard.analysesLoading || rO.dashboard.favoriteLoading
+    || rO.analyses.loading || rO.dashboard.analysesLoading
     || rO.applicationsFavorite.applications.loading || rO.applicationsBrowse.loading
-    || rO.applicationsFavorite.applications.loading || /* rO.applicationsBrowse.applicationsPage.loading */ false
-    || rO.accounting.resources["compute/timeUsed"].events.loading
-    || rO.accounting.resources["storage/bytesUsed"].events.loading;
+    || rO.applicationsFavorite.applications.loading || /* rO.applicationsBrowse.applicationsPage.loading */ false;
 
 export default connect<HeaderStateToProps, HeaderOperations>(mapStateToProps, mapDispatchToProps)(Header);

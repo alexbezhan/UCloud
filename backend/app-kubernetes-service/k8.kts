@@ -4,7 +4,15 @@ package dk.sdu.cloud.k8
 
 bundle { ctx ->
     name = "app-kubernetes"
-    version = "0.18.0-application-urls.2"
+    version = "0.19.0"
+
+    val prefix: String = config("prefix", "Application name prefix (e.g. 'app-')", "app-")
+    val domain: String = config("domain", "Application domain (e.g. 'cloud.sdu.dk')")
+    val internalEgressWhiteList: List<String> = config(
+        "internalEgressWhitelist",
+        "Internal sites to whitelist",
+        emptyList()
+    )
 
     withAmbassador(pathPrefix = null) {
         addSimpleMapping("/api/app/compute/kubernetes")
@@ -56,67 +64,62 @@ bundle { ctx ->
 
     withPostgresMigration(deployment)
 
-    val networkPolicyPodSelector = mapOf("role" to "sducloud-app")
-    withNetworkPolicy("app-policy", version = "2") {
-        policy.metadata.namespace = "app-kubernetes"
+    listOf("", "-dev").forEach { suffix ->
+        val networkPolicyPodSelector = mapOf("role" to "sducloud-app$suffix")
+        withNetworkPolicy("app-policy$suffix", version = "3") {
+            policy.metadata.namespace = "app-kubernetes"
 
-        policy.spec = NetworkPolicySpec().apply {
-            podSelector = LabelSelector().apply {
-                matchLabels = networkPolicyPodSelector
-            }
+            policy.spec = NetworkPolicySpec().apply {
+                podSelector = LabelSelector().apply {
+                    matchLabels = networkPolicyPodSelector
+                }
 
-            ingress = emptyList()
-            egress = listOf(
-                allowPortEgress(
-                    listOf(
-                        PortAndProtocol(53, NetworkProtocol.TCP),
-                        PortAndProtocol(53, NetworkProtocol.UDP)
-                    )
-                ),
+                ingress = emptyList()
+                egress = listOf(
+                    allowPortEgress(
+                        listOf(
+                            PortAndProtocol(53, NetworkProtocol.TCP),
+                            PortAndProtocol(53, NetworkProtocol.UDP)
+                        )
+                    ),
 
-                allowEgressTo(
-                    listOf(
-                        EgressToPolicy(
-                            "0.0.0.0/0",
-                            listOf(
-                                "10.0.0.0/8",
-                                "172.16.0.0/12",
-                                "192.168.0.0/16"
+                    allowEgressTo(
+                        listOf(
+                            EgressToPolicy(
+                                "0.0.0.0/0",
+                                listOf(
+                                    "10.0.0.0/8",
+                                    "172.16.0.0/12",
+                                    "192.168.0.0/16"
+                                )
                             )
                         )
                     )
-                ),
-
-                // allow tek-ansys.tek.c.sdu.dk
-                allowEgressTo(listOf(EgressToPolicy("10.144.4.166/32"))),
-
-                // allow tek-comsol0a.tek.c.sdu.dk
-                allowEgressTo(listOf(EgressToPolicy("10.144.4.169/32"))),
-
-                // coumputational biology server SDU (requested by Emiliano)
-                allowEgressTo(listOf(EgressToPolicy("10.137.1.93/32")))
-            )
-        }
-    }
-
-    withNetworkPolicy("app-allow-proxy") {
-        policy.metadata.namespace = "app-kubernetes"
-
-        policy.spec = NetworkPolicySpec().apply {
-            podSelector = LabelSelector().apply {
-                matchLabels = networkPolicyPodSelector
+                ) + internalEgressWhiteList.map {
+                    allowEgressTo(listOf(EgressToPolicy(it)))
+                }
             }
+        }
 
-            ingress = listOf(
-                allowFromPods(mapOf("app" to "app-kubernetes"), null)
-            )
+        withNetworkPolicy("app-allow-proxy$suffix", version = "3") {
+            policy.metadata.namespace = "app-kubernetes"
+
+            policy.spec = NetworkPolicySpec().apply {
+                podSelector = LabelSelector().apply {
+                    matchLabels = networkPolicyPodSelector
+                }
+
+                ingress = listOf(
+                    allowFromPods(mapOf("app" to "app-kubernetes"), null)
+                )
+            }
         }
     }
 
     withClusterServiceAccount {
         addRule(
             apiGroups = listOf(""),
-            resources = listOf("pods", "pods/log", "pods/portforward", "pods/exec"),
+            resources = listOf("pods", "pods/log", "pods/portforward", "pods/exec", "services"),
             verbs = listOf("*")
         )
 
@@ -133,24 +136,7 @@ bundle { ctx ->
         )
     }
 
-    val prefix: String = when (ctx.environment) {
-        Environment.DEVELOPMENT, Environment.PRODUCTION -> "app-"
-        Environment.TEST -> "apps-"
-    }
-
-    val domain: String = when (ctx.environment) {
-        Environment.DEVELOPMENT -> "dev.cloud.sdu.dk"
-        Environment.PRODUCTION -> "cloud.sdu.dk"
-        Environment.TEST -> "dev.cloud.sdu.dk" // Uses different prefix
-    }
-
     withConfigMap {
-        val hostTemporaryStorage: String = when (ctx.environment) {
-            Environment.DEVELOPMENT -> "/mnt/ofs"
-            Environment.PRODUCTION -> "/mnt/storage/overlayfs"
-            Environment.TEST -> "/mnt/ofs"
-        }
-
         addConfig(
             "config.yaml",
 
@@ -161,7 +147,6 @@ bundle { ctx ->
                     performAuthentication: true
                     prefix: "$prefix"
                     domain: $domain
-                    hostTemporaryStorage: $hostTemporaryStorage
                     toleration:
                       key: sducloud
                       value: apps

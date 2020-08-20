@@ -1,6 +1,5 @@
 import {FullAppInfo, WithAppFavorite, WithAppMetadata} from "Applications";
 import {Client} from "Authentication/HttpClientInstance";
-import {ReduxObject} from "DefaultObjects";
 import {loadingEvent} from "LoadableContent";
 import Spinner from "LoadingIcon/LoadingIcon";
 import {HeaderActions, setPrioritizedSearch, setRefreshFunction} from "Navigation/Redux/HeaderActions";
@@ -10,7 +9,6 @@ import * as React from "react";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Page} from "Types";
 import {Box} from "ui-components";
 import {GridCardGroup} from "ui-components/Grid";
 import * as Heading from "ui-components/Heading";
@@ -47,7 +45,6 @@ function Installed(props: InstalledProps & {header: React.ReactNode}): JSX.Eleme
         if (props.header !== null) props.setRefresh(() => props.fetchItems(pageNumber, itemsPerPage));
     }
 
-
     async function onFavorite(name: string, version: string): Promise<void> {
         try {
             await Client.post(hpcFavoriteApp(name, version));
@@ -56,7 +53,7 @@ function Installed(props: InstalledProps & {header: React.ReactNode}): JSX.Eleme
                 page.pageNumber : Math.max(page.pageNumber - 1, 0);
             props.fetchItems(pageNumber, page.itemsPerPage);
         } catch (e) {
-            snackbarStore.addFailure(errorMessageOrDefault(e, "Could not favorite app"));
+            snackbarStore.addFailure(errorMessageOrDefault(e, "Could not favorite app"), false);
         }
     }
 

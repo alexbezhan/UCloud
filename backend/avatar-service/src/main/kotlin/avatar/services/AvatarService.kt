@@ -2,40 +2,20 @@ package dk.sdu.cloud.avatar.services
 
 import dk.sdu.cloud.avatar.api.Avatar
 import dk.sdu.cloud.avatar.api.SerializedAvatar
-import dk.sdu.cloud.service.db.DBSessionFactory
-import dk.sdu.cloud.service.db.withTransaction
+import dk.sdu.cloud.service.db.async.DBContext
+import dk.sdu.cloud.service.db.async.withSession
 
-class AvatarService<DBSession>(
-    private val db: DBSessionFactory<DBSession>,
-    private val dao: AvatarDAO<DBSession>
+class AvatarService(
+    private val db: DBContext,
+    private val dao: AvatarAsyncDao
 ) {
     suspend fun upsert(user: String, avatar: Avatar) {
-        db.withTransaction { dao.upsert(it, user, avatar) }
+        db.withSession{ dao.upsert(it, user, avatar) }
     }
 
     suspend fun findByUser(user: String): Avatar =
-        db.withTransaction { dao.findByUser(it, user) }
+        db.withSession { dao.findByUser(it, user) }
 
     suspend fun bulkFind(users: List<String>): Map<String, SerializedAvatar> =
-        db.withTransaction { dao.bulkFind(it, users)}
-}
-
-
-interface AvatarDAO<Session> {
-
-    fun upsert(
-        session: Session,
-        user: String,
-        avatar: Avatar
-    )
-
-    fun findByUser(
-        session: Session,
-        user: String
-    ): Avatar
-
-    fun bulkFind(
-        session: Session,
-        list: List<String>
-    ): Map<String, SerializedAvatar>
+        db.withSession { dao.bulkFind(it, users)}
 }

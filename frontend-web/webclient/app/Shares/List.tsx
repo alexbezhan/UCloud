@@ -1,11 +1,4 @@
-import {
-    APICallParameters,
-    APICallState,
-    callAPI,
-    mapCallState,
-    useAsyncCommand,
-    useCloudAPI
-} from "Authentication/DataHook";
+import {APICallState, callAPI, mapCallState, useAsyncCommand, useCloudAPI} from "Authentication/DataHook";
 import {Client} from "Authentication/HttpClientInstance";
 import {UserAvatar} from "AvataaarLib/UserAvatar";
 import {emptyPage} from "DefaultObjects";
@@ -23,7 +16,7 @@ import {connect} from "react-redux";
 import {Dispatch} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
-import {AccessRight, AccessRights, Dictionary, Page, singletonToPage} from "Types";
+import {AccessRight, AccessRights, singletonToPage} from "Types";
 import {Box, Card, Flex, Icon, SelectableText, SelectableTextWrapper, Text} from "ui-components";
 import Button from "ui-components/Button";
 import ClickableDropdown from "ui-components/ClickableDropdown";
@@ -33,7 +26,6 @@ import Link from "ui-components/Link";
 import {SidebarPages} from "ui-components/Sidebar";
 import {Spacer} from "ui-components/Spacer";
 import {TextSpan} from "ui-components/Text";
-import {colors} from "ui-components/theme";
 import {AvatarType, defaultAvatar} from "UserSettings/Avataaar";
 import {fileTablePage, getFilenameFromPath, getParentPath, isDirectory, statFileQuery} from "Utilities/FileUtilities";
 import {addStandardDialog, FileIcon} from "UtilityComponents";
@@ -41,12 +33,16 @@ import {defaultErrorHandler, iconFromFilePath} from "UtilityFunctions";
 import {ListProps, ListSharesParams, loadAvatars, MinimalShare, SharesByPath, ShareState} from ".";
 import {acceptShare, createShare, findShare, listShares, revokeShare, updateShare} from "./index";
 import Warning from "ui-components/Warning";
+import {Toggle} from "ui-components/Toggle";
+import {useProjectStatus} from "Project/cache";
+import {getProjectNames} from "Utilities/ProjectUtilities";
+import {getCssVar} from "Utilities/StyledComponentsUtilities";
 
 export const List: React.FunctionComponent<ListProps & ListOperations> = props => {
     const initialFetchParams = props.byPath === undefined ?
         listShares({sharedByMe: false, itemsPerPage: 25, page: 0}) : findShare(props.byPath);
 
-    const [avatars, setAvatarParams, avatarParams] = useCloudAPI<{avatars: Dictionary<AvatarType>}>(
+    const [avatars, setAvatarParams, avatarParams] = useCloudAPI<{avatars: Record<string, AvatarType>}>(
         loadAvatars({usernames: new Set([])}), {avatars: {}}
     );
 
@@ -136,13 +132,14 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
 
     const shares = page.data.items.filter(it => it.sharedByMe === sharedByMe || props.byPath !== undefined);
     const simple = !!props.simple;
+    const projectNames = getProjectNames(useProjectStatus());
     const main = (
         <Pagination.List
             loading={page.loading}
             page={page.data}
             customEmptyPage={simple ? (
                 <div>
-                    No shares for <b>{getFilenameFromPath(props.byPath!)}</b>
+                    No shares for <b>{getFilenameFromPath(props.byPath!, projectNames)}</b>
                 </div>
             ) : <NoShares sharedByMe={sharedByMe} />}
             onPageChanged={(pageNumber, {itemsPerPage}) => setFetchParams(listShares({
@@ -180,20 +177,23 @@ export const List: React.FunctionComponent<ListProps & ListOperations> = props =
     );
 };
 
-function AvatarComponent(p: {username: string; avatars: Dictionary<AvatarType>}): JSX.Element {
-    const avatar = p.avatars[p.username] ?? defaultAvatar;
-    return <UserAvatar avatar={avatar} mr="10px" />;
-}
-
 function GroupedShareCardWrapper(p: {
     shareByPath: SharesByPath;
     simple: boolean;
     refresh: () => void;
     sharedByMe: boolean;
-    avatars: Dictionary<AvatarType>;
+    avatars: Record<string, AvatarType>;
 }): JSX.Element {
     const [pageNumber, setPage] = useState(0);
     const pageSize = 5;
+
+    React.useEffect(() => {
+        if (pageNumber >= Math.ceil(p.shareByPath.shares.length / pageSize)) {
+            setPage(pageNumber - 1);
+        }
+    });
+
+
     return (
         <GroupedShareCard
             simple={p.simple}
@@ -203,6 +203,7 @@ function GroupedShareCardWrapper(p: {
         >
             {p.shareByPath.shares.slice(pageSize * pageNumber, pageSize * pageNumber + pageSize).map(share => (
                 <ShareRow
+                    avatar={p.avatars[p.sharedByMe ? share.sharedWith : p.shareByPath.sharedBy] ?? defaultAvatar}
                     path={p.shareByPath.path}
                     simple={p.simple}
                     key={share.sharedWith}
@@ -210,15 +211,10 @@ function GroupedShareCardWrapper(p: {
                     onUpdate={p.refresh}
                     share={share}
                     sharedByMe={p.sharedByMe}
-                >
-                    <AvatarComponent
-                        avatars={p.avatars}
-                        username={p.sharedByMe ? share.sharedWith : p.shareByPath.sharedBy}
-                    />
-                </ShareRow>
+                />
             ))}
             <PaginationButtons
-                totalPages={Math.floor(p.shareByPath.shares.length / pageSize)}
+                totalPages={(Math.ceil(p.shareByPath.shares.length / pageSize))}
                 currentPage={pageNumber}
                 toPage={setPage}
             />
@@ -256,6 +252,8 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
     const [newShareRights, setNewShareRights] = useState(AccessRights.READ_RIGHTS);
     const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
     const [fileType, setFileType] = useState<FileType>("DIRECTORY");
+    const project = useProjectStatus();
+    const projectNames = getProjectNames(project);
 
     const promises = usePromiseKeeper();
     const newShareUsername = useRef<HTMLInputElement>(null);
@@ -272,7 +270,7 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
 
             const username = newShareUsername.current!.value;
             if (username.length === 0) {
-                snackbarStore.addFailure("Please fill out the username.");
+                snackbarStore.addFailure("Please fill out the username.", false);
                 return;
             }
 
@@ -302,7 +300,7 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
         if (!props.simple) {
             addStandardDialog({
                 title: "Revoke?",
-                message: `Remove all shares for ${getFilenameFromPath(groupedShare.path)}?`,
+                message: `Remove all shares for ${getFilenameFromPath(groupedShare.path, projectNames)}?`,
                 onConfirm: revoke
             });
         } else {
@@ -314,32 +312,29 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
     const {path} = groupedShare;
     const sharedByMe = groupedShare.sharedByMe;
     const folderLink = (groupedShare.shares[0].state === ShareState.ACCEPTED) || sharedByMe ? (
-        <Link to={fileTablePage(!sharedByMe ? Client.sharesFolder : (isDirectory({fileType}) ? path : getParentPath(path)))}>
-            {getFilenameFromPath(path)}
+        <Link
+            to={fileTablePage(!sharedByMe && !isDirectory({fileType}) ?
+                Client.sharesFolder : isDirectory({fileType}) ?
+                    path : getParentPath(path))}
+        >
+            {getFilenameFromPath(path, projectNames)}
         </Link>
-    ) : <Text>{getFilenameFromPath(groupedShare.path)}</Text>;
+    ) : <Text>{getFilenameFromPath(groupedShare.path, projectNames)}</Text>;
     return (
-        <Card overflow="hidden" height="auto" width={1} boxShadow="sm" borderWidth={1} borderRadius={6} mb={12}>
-            <BorderedFlex
-                bg="lightGray"
-                color="darkGray"
-                px={3}
-                py={2}
-                alignItems="center"
-            >
+        <ShareCardBase
+            title={<>
                 <Box ml="3px" mr="10px">
                     <FileIcon
                         key={fileType}
-                        fileIcon={iconFromFilePath(groupedShare.path, fileType, Client)}
+                        fileIcon={iconFromFilePath(groupedShare.path, fileType)}
                     />
                 </Box>
                 <Heading.h4> {folderLink} </Heading.h4>
                 <Box ml="auto" />
                 {groupedShare.sharedByMe ?
                     `${groupedShare.shares.length} ${groupedShare.shares.length > 1 ?
-                        "collaborators" : "collaborator"}` : sharePermissionsToText(groupedShare.shares[0].rights)}
-            </BorderedFlex>
-            <Box px={3} pt={3}>
+                        "collaborators" : "collaborator"}` : sharePermissionsToText(groupedShare.shares[0].rights)}</>}
+            body={<>
                 {!groupedShare.sharedByMe || props.simple ? null : (
                     <form onSubmit={doCreateShare}>
                         <Flex mb="16px" alignItems="center">
@@ -380,8 +375,8 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
                     </form>
                 )}
                 {props.children}
-            </Box>
-            {!(groupedShare.sharedByMe &&
+            </>}
+            bottom={!(groupedShare.sharedByMe &&
                 groupedShare.shares.some(it => inCancelableState(it.state)) &&
                 groupedShare.shares.length > 1) ? null : (
                     <Spacer
@@ -401,9 +396,33 @@ const GroupedShareCard: React.FunctionComponent<ListEntryProperties> = props => 
                         )}
                     />
                 )}
-        </Card>
+        />
     );
 };
+
+interface ShareCardBaseProps {
+    title: JSX.Element | string | null;
+    body: JSX.Element | null;
+    bottom: JSX.Element | null;
+}
+
+export const ShareCardBase: React.FC<ShareCardBaseProps> = props => (
+    <Card overflow="hidden" height="auto" width={1} boxShadow="sm" borderWidth={1} borderRadius={6} mb={12}>
+        <BorderedFlex
+            bg="lightGray"
+            color="darkGray"
+            px={3}
+            py={2}
+            alignItems="center"
+        >
+            {props.title}
+        </BorderedFlex>
+        <Box px={3} pt={3}>
+            {props.body}
+        </Box>
+        {props.bottom}
+    </Card>
+);
 
 const BorderedFlex = styled(Flex)`
     borderRadius: 6px 6px 0px 0px;
@@ -415,9 +434,10 @@ function inCancelableState(state: ShareState): boolean {
 
 export const ShareRow: React.FunctionComponent<{
     share: MinimalShare;
-    path: string,
+    path: string;
     sharedByMe: boolean;
     sharedBy: string;
+    avatar: AvatarType;
     onUpdate: () => void;
     revokeAsIcon?: boolean;
     simple: boolean;
@@ -432,19 +452,19 @@ export const ShareRow: React.FunctionComponent<{
     const doAccept = (): Promise<void> => sendCommandAndUpdate(acceptShare(path));
     const doRevoke = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>): void => {
         e.preventDefault();
-        if (props.simple) sendCommandAndUpdate(revokeShare({path: path, sharedWith: share.sharedWith}));
+        if (props.simple) sendCommandAndUpdate(revokeShare({path, sharedWith: share.sharedWith}));
         else addStandardDialog({
             title: "Revoke?",
             message: "Remove share?",
-            onConfirm: () => sendCommandAndUpdate(revokeShare({path: path, sharedWith: share.sharedWith}))
+            onConfirm: () => sendCommandAndUpdate(revokeShare({path, sharedWith: share.sharedWith}))
         });
     };
     const doUpdate = (newRights: AccessRight[]): Promise<void> =>
-        sendCommandAndUpdate(updateShare({path: path, rights: newRights, sharedWith: share.sharedWith}));
+        sendCommandAndUpdate(updateShare({path, rights: newRights, sharedWith: share.sharedWith}));
 
     let permissionsBlock: JSX.Element | string | null = null;
 
-    if (share.state === ShareState.UPDATING || isLoading) {
+    if (share.state === ShareState.UPDATING) {
         permissionsBlock = null;
     } else if (!sharedByMe) {
         if (share.state === ShareState.REQUEST_SENT) {
@@ -477,19 +497,19 @@ export const ShareRow: React.FunctionComponent<{
             );
         }
     } else {
+        const hasWriteRights = share.rights.indexOf(AccessRight.WRITE) !== -1;
         permissionsBlock = (
             <>
-                <ClickableDropdown
-                    right="0px"
-                    chevron
-                    width="100px"
-                    trigger={sharePermissionsToText(share.rights)}
-                >
-                    {share.rights.indexOf(AccessRight.WRITE) !== -1 ?
-                        <OptionItem onClick={() => doUpdate(AccessRights.READ_RIGHTS)} text={CAN_VIEW_TEXT} /> :
-                        <OptionItem onClick={() => doUpdate(AccessRights.WRITE_RIGHTS)} text={CAN_EDIT_TEXT} />
-                    }
-                </ClickableDropdown>
+                <Flex>
+                    <Text mr="5px">View</Text>
+                    <Toggle
+                        scale={1.3}
+                        disabledColor="green"
+                        onChange={() => doUpdate(hasWriteRights ? AccessRights.READ_RIGHTS : AccessRights.WRITE_RIGHTS)}
+                        checked={hasWriteRights}
+                    />
+                    <Text ml="5px">Edit</Text>
+                </Flex>
                 {props.revokeAsIcon ? (
                     <Icon
                         name="close"
@@ -499,14 +519,14 @@ export const ShareRow: React.FunctionComponent<{
                         color="red"
                         cursor="pointer"
                         onClick={() => sendCommandAndUpdate(revokeShare({
-                            path: path,
+                            path,
                             sharedWith: share.sharedWith
                         }))}
                     />
                 ) : (
                         <Button color="red" ml="16px" onClick={doRevoke}>
                             <Icon name="close" size="1em" mr=".7em" />
-                        Revoke
+                            Revoke
                         </Button>
                     )}
             </>
@@ -515,7 +535,7 @@ export const ShareRow: React.FunctionComponent<{
 
     return (
         <Flex alignItems="center" mb="16px">
-            {props.children}
+            <UserAvatar avatar={props.avatar} mr="10px" />
 
             <div>
                 <Text bold>{sharedByMe ? share.sharedWith : sharedBy}</Text>
@@ -540,10 +560,10 @@ const ShareStateRow: React.FunctionComponent<{state: ShareState}> = props => {
 
     switch (props.state) {
         case ShareState.ACCEPTED:
-            body = <><Icon size={20} color={colors.green} name={"check"} /> The share has been accepted.</>;
+            body = <><Icon size={20} color={getCssVar("green")} name="check" /> The share has been accepted.</>;
             break;
         case ShareState.UPDATING:
-            body = <><Icon size={20} color={colors.blue} name={"refresh"} /> The share is currently updating.</>;
+            body = <><Icon size={20} color={getCssVar("blue")} name="refresh" /> The share is currently updating.</>;
             break;
         case ShareState.REQUEST_SENT:
             body = <>The share has not yet been accepted.</>;

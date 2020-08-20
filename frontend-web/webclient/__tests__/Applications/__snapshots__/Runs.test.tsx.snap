@@ -302,7 +302,7 @@ exports[`Runs component Mount component with non-empty page 1`] = `
   position: relative;
   vertical-align: middle;
   cursor: pointer;
-  color: #8393A7;
+  color: var(--gray,#f00);
   margin-right: .5em;
 }
 
@@ -501,6 +501,7 @@ exports[`Runs component Mount component with non-empty page 1`] = `
   >
     <div
       className="c0 sc-AxiKw c11"
+      data-tag="sidebar"
       height="100%"
       width={340}
     >
@@ -995,11 +996,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
       >
         <div
           className="c0 c31"
+          onClick={[Function]}
         >
           <img
             alt=""
             onErrorCapture={[Function]}
-            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            src="undefined/api/hpc/apps/logo/"
             style={
               Object {
                 "height": "36px",
@@ -1077,12 +1079,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               >
                 <path
                   d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
                   d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
@@ -1091,7 +1093,7 @@ exports[`Runs component Mount component with non-empty page 1`] = `
                 />
                 <path
                   d="M6.857 0h6.858v2.572H6.857z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
               </svg>
@@ -1118,7 +1120,6 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               fill="currentcolor"
               fillRule="evenodd"
               height={24}
-              isExpired={false}
               mr="8px"
               state="FAILURE"
               viewBox="0 0 25 24"
@@ -1144,11 +1145,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
       >
         <div
           className="c0 c31"
+          onClick={[Function]}
         >
           <img
             alt=""
             onErrorCapture={[Function]}
-            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            src="undefined/api/hpc/apps/logo/"
             style={
               Object {
                 "height": "36px",
@@ -1226,12 +1228,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               >
                 <path
                   d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
                   d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
@@ -1240,7 +1242,7 @@ exports[`Runs component Mount component with non-empty page 1`] = `
                 />
                 <path
                   d="M6.857 0h6.858v2.572H6.857z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
               </svg>
@@ -1267,7 +1269,6 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               fill="currentcolor"
               fillRule="evenodd"
               height={24}
-              isExpired={false}
               mr="8px"
               state="FAILURE"
               viewBox="0 0 25 24"
@@ -1293,11 +1294,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
       >
         <div
           className="c0 c31"
+          onClick={[Function]}
         >
           <img
             alt=""
             onErrorCapture={[Function]}
-            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            src="undefined/api/hpc/apps/logo/"
             style={
               Object {
                 "height": "36px",
@@ -1375,12 +1377,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               >
                 <path
                   d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
                   d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
@@ -1389,7 +1391,7 @@ exports[`Runs component Mount component with non-empty page 1`] = `
                 />
                 <path
                   d="M6.857 0h6.858v2.572H6.857z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
               </svg>
@@ -1416,7 +1418,6 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               fill="currentcolor"
               fillRule="evenodd"
               height={24}
-              isExpired={false}
               mr="8px"
               state="FAILURE"
               viewBox="0 0 25 24"
@@ -1442,11 +1443,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
       >
         <div
           className="c0 c31"
+          onClick={[Function]}
         >
           <img
             alt=""
             onErrorCapture={[Function]}
-            src="undefined/api/hpc/apps/logo/?cacheBust=undefined"
+            src="undefined/api/hpc/apps/logo/"
             style={
               Object {
                 "height": "36px",
@@ -1524,12 +1526,12 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               >
                 <path
                   d="M6.044 12.577l1.484-2.1 4.083 2.885-1.484 2.1z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
                   d="M15.587 10.385l.993 2.372-6.456 2.705-.993-2.372z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
                 <path
@@ -1538,7 +1540,7 @@ exports[`Runs component Mount component with non-empty page 1`] = `
                 />
                 <path
                   d="M6.857 0h6.858v2.572H6.857z"
-                  fill={null}
+                  fill="currentcolor"
                   fillRule="nonzero"
                 />
               </svg>
@@ -1565,7 +1567,6 @@ exports[`Runs component Mount component with non-empty page 1`] = `
               fill="currentcolor"
               fillRule="evenodd"
               height={24}
-              isExpired={false}
               mr="8px"
               state="SUCCESS"
               viewBox="0 0 25 19"

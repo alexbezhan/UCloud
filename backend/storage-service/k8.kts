@@ -3,7 +3,9 @@ package dk.sdu.cloud.k8
 
 bundle { ctx ->
     name = "storage"
-    version = "4.1.0-projects.14"
+    version = "4.2.1"
+
+    val mountLocation: String = config("mountLocation", "Sub path in volume (e.g. 'test')", "")
 
     withAmbassador(null) {
         services.add(
@@ -118,18 +120,12 @@ bundle { ctx ->
     )
 
     withConfigMap("storage-config") {
-        val mountLocation = when (ctx.environment) {
-            Environment.PRODUCTION -> "/mnt/cephfs"
-            Environment.DEVELOPMENT -> "/mnt/cephfs/dev"
-            Environment.TEST -> "/mnt/cephfs/test"
-        }
-
         addConfig(
             "config.yml",
             //language=yaml
             """
                 storage:
-                  fileSystemMount: $mountLocation
+                  fileSystemMount: /mnt/cephfs/$mountLocation
                   filePermissionAcl:
                   - "_share"
                   - "_project-repository"

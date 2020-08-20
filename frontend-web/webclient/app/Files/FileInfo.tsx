@@ -1,7 +1,7 @@
 import {ActivityFeed} from "Activity/Feed";
 import {Client} from "Authentication/HttpClientInstance";
 import {FileInfoReduxObject} from "DefaultObjects";
-import {ReduxObject, SensitivityLevel, SensitivityLevelMap} from "DefaultObjects";
+import {SensitivityLevel, SensitivityLevelMap} from "DefaultObjects";
 import {File} from "Files";
 import {History} from "history";
 import LoadingIcon from "LoadingIcon/LoadingIcon";
@@ -21,7 +21,6 @@ import {dateToString} from "Utilities/DateUtilities";
 import {
     directorySizeQuery,
     expandHomeOrProjectFolder,
-    favoriteFile,
     fileTablePage,
     reclassifyFile,
     sizeToString,
@@ -33,6 +32,8 @@ import {capitalized, removeTrailingSlash, errorMessageOrDefault} from "UtilityFu
 import FilePreview from "./FilePreview";
 import {fetchFileActivity, setLoading} from "./Redux/FileInfoActions";
 import {snackbarStore} from "Snackbar/SnackbarStore";
+import {useFavoriteStatus} from "Files/favorite";
+import {useCallback} from "react";
 
 interface FileInfoOperations {
     updatePageTitle: () => void;
@@ -69,10 +70,10 @@ function FileInfo(props: Readonly<FileInfo>): JSX.Element | null {
                 <Box>
                     <Flex>
                         <BreadCrumbs
+                            embedded={false}
                             currentPath={file.path}
                             navigate={p => props.history.push(fileTablePage(expandHomeOrProjectFolder(p, Client)))}
-                            homeFolder={Client.homeFolder}
-                            projectFolder={Client.projectFolder}
+                            client={Client}
                         />
                     </Flex>
                     <Heading.h5 color="gray">{capitalized(file.fileType)}</Heading.h5>
@@ -130,7 +131,7 @@ function FileInfo(props: Readonly<FileInfo>): JSX.Element | null {
                 setFile({...response!, size: res.response.size});
             }
         } catch (e) {
-            errorMessageOrDefault(e, "An error ocurred fetching file info.");
+            errorMessageOrDefault(e, "An error occurred fetching file info.");
         } finally {
             props.setLoading(false);
         }
@@ -157,8 +158,12 @@ interface FileViewProps {
 }
 
 function FileView({file}: FileViewProps): JSX.Element | null {
-    const [favorite, setFavorite] = React.useState(file.favorited);
+    const favorites = useFavoriteStatus();
     const [sensitivity, setSensitivity] = React.useState(file.ownSensitivityLevel);
+    const toggleFavorite = useCallback(() => {
+        favorites.toggle(file.path);
+    }, [file.path]);
+    const favorite = favorites.cache[file.path] ?? false;
 
     return !file ? null : (
         <Flex flexDirection="row" justifyContent="center" flexWrap="wrap">
@@ -192,21 +197,12 @@ function FileView({file}: FileViewProps): JSX.Element | null {
         </Flex>
     );
 
-    async function toggleFavorite(): Promise<void> {
-        try {
-            await favoriteFile(file, Client);
-            setFavorite(fav => !fav);
-        } catch (e) {
-            snackbarStore.addFailure(errorMessageOrDefault(e, "Failed to toggle favorite status."));
-        }
-    }
-
     async function changeSensitivity(val: SensitivityLevelMap): Promise<void> {
         try {
             await reclassifyFile({file, sensitivity: val, client: Client});
             setSensitivity(val);
         } catch (e) {
-            snackbarStore.addFailure(errorMessageOrDefault(e, "Failed to change sensitivity."));
+            snackbarStore.addFailure(errorMessageOrDefault(e, "Failed to change sensitivity."), false);
         }
     }
 }

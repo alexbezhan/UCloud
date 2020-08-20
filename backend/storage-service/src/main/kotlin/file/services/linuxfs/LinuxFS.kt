@@ -2,10 +2,11 @@
 
 package dk.sdu.cloud.file.services.linuxfs
 
+import dk.sdu.cloud.file.CephConfiguration
 import dk.sdu.cloud.file.SERVICE_USER
 import dk.sdu.cloud.file.api.*
+import dk.sdu.cloud.file.services.CephFsFastDirectoryStats
 import dk.sdu.cloud.file.services.LowLevelFileSystemInterface
-import dk.sdu.cloud.file.services.ProjectCache
 import dk.sdu.cloud.file.services.acl.AclService
 import dk.sdu.cloud.file.services.acl.requirePermission
 import dk.sdu.cloud.file.services.linuxfs.LinuxFS.Companion.PATH_MAX
@@ -31,7 +32,7 @@ import kotlin.math.min
 class LinuxFS(
     fsRoot: File,
     private val aclService: AclService,
-    private val projectCache: ProjectCache
+    private val cephConfiguration: CephConfiguration
 ) : LowLevelFileSystemInterface<LinuxFSRunner> {
     private val fsRoot = fsRoot.normalize().absoluteFile
 
@@ -101,6 +102,14 @@ class LinuxFS(
         // We need write permission on from's parent to avoid being able to steal a file by changing the owner.
         aclService.requirePermission(from.parent(), ctx.user, AccessRight.WRITE)
         aclService.requirePermission(to, ctx.user, AccessRight.WRITE)
+
+        val fromComponents = from.normalize().components()
+        val toComponents = to.normalize().components()
+        if ((fromComponents.size in setOf(3, 4) && fromComponents[0] == "projects" && fromComponents[2] == PERSONAL_REPOSITORY) ||
+            (toComponents.size in setOf(3, 4) && toComponents[0] == "projects" && toComponents[2] == PERSONAL_REPOSITORY)) {
+            // The personal repository and direct children can _only_ be changed by the service user
+            throw FSException.PermissionException()
+        }
 
         // We need to record some information from before the move
         val fromStat = stat(
@@ -347,8 +356,7 @@ class LinuxFS(
                         components.isEmpty() -> SERVICE_USER
                         components.size < 2 -> SERVICE_USER
                         components.first() == "projects" -> {
-                            val projectId = components[1]
-                            if (projectCache.viewMember(projectId, ctx.user)?.role?.isAdmin() == true) {
+                            if (aclService.isOwner(realPath, ctx.user)) {
                                 ctx.user
                             } else {
                                 SERVICE_USER
@@ -437,6 +445,15 @@ class LinuxFS(
         val systemFile = File(translateAndCheckFile(ctx, path))
         aclService.requirePermission(path, ctx.user, AccessRight.WRITE)
 
+        val components = path.normalize().components()
+        if (ctx.user != SERVICE_USER) {
+            if ((components.size == 3 && components[0] == "projects") ||
+                (components.size == 4 && components[0] == "projects" && components[2] == PERSONAL_REPOSITORY)
+            ) {
+                throw FSException.PermissionException()
+            }
+        }
+
         if (ctx.outputStream == null) {
             ctx.outputStream = BufferedOutputStream(NativeFS.openForWriting(systemFile, allowOverwrite))
             ctx.outputSystemFile = systemFile
@@ -505,6 +522,13 @@ class LinuxFS(
         path: String
     ) = ctx.submit {
         val systemFile = File(translateAndCheckFile(ctx, path))
+
+        val components = path.normalize().components()
+        if (ctx.user != SERVICE_USER && components.size == 3 && components[2] == PERSONAL_REPOSITORY) {
+            // The personal repository and direct children can _only_ be changed by the service user
+            throw FSException.PermissionException()
+        }
+
         aclService.requirePermission(path.parent(), ctx.user, AccessRight.WRITE)
         NativeFS.createDirectories(systemFile)
         Unit
@@ -644,6 +668,50 @@ class LinuxFS(
 
     override suspend fun onFileCreated(ctx: LinuxFSRunner, path: String) {
         NativeFS.chown(File(translateAndCheckFile(ctx, path)), LINUX_FS_USER_UID, LINUX_FS_USER_UID)
+    }
+
+    override suspend fun calculateRecursiveStorageUsed(ctx: LinuxFSRunner, path: String): Long {
+        if (cephConfiguration.useCephDirectoryStats) return estimateRecursiveStorageUsedMakeItFast(ctx, path)
+
+        aclService.requirePermission(path, ctx.user, AccessRight.READ)
+
+        val systemFile = File(translateAndCheckFile(ctx, path))
+        val queue = LinkedList<File>()
+        queue.add(systemFile)
+
+        var sum = 0L
+
+        if (systemFile.isDirectory) {
+            while (queue.isNotEmpty()) {
+                val next = queue.pop()
+                NativeFS.listFiles(next)
+                    .map { File(next, it) }
+                    .forEach {
+                        if (Files.isSymbolicLink(it.toPath())) {
+                            return@forEach
+                        }
+
+                        if (it.isDirectory) queue.add(it)
+                        val s = stat(ctx, it, setOf(StorageFileAttribute.size), hasPerformedPermissionCheck = true)
+                        sum += s.size
+                    }
+            }
+        } else {
+            val s = stat(ctx, systemFile, setOf(StorageFileAttribute.size), hasPerformedPermissionCheck = true)
+            sum = s.size
+        }
+
+        return sum
+    }
+
+    override suspend fun estimateRecursiveStorageUsedMakeItFast(ctx: LinuxFSRunner, path: String): Long {
+        aclService.requirePermission(path, ctx.user, AccessRight.READ)
+        return if (!cephConfiguration.useCephDirectoryStats) {
+            // Just assume we'll use 30GB. This is a really bad estimate.
+            30L * 1000 * 1000 * 1000
+        } else {
+            CephFsFastDirectoryStats.getRecursiveSize(File(translateAndCheckFile(ctx, path)))
+        }
     }
 
     private fun String.toCloudPath(): String {

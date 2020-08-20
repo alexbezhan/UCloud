@@ -8,8 +8,8 @@ import {
     listByName,
     updateApplicationPermission,
     uploadLogo,
-    UserEntity,
-    UserEntityType
+    AccessEntityType,
+    DetailedAccessEntity
 } from "Applications/api";
 import {AppToolLogo} from "Applications/AppToolLogo";
 import * as Actions from "Applications/Redux/BrowseActions";
@@ -30,7 +30,6 @@ import {RouteComponentProps} from "react-router";
 import {Dispatch} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
-import {Page} from "Types";
 import {Button, Checkbox, Flex, Icon, Label, Text, VerticalButtonGroup} from "ui-components";
 import Box from "ui-components/Box";
 import ClickableDropdown from "ui-components/ClickableDropdown";
@@ -52,24 +51,46 @@ interface AppVersion {
     isPublic: boolean;
 }
 
-function prettifyAccessRight(accessRight: ApplicationAccessRight) {
+const entityTypes = [
+    {text: prettifyEntityType(AccessEntityType.USER), value: AccessEntityType.USER},
+    {text: prettifyEntityType(AccessEntityType.PROJECT_GROUP), value: AccessEntityType.PROJECT_GROUP},
+];
+
+function prettifyAccessRight(accessRight: ApplicationAccessRight): "Can launch" {
     switch (accessRight) {
         case ApplicationAccessRight.LAUNCH:
             return "Can launch";
     }
 }
 
-async function loadApplicationPermissionEntries(appName: string): Promise<ApplicationPermissionEntry[]> {
-    const {response} = await Client.get<Array<{entity: UserEntity, permission: ApplicationAccessRight}>>(`/hpc/apps/list-acl/${appName}`);
-    return response.map(item => {
-        const entityObj: UserEntity = { id: item.entity.id, type: item.entity.type };
-        const entry: ApplicationPermissionEntry = {
-            entity: entityObj,
-            permission: item.permission,
-        };
-        return entry;
-    });
+function prettifyEntityType(entityType: AccessEntityType): string {
+    switch (entityType) {
+        case AccessEntityType.USER: {
+            return "User";
+        }
+        case AccessEntityType.PROJECT_GROUP: {
+            return "Project group";
+        }
+        default: {
+            return "Unknown";
+        }
+    }
 }
+
+async function loadApplicationPermissionEntries(appName: string): Promise<ApplicationPermissionEntry[]> {
+    const {response} = await Client.get<Array<{
+        entity: DetailedAccessEntity;
+        permission: ApplicationAccessRight;
+    }>>(`/hpc/apps/list-acl/${appName}`);
+    return response.map(item => ({
+        entity: {user: item.entity.user, project: item.entity.project, group: item.entity.group},
+        permission: item.permission,
+    }));
+}
+
+const LeftAlignedTableHeader = styled(TableHeader)`
+    text-align: left;
+`;
 
 const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOperations> = props => {
     const name = props.match.params.name;
@@ -81,29 +102,26 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
     const [apps, setAppParameters, appParameters] =
         useCloudAPI<Page<WithAppMetadata & WithAllAppTags>>({noop: true}, emptyPage);
     const [versions, setVersions] = useState<AppVersion[]>([]);
+    const [selectedEntityType, setSelectedEntityType] = React.useState<AccessEntityType>(AccessEntityType.USER);
 
     const permissionLevels = [
         {text: prettifyAccessRight(ApplicationAccessRight.LAUNCH), value: ApplicationAccessRight.LAUNCH}
     ];
 
-    const LeftAlignedTableHeader = styled(TableHeader)`
-        text-align: left;
-    `;
-
-    async function setPermissionsOnInit() {
+    async function setPermissionsOnInit(): Promise<void> {
         setPermissionEntries(await loadApplicationPermissionEntries(name));
     }
 
     // Loading of permission entries
-    useEffect(() =>  {
+    useEffect(() => {
         setPermissionsOnInit();
     }, []);
 
     // Loading of application versions
-    useEffect(() =>  {
+    useEffect(() => {
         const appVersions: AppVersion[] = [];
         apps.data.items.forEach(item => {
-            appVersions.push({ version: item.metadata.version, isPublic: item.metadata.public });
+            appVersions.push({version: item.metadata.version, isPublic: item.metadata.public});
         });
         setVersions(appVersions);
     }, [apps.data.items]);
@@ -126,7 +144,9 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
     const appTitle = apps.data.items.length > 0 ? apps.data.items[0].metadata.title : name;
     const tags = apps.data.items.length > 0 ? apps.data.items[0].tags : [];
     const newTagField = useRef<HTMLInputElement>(null);
-    const newPermissionField = useRef<HTMLInputElement>(null);
+    const userEntityField = React.useRef<HTMLInputElement>(null);
+    const projectEntityField = React.useRef<HTMLInputElement>(null);
+    const groupEntityField = React.useRef<HTMLInputElement>(null);
 
     if (Client.userRole !== "ADMIN") return null;
     return (
@@ -151,7 +171,7 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                     const file = target.files[0];
                                     target.value = "";
                                     if (file.size > 1024 * 512) {
-                                        snackbarStore.addFailure("File exceeds 512KB. Not allowed.");
+                                        snackbarStore.addFailure("File exceeds 512KB. Not allowed.", false);
                                     } else {
                                         if (await uploadLogo({name, file, type: "APPLICATION"})) {
                                             setLogoCacheBust("" + Date.now());
@@ -179,13 +199,13 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
 
             main={(
                 <Flex flexDirection="column">
-                    <Box maxWidth="650px" width="100%" ml="auto" mr="auto">
+                    <Box maxWidth="800px" width="100%" ml="auto" mr="auto">
                         <Heading.h2>Tags</Heading.h2>
                         <Box mb={46} mt={26}>
                             {tags.map(tag => (
                                 <Flex key={tag} mb={16}>
                                     <Box flexGrow={1}>
-                                        <Tag key={tag} label={tag}/>
+                                        <Tag key={tag} label={tag} />
                                     </Box>
                                     <Box>
                                         <Button
@@ -228,12 +248,12 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                             rightLabel
                                             height={35} />
                                     </Box>
-                                    <Button disabled={commandLoading} type={"submit"} width={100} attached>Add tag</Button>
+                                    <Button disabled={commandLoading} type="submit" width={100} attached>Add tag</Button>
                                 </Flex>
                             </form>
                         </Box>
                     </Box>
-                    <Box maxWidth="650px" width="100%" ml="auto" mr="auto" mt="25px">
+                    <Box maxWidth="800px" width="100%" ml="auto" mr="auto" mt="25px">
                         <Heading.h2>Permissions</Heading.h2>
                         <Box mt={16}>
                             <form
@@ -241,38 +261,100 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                     e.preventDefault();
                                     if (commandLoading) return;
 
-                                    const permissionField = newPermissionField.current;
-                                    if (permissionField === null) return;
+                                    if (selectedEntityType === AccessEntityType.USER) {
+                                        const userField = userEntityField.current;
+                                        if (userField === null) return;
 
-                                    const permissionValue = permissionField.value;
-                                    if (permissionValue === "") return;
+                                        const userValue = userField.value;
+                                        if (userValue === "") return;
 
-                                    await invokeCommand(updateApplicationPermission(
-                                        {
+                                        await invokeCommand(updateApplicationPermission({
                                             applicationName: name,
-                                            changes: [
-                                                {
-                                                    entity: { id: permissionValue, type: UserEntityType.USER },
-                                                    rights: access,
-                                                    revoke: false
-                                                }
-                                            ]
-                                        }
-                                    ));
-                                    setPermissionEntries(await loadApplicationPermissionEntries(name));
+                                            changes: [{
+                                                entity: {user: userValue, project: null, group: null},
+                                                rights: access,
+                                                revoke: false
+                                            }]
+                                        }));
+                                        setPermissionEntries(await loadApplicationPermissionEntries(name));
+                                        userField.value = "";
+                                    } else if (selectedEntityType === AccessEntityType.PROJECT_GROUP) {
+                                        const projectField = projectEntityField.current;
+                                        if (projectField === null) return;
 
-                                    permissionField.value = "";
+                                        const projectValue = projectField.value;
+                                        if (projectValue === "") return;
+
+                                        const groupField = groupEntityField.current;
+                                        if (groupField === null) return;
+
+                                        const groupValue = groupField.value;
+                                        if (groupValue === "") return;
+
+                                        await invokeCommand(updateApplicationPermission(
+                                            {
+                                                applicationName: name,
+                                                changes: [
+                                                    {
+                                                        entity: {user: null, project: projectValue, group: groupValue},
+                                                        rights: access,
+                                                        revoke: false
+                                                    }
+                                                ]
+                                            }
+                                        ));
+                                        setPermissionEntries(await loadApplicationPermissionEntries(name));
+                                        projectField.value = "";
+                                        groupField.value = "";
+                                    }
                                 }}
                             >
                                 <Flex height={45}>
-                                    <Input
-                                        rightLabel
-                                        required
-                                        type="text"
-                                        ref={newPermissionField}
-                                        placeholder="Username"
-                                    />
-                                    <InputLabel width="250px" rightLabel>
+                                    <InputLabel width={350} leftLabel>
+                                        <ClickableDropdown
+                                            chevron
+                                            width="180px"
+                                            onChange={(val: AccessEntityType) => setSelectedEntityType(val)}
+                                            trigger={
+                                                <Box as="span" minWidth="220px">
+                                                    {prettifyEntityType(selectedEntityType)}
+                                                </Box>
+                                            }
+                                            options={entityTypes}
+                                        />
+                                    </InputLabel>
+                                    {selectedEntityType === AccessEntityType.USER ? (
+                                        <Input
+                                            rightLabel
+                                            leftLabel
+                                            required
+                                            type="text"
+                                            ref={userEntityField}
+                                            placeholder="Username"
+                                        />
+                                    ) : (
+                                            <>
+                                                <Input
+                                                    leftLabel
+                                                    rightLabel
+                                                    required
+                                                    width={180}
+                                                    type="text"
+                                                    ref={projectEntityField}
+                                                    placeholder="Project name"
+                                                />
+                                                <Input
+                                                    leftLabel
+                                                    rightLabel
+                                                    required
+                                                    width={180}
+                                                    type="text"
+                                                    ref={groupEntityField}
+                                                    placeholder="Group name"
+                                                />
+                                            </>
+                                        )}
+                                    <InputLabel width={300} rightLabel>
                                         <ClickableDropdown
                                             chevron
                                             width="180px"
@@ -287,7 +369,7 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                         </Box>
                         <Flex key={5} mb={16} mt={26}>
                             <Box width={800}>
-                                { (permissionEntries.length > 0) ? (
+                                {(permissionEntries.length > 0) ? (
                                     <Table>
                                         <LeftAlignedTableHeader>
                                             <TableRow>
@@ -297,9 +379,14 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                             </TableRow>
                                         </LeftAlignedTableHeader>
                                         <tbody>
-                                            {permissionEntries.map(permissionEntry => (
-                                                <TableRow key={permissionEntry.entity.id}>
-                                                    <TableCell>{permissionEntry.entity.id}</TableCell>
+                                            {permissionEntries.map((permissionEntry, index) => (
+                                                <TableRow key={index}>
+                                                    <TableCell>
+                                                        {(permissionEntry.entity.user) ? (
+                                                            permissionEntry.entity.user
+                                                        ) : (
+                                                            `${permissionEntry.entity.project?.title} / ${permissionEntry.entity.group?.title}`
+                                                        )}</TableCell>
                                                     <TableCell>{prettifyAccessRight(permissionEntry.permission)}</TableCell>
                                                     <TableCell textAlign="right">
                                                         <Button
@@ -310,7 +397,11 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                                                 message: (
                                                                     <Box>
                                                                         <Text>
-                                                                            Remove permission for {permissionEntry.entity.id}
+                                                                            Remove permission for {(permissionEntry.entity.user) ? (
+                                                                                permissionEntry.entity.user
+                                                                            ) : (
+                                                                                `${permissionEntry.entity.project?.title} / ${permissionEntry.entity.group?.title}`
+                                                                            )}                                                                          
                                                                         </Text>
                                                                     </Box>
                                                                 ),
@@ -321,8 +412,9 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                                                             changes: [
                                                                                 {
                                                                                     entity: {
-                                                                                        id: permissionEntry.entity.id,
-                                                                                        type: UserEntityType.USER
+                                                                                        user: permissionEntry.entity.user,
+                                                                                        project: permissionEntry.entity.project ? permissionEntry.entity.project.id : null,
+                                                                                        group: permissionEntry.entity.group ? permissionEntry.entity.group.id : null
                                                                                     },
                                                                                     rights: permissionEntry.permission,
                                                                                     revoke: true
@@ -342,12 +434,12 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                         </tbody>
                                     </Table>
                                 ) : (
-                                    <Text textAlign="center">No explicit permissions set for this application</Text>
-                                )}
+                                        <Text textAlign="center">No explicit permissions set for this application</Text>
+                                    )}
                             </Box>
                         </Flex>
                     </Box>
-                    <Box maxWidth="650px" width="100%" ml="auto" mr="auto" mt="25px">
+                    <Box maxWidth="800px" width="100%" ml="auto" mr="auto" mt="25px">
                         <Heading.h2>Versions</Heading.h2>
                         <Box mb={26} mt={26}>
                             <Table>
@@ -380,12 +472,12 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                                                         public: !version.isPublic
                                                                     });
 
-                                                                    setVersions(versions.map( v =>
+                                                                    setVersions(versions.map(v =>
                                                                         (v.version === version.version) ?
-                                                                        {
-                                                                            version: v.version,
-                                                                            isPublic: !v.isPublic
-                                                                        } : v
+                                                                            {
+                                                                                version: v.version,
+                                                                                isPublic: !v.isPublic
+                                                                            } : v
                                                                     ));
                                                                 }}
                                                             />
@@ -401,8 +493,8 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                             </TableCell>
                                             <TableCell textAlign="right">
                                                 <Button
-                                                    color={"red"}
-                                                    type={"button"}
+                                                    color="red"
+                                                    type="button"
                                                     onClick={() => addStandardDialog({
                                                         title: `Delete ${name} version ${version.version}`,
                                                         message: (
@@ -413,7 +505,7 @@ const App: React.FunctionComponent<RouteComponentProps<{name: string}> & AppOper
                                                             </Box>
                                                         ),
                                                         onConfirm: async () => {
-                                                            await Client.delete("/hpc/apps", { appName: name, appVersion: version.version });
+                                                            await Client.delete("/hpc/apps", {appName: name, appVersion: version.version});
                                                             setAppParameters(listByName({...appParameters.parameters}));
                                                         },
                                                         confirmText: "Delete"
@@ -438,8 +530,6 @@ const WordBreakBox = styled(Box)`
     word-break: break-word;
     width: 100%;
 `;
-
-
 
 const mapDispatchToProps = (
     dispatch: Dispatch<Actions.Type | HeaderActions | StatusActions | LoadingAction>

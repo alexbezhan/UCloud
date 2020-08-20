@@ -20,6 +20,11 @@ data class UpdateServerRequest(
     val withId: String
 )
 
+data class DetailedAccessEntityWithPermission(
+    val entity: DetailedAccessEntity,
+    val permission: ServerAccessRight
+)
+
 data class AccessEntityWithPermission(
     val entity: AccessEntity,
     val permission: ServerAccessRight
@@ -28,6 +33,23 @@ data class AccessEntityWithPermission(
 enum class ServerAccessRight {
     READ,
     READ_WRITE
+}
+
+data class Project(
+    val id: String,
+    val title: String
+)
+
+typealias ProjectGroup = Project
+
+data class DetailedAccessEntity(
+    val user: String?,
+    val project: Project?,
+    val group: ProjectGroup?
+) {
+    init {
+        require(!user.isNullOrBlank() || (project != null && group != null)) { "No access entity defined" }
+    }
 }
 
 data class AccessEntity(
@@ -44,7 +66,6 @@ data class ProjectAndGroup(
     val project: String,
     val group: String
 )
-
 
 data class DeleteServerRequest(
     val id: String
@@ -106,7 +127,7 @@ object AppLicenseDescriptions : CallDescriptionContainer("app.license") {
 
     val get = call<LicenseServerRequest, LicenseServerWithId, CommonErrorMessage>("get") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ
         }
 
@@ -143,7 +164,7 @@ object AppLicenseDescriptions : CallDescriptionContainer("app.license") {
 
     val listAll = call<Unit, List<LicenseServerWithId>, CommonErrorMessage>("listAll") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ
         }
 
@@ -160,7 +181,7 @@ object AppLicenseDescriptions : CallDescriptionContainer("app.license") {
 
     val updateAcl = call<UpdateAclRequest, Unit, CommonErrorMessage>("updateAcl") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 
@@ -176,9 +197,9 @@ object AppLicenseDescriptions : CallDescriptionContainer("app.license") {
         }
     }
 
-    val listAcl = call<ListAclRequest, List<AccessEntityWithPermission>, CommonErrorMessage>("listAcl") {
+    val listAcl = call<ListAclRequest, List<DetailedAccessEntityWithPermission>, CommonErrorMessage>("listAcl") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 
@@ -198,7 +219,7 @@ object AppLicenseDescriptions : CallDescriptionContainer("app.license") {
 
     val update = call<UpdateServerRequest, UpdateServerResponse, CommonErrorMessage>("update") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 
@@ -210,20 +231,13 @@ object AppLicenseDescriptions : CallDescriptionContainer("app.license") {
                 +"update"
             }
 
-            params {
-                +boundTo(UpdateServerRequest::name)
-                +boundTo(UpdateServerRequest::address)
-                +boundTo(UpdateServerRequest::license)
-                +boundTo(UpdateServerRequest::withId)
-            }
-
             body { bindEntireRequestFromBody() }
         }
     }
 
     val delete = call<DeleteServerRequest, Unit, CommonErrorMessage>("update") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 
@@ -244,7 +258,7 @@ object AppLicenseDescriptions : CallDescriptionContainer("app.license") {
 
     val new = call<NewServerRequest, NewServerResponse, CommonErrorMessage>("new") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 

@@ -1,7 +1,6 @@
 import {Client} from "Authentication/HttpClientInstance";
 import {File} from "Files/index";
 import * as H from "history";
-import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {AccessRight} from "Types";
 import {IconName} from "ui-components/Icon";
@@ -9,7 +8,6 @@ import {Upload} from "Uploader";
 import {UploadPolicy} from "Uploader/api";
 import {newUpload} from "Uploader/Uploader";
 import {
-    allFilesHasAccessRight,
     clearTrash,
     CopyOrMove,
     copyOrMoveFilesNew,
@@ -20,13 +18,11 @@ import {
     fileTablePage,
     getFilenameFromPath,
     getParentPath,
-    inTrashDir,
     isAnyFixedFolder,
     isAnyMockFile,
-    isArchiveExtension,
+    isArchiveExtension, isPartOfProject, isPartOfSomePersonalFolder, isPersonalRootFolder,
+    isTrashFolder,
     moveToTrash,
-    replaceHomeOrProjectFolder,
-    resolvePath,
     shareFiles,
     updateSensitivity
 } from "Utilities/FileUtilities";
@@ -34,46 +30,56 @@ import {addStandardDialog} from "UtilityComponents";
 import * as UF from "UtilityFunctions";
 import {PREVIEW_MAX_SIZE} from "../../site.config.json";
 import {
-    repositoryTrashFolder,
+    explainPersonalRepo,
     promptDeleteRepository,
-    updatePermissionsPrompt,
-    repositoryName
+    repositoryName,
+    updatePermissionsPrompt
 } from "Utilities/ProjectUtilities";
+import {FilePermissions} from "Files/permissions";
+import {ProjectName} from "Project";
 
 export interface FileOperationCallback {
+    permissions: FilePermissions;
     invokeAsyncWork: (fn: () => Promise<void>) => void;
     requestFolderCreation: () => void;
     requestReload: () => void;
     requestFileUpload: () => void;
     startRenaming: (file: File) => void;
     createNewUpload: (newUpload: Upload) => void;
+    projects: ProjectName[],
     requestFileSelector: (allowFolders: boolean, canOnlySelectFolders: boolean) => Promise<string | null>;
     history: H.History;
+}
+
+export enum FileOperationRepositoryMode {
+    REQUIRED,
+    DISALLOW,
+    ANY
 }
 
 export interface FileOperation {
     text: string;
     onClick: (selectedFiles: File[], cb: FileOperationCallback) => void;
-    disabled: (selectedFiles: File[]) => boolean;
+    disabled: (selectedFiles: File[], cb: FileOperationCallback) => boolean;
     icon?: IconName;
     color?: string;
     outline?: boolean;
     currentDirectoryMode?: boolean;
-    repositoryMode?: true;
+    repositoryMode?: FileOperationRepositoryMode;
 }
 
 export const defaultFileOperations: FileOperation[] = [
     {
         text: "Upload Files",
         onClick: (_, cb) => cb.requestFileUpload(),
-        disabled: dir => resolvePath(dir[0].path) === resolvePath(Client.trashFolder),
+        disabled: dir => isTrashFolder(dir[0].path),
         color: "blue",
         currentDirectoryMode: true
     },
     {
         text: "New Folder",
         onClick: (_, cb) => cb.requestFolderCreation(),
-        disabled: ([file]) => resolvePath(file.path) === resolvePath(Client.trashFolder),
+        disabled: ([file]) => isTrashFolder(file.path),
         color: "blue",
         outline: true,
         currentDirectoryMode: true
@@ -82,26 +88,21 @@ export const defaultFileOperations: FileOperation[] = [
         text: "Empty Trash",
         onClick: ([file], cb) => clearTrash({client: Client, trashPath: file.path, callback: () => cb.requestReload()}),
         disabled: ([dir]) => {
-            const resolvedPath = resolvePath(dir.path);
-            return resolvedPath !== resolvePath(Client.trashFolder) && resolvedPath !== repositoryTrashFolder(resolvedPath, Client);
+            return !isTrashFolder(dir.path);
         },
         color: "red",
         currentDirectoryMode: true
     },
     {
-        text: "Copy Path",
-        onClick: files => UF.copyToClipboard({
-            value: files[0].path,
-            message: `${replaceHomeOrProjectFolder(files[0].path, Client)} copied to clipboard`
-        }),
-        disabled: files => !UF.inDevEnvironment() || files.length !== 1 || isAnyMockFile(files),
-        icon: "chat"
-    },
-    {
         text: "Rename",
         onClick: (files, cb) => cb.startRenaming(files[0]),
-        disabled: (files: File[]) => files.length === 1 && !allFilesHasAccessRight(AccessRight.WRITE, files) ||
-            isAnyMockFile(files) || isAnyFixedFolder(files, Client),
+        disabled: (files, cb) => {
+            if (files.length !== 1) return true;
+            else if (isAnyMockFile(files)) return true;
+            else if (isAnyFixedFolder(files)) return true;
+            else if (isPartOfSomePersonalFolder(files[0].path)) return true;
+            else return !cb.permissions.requireForAll(files, AccessRight.WRITE);
+        },
         icon: "rename"
     },
     {
@@ -124,30 +125,45 @@ export const defaultFileOperations: FileOperation[] = [
 
             input.click();
         },
-        disabled: (files) => files.length !== 1 || !allFilesHasAccessRight("WRITE", files) ||
-            files[0].fileType !== "FILE" || isAnyMockFile(files),
+        disabled: (files, cb) => {
+            if (files.length !== 1) return true;
+            else if (files[0].fileType !== "FILE") return true;
+            else if (isAnyMockFile(files)) return true;
+            else return !cb.permissions.requireForAll(files, AccessRight.WRITE);
+        },
         icon: "upload"
     },
     {
         text: "Download",
         onClick: files => downloadFiles(files, Client),
-        disabled: files => !UF.downloadAllowed(files) || !allFilesHasAccessRight("READ", files) ||
-            isAnyMockFile(files),
+        disabled: (files, cb) => {
+            if (!UF.downloadAllowed(files)) return true;
+            else if (isAnyMockFile(files)) return true;
+            else return !cb.permissions.requireForAll(files, AccessRight.READ);
+        },
         icon: "download"
     },
     {
         text: "Share",
         onClick: (files) => shareFiles({files, client: Client}),
-        disabled: (files) => !allFilesHasAccessRight("WRITE", files) || !allFilesHasAccessRight("READ", files) ||
-            isAnyMockFile(files) || isAnyFixedFolder(files, Client),
+        disabled: (files, cb) => {
+            if (files.find(it => isPartOfProject(it.path)) !== undefined) return true;
+            if (isAnyMockFile(files)) return true;
+            else if (isAnyFixedFolder(files)) return true;
+            else return !files.every(it => it.ownerName === Client.username);
+        },
         icon: "share"
     },
     {
         text: "Sensitivity",
         onClick: (files, cb) =>
             updateSensitivity({files, client: Client, onSensitivityChange: () => cb.requestReload()}),
-        disabled: files => isAnyMockFile(files) || !allFilesHasAccessRight("WRITE", files) ||
-            isAnyFixedFolder(files, Client),
+        disabled: (files, cb) => {
+            if (isAnyMockFile(files)) return true;
+            else if (isAnyFixedFolder(files)) return true;
+            else if (files.find(it => isPartOfSomePersonalFolder(it.path)) !== undefined) return true;
+            else return !cb.permissions.requireForAll(files, AccessRight.WRITE);
+        },
         icon: "sensitivity"
     },
     {
@@ -157,15 +173,19 @@ export const defaultFileOperations: FileOperation[] = [
             if (target === null) return;
             cb.invokeAsyncWork(async () => {
                 try {
-                    await copyOrMoveFilesNew(CopyOrMove.Copy, files, target);
+                    await copyOrMoveFilesNew(CopyOrMove.Copy, files, target, cb.projects);
                     cb.requestReload();
                 } catch (e) {
                     console.warn(e);
                 }
             });
         },
-        disabled: (files) => !allFilesHasAccessRight("WRITE", files) || isAnyMockFile(files) ||
-            isAnyFixedFolder(files, Client),
+        disabled: (files, cb) => {
+            if (isAnyFixedFolder(files)) return true;
+            else if (isAnyMockFile(files)) return true;
+            else if (files.find(it => isPartOfSomePersonalFolder(it.path)) !== undefined) return true;
+            else return !cb.permissions.requireForAll(files, AccessRight.WRITE);
+        },
         icon: "copy",
     },
     {
@@ -175,15 +195,19 @@ export const defaultFileOperations: FileOperation[] = [
             if (target === null) return;
             cb.invokeAsyncWork(async () => {
                 try {
-                    await copyOrMoveFilesNew(CopyOrMove.Move, files, target);
+                    await copyOrMoveFilesNew(CopyOrMove.Move, files, target, cb.projects);
                     cb.requestReload();
                 } catch (e) {
                     console.warn(e);
                 }
             });
         },
-        disabled: (files) => !allFilesHasAccessRight("WRITE", files) || isAnyMockFile(files) ||
-            isAnyFixedFolder(files, Client),
+        disabled: (files, cb) => {
+            if (isAnyMockFile(files)) return true;
+            else if (isAnyFixedFolder(files)) return true;
+            else if (files.find(it => isPartOfSomePersonalFolder(it.path)) !== undefined) return true;
+            else return !cb.permissions.requireForAll(files, AccessRight.WRITE);
+        },
         icon: "move",
     },
     {
@@ -205,9 +229,13 @@ export const defaultFileOperations: FileOperation[] = [
     {
         text: "Preview",
         onClick: (files, cb) => cb.history.push(filePreviewPage(files[0].path)),
-        disabled: (files) => !UF.isExtPreviewSupported(UF.extensionFromPath(files[0].path)) ||
-            !UF.inRange({status: files[0].size ?? 0, min: 1, max: PREVIEW_MAX_SIZE}) || (!UF.downloadAllowed(files) ||
-                !allFilesHasAccessRight("READ", files) || isAnyMockFile(files)),
+        disabled: (files, cb) => {
+            if (!UF.isExtPreviewSupported(UF.extensionFromPath(files[0].path))) return true;
+            else if (!cb.permissions.requireForAll(files, AccessRight.READ)) return true;
+            else if (isAnyMockFile(files)) return true;
+            else if (!UF.inRange({status: files[0].size ?? 0, min: 1, max: PREVIEW_MAX_SIZE})) return true;
+            return false;
+        },
         icon: "preview"
     },
     {
@@ -218,10 +246,15 @@ export const defaultFileOperations: FileOperation[] = [
     },
     {
         text: "Move to Trash",
-        onClick: (files, cb) =>
-            moveToTrash({files, client: Client, setLoading: () => 42, callback: () => cb.requestReload()}),
-        disabled: (files) => (!allFilesHasAccessRight("WRITE", files) || isAnyFixedFolder(files, Client) ||
-            files.every(({path}) => inTrashDir(path, Client))) || isAnyMockFile(files),
+        onClick: (files, cb) => {
+            moveToTrash({files, client: Client, setLoading: () => 42, callback: () => cb.requestReload(), projects: cb.projects});
+        },
+        disabled: (files, cb) => {
+            if (!cb.permissions.requireForAll(files, AccessRight.WRITE)) return true;
+            else if (isAnyFixedFolder(files)) return true;
+            else if (isAnyMockFile(files)) return true;
+            else return files.every(({path}) => isTrashFolder(path) || isTrashFolder(getParentPath(path)));
+        },
         icon: "trash",
         color: "red"
     },
@@ -230,7 +263,7 @@ export const defaultFileOperations: FileOperation[] = [
         onClick: (files, cb) => {
             const paths = files.map(f => f.path);
             const message = paths.length > 1 ? `Delete ${paths.length} files?` :
-                `Delete file ${getFilenameFromPath(paths[0])}`;
+                `Delete file ${getFilenameFromPath(paths[0], cb.projects)}`;
 
             addStandardDialog({
                 title: "Delete files",
@@ -243,41 +276,59 @@ export const defaultFileOperations: FileOperation[] = [
                                 .then(it => it).catch(it => it);
                         const failures = promises.filter(it => it.status).length;
                         if (failures > 0) {
-                            snackbarStore.addFailure(promises.filter(it => it.response).map(it => it).join(", "));
+                            snackbarStore.addFailure(promises.filter(it => it.response).map(it => it).join(", "), false);
                         } else {
-                            snackbarStore.addSnack({message: "Files deleted", type: SnackType.Success});
+                            snackbarStore.addSuccess("Files deleted", false);
                         }
                     });
                 }
             });
         },
-        disabled: (files) => !files.every(f => getParentPath(f.path) === Client.trashFolder) || isAnyMockFile(files),
+        disabled: (files) => !files.every(f => isTrashFolder(getParentPath(f.path))) || isAnyMockFile(files),
         icon: "trash",
         color: "red"
     },
     {
         /* Rename project repo */
         text: "Rename",
-        disabled: files => files.length !== 1 || getParentPath(files[0].path) !== Client.currentProjectFolder,
-        onClick: ([file], cb) => cb.startRenaming(file),
+        disabled: files => files.length !== 1,
+        onClick: ([file], cb) => {
+            if (isPersonalRootFolder(file.path)) {
+                explainPersonalRepo();
+            } else {
+                cb.startRenaming(file);
+            }
+        },
         icon: "rename",
-        repositoryMode: true
+        repositoryMode: FileOperationRepositoryMode.REQUIRED
     },
     {
         /* Update repo permissions */
         text: "Permissions",
-        disabled: files => files.length !== 1 || getParentPath(files[0].path) !== Client.currentProjectFolder,
-        onClick: ([file], cb) => updatePermissionsPrompt(Client, file, cb.requestReload),
+        disabled: files => files.length !== 1,
+        onClick: ([file], cb) => {
+            if (isPersonalRootFolder(file.path)) {
+                explainPersonalRepo();
+            } else {
+            updatePermissionsPrompt(Client, file, cb.requestReload);
+            }
+        },
         icon: "properties",
-        repositoryMode: true
+        repositoryMode: FileOperationRepositoryMode.REQUIRED
     },
     {
         /* Delete repo permission */
         text: "Delete",
-        onClick: ([file], cb) => promptDeleteRepository(repositoryName(file.path), Client, cb.requestReload),
-        disabled: files => files.length !== 1 || getParentPath(files[0].path) !== Client.currentProjectFolder,
+        onClick: ([file], cb) => {
+            if (isPersonalRootFolder(file.path)) {
+                explainPersonalRepo();
+            } else {
+                promptDeleteRepository(repositoryName(file.path), Client, cb.requestReload);
+            }
+        },
+        disabled: files => files.length !== 1,
         icon: "trash",
         color: "red",
-        repositoryMode: true
+        repositoryMode: FileOperationRepositoryMode.REQUIRED
     }
 ];

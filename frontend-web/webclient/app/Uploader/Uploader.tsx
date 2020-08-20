@@ -1,5 +1,5 @@
 import {Client} from "Authentication/HttpClientInstance";
-import {ReduxObject, Sensitivity} from "DefaultObjects";
+import {Sensitivity} from "DefaultObjects";
 import {File as CloudFile} from "Files";
 import {Refresh} from "Navigation/Header";
 import * as React from "react";
@@ -8,7 +8,6 @@ import * as Modal from "react-modal";
 import {connect} from "react-redux";
 import {RouteComponentProps, withRouter} from "react-router";
 import {Dispatch} from "redux";
-import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
 import {
@@ -50,6 +49,8 @@ import {
 } from "UtilityFunctions";
 import {Upload, UploaderProps, UploaderStateProps, UploadOperations} from ".";
 import {bulkUpload, multipartUpload, UploadPolicy} from "./api";
+import {useProjectStatus} from "Project/cache";
+import {getProjectNames} from "Utilities/ProjectUtilities";
 
 const uploadsFinished = (uploads: Upload[]): boolean => uploads.every((it) => isFinishedUploading(it.uploadXHR));
 const finishedUploads = (uploads: Upload[]): number => uploads.filter((it) => isFinishedUploading(it.uploadXHR)).length;
@@ -236,26 +237,26 @@ class Uploader extends React.Component<UploaderProps & RouteComponentProps, Uplo
 
     private onFilesAdded = async (files: File[]): Promise<void> => {
         if (files.some(it => it.size === 0)) {
-            snackbarStore.addSnack({
-                message: "It is not possible to upload empty files.",
-                type: SnackType.Information
-            });
+            snackbarStore.addInformation(
+                "It is not possible to upload empty files.",
+                false
+            );
         }
 
         if (files.some(it => it.name.length > 1025)) {
-            snackbarStore.addSnack({
-                message: "Filenames can't exceed a length of 1024 characters.",
-                type: SnackType.Information
-            });
+            snackbarStore.addInformation(
+                "Filenames can't exceed a length of 1024 characters.",
+                false
+            );
         }
 
         const duplicates = this.checkForDuplicates(files);
 
         if (duplicates.length > 0) {
-            snackbarStore.addSnack({
-                message: `You are already added files ${duplicates.join(", ")}`,
-                type: SnackType.Information
-            });
+            snackbarStore.addInformation(
+                `You are already added files ${duplicates.join(", ")}`,
+                false
+            );
         }
 
         const filteredFiles = files
@@ -291,10 +292,7 @@ class Uploader extends React.Component<UploaderProps & RouteComponentProps, Uplo
         e.returnValue = "foo";
         const finished = finishedUploads(this.props.uploads);
         const total = this.props.uploads.length;
-        snackbarStore.addSnack({
-            message: `${finished} out of ${total} files uploaded`,
-            type: SnackType.Information
-        });
+        snackbarStore.addInformation(`${finished} out of ${total} files uploaded`, false);
         return e;
     }
 
@@ -459,12 +457,13 @@ const UploaderRow = (p: {
     setRewritePolicy?: (policy: UploadPolicy) => void;
     onCheck?: (checked: boolean) => void;
 }): JSX.Element => {
+    const projectNames = getProjectNames(useProjectStatus());
     const fileInfo = resolvePath(p.location) === resolvePath(getParentPath(p.upload.path)) ? null : (
         <Dropdown>
             <Icon cursor="pointer" ml="10px" name="info" color="white" color2="black" />
             <DropdownContent width="auto" visible colorOnHover={false} color="white" backgroundColor="black">
                 Will be uploaded
-                to: {replaceHomeOrProjectFolder(p.upload.path, Client)}
+                to: {replaceHomeOrProjectFolder(p.upload.path, Client, projectNames)}
             </DropdownContent>
         </Dropdown>
     );
@@ -595,7 +594,7 @@ const UploaderRow = (p: {
     return (
         <Flex flexDirection="row" data-tag={"uploadRow"}>
             <Box width={0.04} textAlign="center">
-                <FileIcon fileIcon={iconFromFilePath(p.upload.file.name, "FILE", Client)} />
+                <FileIcon fileIcon={iconFromFilePath(p.upload.file.name, "FILE")} />
             </Box>
             <Flex width="100%">{body}</Flex>
         </Flex>

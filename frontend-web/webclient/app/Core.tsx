@@ -1,6 +1,5 @@
 import Activity from "Activity/Page";
-import {DetailedDowntime} from "Admin/Downtime/DetailedDowntime";
-import DowntimeManagement from "Admin/DowntimeManagement";
+import NewsManagement from "Admin/NewsManagement";
 import LicenseServers from "Admin/LicenseServers";
 import AdminOverview from "Admin/Overview";
 import UserCreation from "Admin/UserCreation";
@@ -29,8 +28,8 @@ import {MainContainer} from "MainContainer/MainContainer";
 import {USER_LOGIN} from "Navigation/Redux/HeaderReducer";
 import NoVNCClient from "NoVNC/NoVNCClient";
 import {Playground} from "Playground/Playground";
-import ProjectList from "Project/List";
-import ProjectView from "Project/View";
+import ProjectList from "Project/ProjectList";
+import ProjectMembers from "Project/Members";
 import * as React from "react";
 import {Route, RouteComponentProps, Switch} from "react-router-dom";
 import Search from "Search/Search";
@@ -42,7 +41,18 @@ import Uploader from "Uploader/Uploader";
 import AvataaarModification from "UserSettings/Avataaar";
 import UserSettings from "UserSettings/UserSettings";
 import {inDevEnvironment} from "UtilityFunctions";
-import GroupsOverview from "Project/GroupView";
+import {areProjectsEnabled} from "Project";
+import ProjectDashboard from "Project/ProjectDashboard";
+import {ProjectSettings} from "Project/ProjectSettings";
+import ProjectUsage from "Project/ProjectUsage";
+import Subprojects from "Project/Subprojects";
+import {GrantApplicationEditor, RequestTarget} from "Project/Grant/GrantApplicationEditor";
+import {DetailedNews} from "NewsPost/DetailedNews";
+import {NewsList} from "NewsPost/NewsList";
+import {IngoingApplications} from "Project/Grant/IngoingApplications";
+import {OutgoingApplications} from "Project/Grant/OutgoingApplications";
+import {ProjectBrowser} from "Project/Grant/ProjectBrowser";
+import {LandingPage} from "Project/Grant/LandingPage";
 
 const NotFound = (): JSX.Element => (<MainContainer main={<div><h1>Not found.</h1></div>} />);
 
@@ -95,9 +105,10 @@ const Core = (): JSX.Element => (
                 <Route exact path="/admin" component={requireAuth(AdminOverview)} />
                 <Route exact path="/admin/userCreation" component={requireAuth(UserCreation)} />
                 <Route exact path="/admin/licenseServers" component={requireAuth(LicenseServers)} />
-                <Route exact path="/admin/downtime" component={requireAuth(DowntimeManagement)} />
+                <Route exact path="/admin/news" component={requireAuth(NewsManagement)} />
 
-                <Route exact path="/downtime/detailed/:id" component={requireAuth(DetailedDowntime)} />
+                <Route exact path="/news/detailed/:id" component={DetailedNews} />
+                <Route exact path="/news/list/:filter?" component={NewsList} />
 
                 <Route
                     exact
@@ -108,9 +119,50 @@ const Core = (): JSX.Element => (
 
                 <Route exact path="/search/:priority" component={requireAuth(Search)} />
 
-                <Route exact path="/projects" component={requireAuth(ProjectList)} />
-                <Route exact path="/projects/view/:id" component={requireAuth(ProjectView)} />
-                <Route exact path="/projects/groups/:group?" component={requireAuth(GroupsOverview)} />
+                {areProjectsEnabled() ? (
+                    <>
+                        <Route exact path="/projects" component={requireAuth(ProjectList)} />
+                        <Route exact path="/project/dashboard" component={requireAuth(ProjectDashboard)} />
+                        <Route exact path="/project/settings" component={requireAuth(ProjectSettings)} />
+                        <Route exact path="/project/usage" component={requireAuth(ProjectUsage)} />
+                        <Route exact path="/project/subprojects" component={requireAuth(Subprojects)} />
+                        <Route
+                            exact
+                            path="/project/grants-landing"
+                            component={requireAuth(LandingPage)}
+                        />
+                        <Route
+                            exact
+                            path="/project/grants/existing"
+                            component={requireAuth(GrantApplicationEditor(RequestTarget.EXISTING_PROJECT))}
+                        />
+                        <Route
+                            exact
+                            path="/project/grants/personal/:projectId"
+                            component={requireAuth(GrantApplicationEditor(RequestTarget.PERSONAL_PROJECT))}
+                        />
+                        <Route
+                            exact
+                            path="/project/grants/new/:projectId"
+                            component={requireAuth(GrantApplicationEditor(RequestTarget.NEW_PROJECT))}
+                        />
+                        <Route
+                            exact
+                            path="/project/grants/view/:appId"
+                            component={requireAuth(GrantApplicationEditor(RequestTarget.VIEW_APPLICATION))}
+                        />
+                        <Route
+                            exact
+                            path="/project/members/:group?/:member?"
+                            component={requireAuth(ProjectMembers)}
+                        />
+                        <Route exact path="/project/grants/ingoing" component={requireAuth(IngoingApplications)} />
+                        <Route exact path="/project/grants/outgoing" component={requireAuth(OutgoingApplications)} />
+                        <Route exact path="/projects/browser/:action" component={requireAuth(ProjectBrowser)} />
+                    </>
+                )
+                    : null
+                }
 
                 <Route
                     exact
@@ -130,7 +182,7 @@ interface RequireAuthOpts {
 }
 
 function requireAuth<T>(Delegate: React.FunctionComponent<T>, opts?: RequireAuthOpts): React.FunctionComponent<T> {
-    return (props: T & RouteComponentProps) => {
+    return function Auth(props: T & RouteComponentProps) {
         const info = Client.userInfo;
         if (!Client.isLoggedIn || info === undefined) {
             props.history.push("/login");

@@ -1,12 +1,15 @@
 import {Client as currentClient} from "Authentication/HttpClientInstance";
-import {SensitivityLevel} from "DefaultObjects";
 import {Acl, File, FileType, SortBy, UserEntity} from "Files";
-import {SnackType} from "Snackbar/Snackbars";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {dateToString} from "Utilities/DateUtilities";
-import {getFilenameFromPath, isDirectory, replaceHomeOrProjectFolder, sizeToString} from "Utilities/FileUtilities";
+import {Notification} from "Notifications";
+import {History} from "history";
+import {
+    getFilenameFromPath, isFavoritesFolder, isJobsFolder, isMyPersonalFolder, isPersonalRootFolder,
+    isSharesFolder, isTrashFolder
+} from "Utilities/FileUtilities";
 import {HTTP_STATUS_CODES} from "Utilities/XHRUtils";
-import HttpClient from "Authentication/lib";
+import {ProjectName} from "Project";
+import {getStoredProject} from "Project/Redux";
 
 export function toggleCssColors(light: boolean): void {
     if (light) {
@@ -83,36 +86,32 @@ export const getMembersString = (acls: Acl[]): string => {
     }
 };
 
-export function sortingColumnToValue(sortBy: SortBy, file: File): string {
-    switch (sortBy) {
-        case SortBy.FILE_TYPE:
-            return prettierString(file.fileType);
-        case SortBy.PATH:
-            return getFilenameFromPath(file.path);
-        case SortBy.MODIFIED_AT:
-            return dateToString(file.modifiedAt!);
-        case SortBy.SIZE:
-            return isDirectory({fileType: file.fileType}) ? "" : sizeToString(file.size!);
-        case SortBy.ACL:
-            if (file.acl !== null)
-                return getMembersString(file.acl);
-            else
-                return "";
-        case SortBy.SENSITIVITY_LEVEL:
-            return SensitivityLevel[file.sensitivityLevel!];
-    }
-}
-
 export const extensionTypeFromPath = (path: string): ExtensionType => extensionType(extensionFromPath(path));
 export const extensionFromPath = (path: string): string => {
     const splitString = path.split(".");
     return splitString[splitString.length - 1];
 };
 
-type ExtensionType = null | "code" | "image" | "text" | "audio" | "video" | "archive" | "pdf" | "binary";
+export type ExtensionType =
+    null
+    | "code"
+    | "image"
+    | "text"
+    | "audio"
+    | "video"
+    | "archive"
+    | "pdf"
+    | "binary"
+    | "markdown"
+    | "application";
+
 export const extensionType = (ext: string): ExtensionType => {
-    switch (ext) {
+    switch (ext.toLowerCase()) {
+        case "app":
+            return "application";
         case "md":
+        case "markdown":
+            return "markdown";
         case "swift":
         case "kt":
         case "kts":
@@ -136,6 +135,7 @@ export const extensionType = (ext: string): ExtensionType => {
         case "cxx":
         case "hxx":
         case "html":
+        case "htm":
         case "lhs":
         case "hs":
         case "sql":
@@ -158,6 +158,7 @@ export const extensionType = (ext: string): ExtensionType => {
         case "ppm":
         case "svg":
         case "jpg":
+        case "jpeg":
             return "image";
         case "txt":
         case "doc":
@@ -194,7 +195,8 @@ export const extensionType = (ext: string): ExtensionType => {
 };
 
 export const isExtPreviewSupported = (ext: string): boolean => {
-    switch (ext) {
+    switch (ext.toLowerCase()) {
+        case "app":
         case "md":
         case "swift":
         case "kt":
@@ -260,48 +262,38 @@ export const isExtPreviewSupported = (ext: string): boolean => {
 export interface FtIconProps {
     type: FileType;
     ext?: string;
+    name?: string;
 }
 
 export const iconFromFilePath = (
     filePath: string,
-    type: FileType,
-    client: HttpClient
+    type: FileType
 ): FtIconProps => {
-    const icon: FtIconProps = {type: "FILE"};
+    const icon: FtIconProps = {type: "FILE", name: getFilenameFromPath(filePath, [])};
 
     switch (type) {
         case "DIRECTORY":
-            const replaced = replaceHomeOrProjectFolder(filePath, client);
-
-            const project = (replaced.startsWith("Projects/") ? replaced.split("/")[1] : "") ?? "";
-
-            switch (replaced) {
-                case "Home/Jobs":
-                case `Projects/${project}/Jobs`:
-                    icon.type = "RESULTFOLDER";
-                    break;
-                case "Home/Favorites":
-                    icon.type = "FAVFOLDER";
-                    break;
-                case "Home/Shares":
-                    icon.type = "SHARESFOLDER";
-                    break;
-                case "Home/App File Systems":
-                    icon.type = "FSFOLDER";
-                    break;
-                case "Home/Trash":
-                case `Projects/${project}/Trash`:
-                    icon.type = "TRASHFOLDER";
-                    break;
-                default:
-                    icon.type = "DIRECTORY";
-                    break;
+            if (isSharesFolder(filePath)) {
+                icon.type = "SHARESFOLDER";
+            } else if (isTrashFolder(filePath)) {
+                icon.type = "TRASHFOLDER";
+            } else if (isJobsFolder(filePath)) {
+                icon.type = "RESULTFOLDER";
+            } else if (isFavoritesFolder(filePath)) {
+                icon.type = "FAVFOLDER";
+            } else if (isMyPersonalFolder(filePath)) {
+                icon.type = "SHARESFOLDER";
+            } else if (isPersonalRootFolder(filePath)) {
+                icon.type = "SHARESFOLDER";
+            } else {
+                icon.type = "DIRECTORY";
             }
+
             return icon;
 
         case "FILE":
         default:
-            const filename = getFilenameFromPath(filePath);
+            const filename = getFilenameFromPath(filePath, []);
             if (!filename.includes(".")) {
                 return icon;
             }
@@ -324,7 +316,9 @@ export const addTrailingSlash = (path: string): string => {
     else return path.endsWith("/") ? path : `${path}/`;
 };
 
-export const shortUUID = (uuid: string): string => uuid.substring(0, 8).toUpperCase();
+export const looksLikeUUID = (uuid: string): boolean =>
+    /\b[0-9a-f]{8}\b-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-\b[0-9a-f]{12}\b/.test(uuid);
+export const shortUUID = (uuid: string): string => looksLikeUUID(uuid) ? uuid.substring(0, 8).toUpperCase() : uuid;
 export const is5xxStatusCode = (status: number): boolean => inRange({status, min: 500, max: 599});
 export const blankOrUndefined = (value?: string): boolean => value == null || value.length === 0 || /^\s*$/.test(value);
 
@@ -343,7 +337,7 @@ export const prettierString = (str: string): string => capitalized(str).replace(
 export function defaultErrorHandler(
     error: {request: XMLHttpRequest; response: any}
 ): number {
-    const request: XMLHttpRequest = error.request;
+    const {request} = error;
     // FIXME must be solvable more elegantly
     let why: string | null = error.response?.why;
 
@@ -362,7 +356,7 @@ export function defaultErrorHandler(
             }
         }
 
-        snackbarStore.addFailure(why);
+        snackbarStore.addFailure(why, false);
         return request.status;
     }
     return 500;
@@ -429,13 +423,14 @@ export function copyToClipboard({value, message}: CopyToClipboard): void {
     input.select();
     document.execCommand("copy");
     document.body.removeChild(input);
-    snackbarStore.addSnack({message, type: SnackType.Success});
+    snackbarStore.addSuccess(message, true);
 }
 
 export function errorMessageOrDefault(
     err: {request: XMLHttpRequest; response: any} | {status: number; response: string} | string,
     defaultMessage: string
 ): string {
+    if (!navigator.onLine) return "You seem to be offline.";
     try {
         if (typeof err === "string") return err;
         if ("status" in err) {
@@ -474,13 +469,17 @@ export function preventDefault(e: {preventDefault(): void}): void {
     e.preventDefault();
 }
 
+export function doNothing(): void {
+    return undefined;
+}
+
 export function stopPropagationAndPreventDefault(e: {preventDefault(): void; stopPropagation(): void}): void {
     preventDefault(e);
     stopPropagation(e);
 }
 
 export function displayErrorMessageOrDefault(e: any, fallback: string): void {
-    snackbarStore.addFailure(errorMessageOrDefault(e, fallback));
+    snackbarStore.addFailure(errorMessageOrDefault(e, fallback), false);
 }
 
 export function shouldHideSidebarAndHeader(): boolean {
@@ -492,4 +491,46 @@ export function getUserThemePreference(): "light" | "dark" {
     // options: dark, light and no-preference
     if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
     return "light";
+}
+
+
+export function onNotificationAction(
+    history: History,
+    setProject: (projectId: string) => void,
+    notification: Notification,
+    projectNames: ProjectName[]
+): void {
+    const currentProject = getStoredProject();
+    switch (notification.type) {
+        case "APP_COMPLETE":
+            history.push(`/applications/results/${notification.meta.jobId}`);
+            break;
+        case "SHARE_REQUEST":
+            history.push("/shares");
+            break;
+        case "REVIEW_PROJECT":
+        case "PROJECT_INVITE":
+            history.push("/projects/");
+            break;
+        case "NEW_GRANT_APPLICATION":
+        case "COMMENT_GRANT_APPLICATION":
+        case "GRANT_APPLICATION_RESPONSE":
+        case "GRANT_APPLICATION_UPDATED":
+            const {meta} = notification;
+            history.push(`/project/grants/view/${meta.appId}`);
+            break;
+        case "PROJECT_ROLE_CHANGE":
+            const {projectId} = notification.meta;
+            if (currentProject !== projectId) {
+                setProject(projectId);
+                const projectName = projectNames.find(it => it.projectId === projectId)?.title ?? projectId;
+                snackbarStore.addInformation(`${projectName} is now active.`, false);
+            }
+            history.push("/project/members");
+            break;
+        default:
+            console.warn("unhandled");
+            console.warn(notification);
+            break;
+    }
 }

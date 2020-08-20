@@ -1,12 +1,12 @@
 var webpack = require("webpack");
-var webpackMerge = require("webpack-merge");
+var {merge} = require("webpack-merge");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const MiniCSSExtractPlugin = require("mini-css-extract-plugin");
 var commonConfig = require("./webpack.config.js");
 var path = require("path");
 var {DEV_SITE} = require("./site.config.json")
 
-module.exports = webpackMerge(commonConfig, {
+module.exports = merge(commonConfig, {
     devtool: "eval-source-map",
 
     mode: "development",
@@ -18,7 +18,7 @@ module.exports = webpackMerge(commonConfig, {
 
     output: {
         path: path.join(process.cwd(), "/dist"),
-        publicPath: "http://localhost:9000/",
+        publicPath: "/",
         filename: "[name].js",
     },
 
@@ -31,11 +31,14 @@ module.exports = webpackMerge(commonConfig, {
         //     chunkFilename: "[id].css"
         // }),
         // Copies individual files or entire directories to the build directory
-        new CopyWebpackPlugin([{
-            from: "mock-api",
-            to: "mock-api",
-            context: path.join(__dirname, "app")
-        }])
+        new CopyWebpackPlugin({
+            patterns: [{
+                from: "mock-api",
+                to: "mock-api",
+                context: path.join(__dirname, "app")
+            }],
+            options: {}
+        })
     ],
 
     devServer: {
@@ -51,6 +54,7 @@ module.exports = webpackMerge(commonConfig, {
         },
         hot: true,
         inline: true,
+        host: "0.0.0.0",
         proxy: [{
             context: ["/auth", "/api"],
             target: process.env["local_dev"] !== undefined ? `http://localhost:8080` : `https://${DEV_SITE}`,

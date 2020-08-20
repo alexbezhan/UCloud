@@ -1,18 +1,8 @@
-import {ReduxObject} from "DefaultObjects";
 import * as jwt from "jsonwebtoken";
 import {Store} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {inRange, inSuccessRange, is5xxStatusCode} from "UtilityFunctions";
-
-export interface Override {
-    path: string;
-    method: {value: string;};
-    destination: {
-        scheme?: string;
-        host?: string;
-        port: number;
-    };
-}
+import {setStoredProject} from "Project/Redux";
 
 interface CallParameters {
     method: string;
@@ -41,8 +31,6 @@ export default class HttpClient {
     private overridesPromise: Promise<void> | null = null;
 
     public projectId: string | undefined = undefined;
-
-    private overrides: Override[] = [];
 
     constructor() {
         const context = location.protocol + "//" +
@@ -73,12 +61,6 @@ export default class HttpClient {
         const csrfToken = HttpClient.storedCsrfToken;
         if (accessToken && csrfToken) {
             this.setTokens(accessToken, csrfToken);
-        }
-
-        if (process.env.NODE_ENV === "development") {
-            this.overridesPromise = (async () => {
-                this.overrides = await (await fetch("http://localhost:9900/")).json();
-            })();
         }
     }
 
@@ -142,7 +124,7 @@ export default class HttpClient {
         return this.receiveAccessTokenOrRefreshIt()
             .catch(it => {
                 console.warn(it);
-                snackbarStore.addFailure("Could not refresh login token.");
+                snackbarStore.addFailure("Could not refresh login token.", false);
                 if ([401, 403].includes(it.status)) HttpClient.clearTokens();
             }).then(token => {
                 return new Promise((resolve, reject) => {
@@ -150,7 +132,8 @@ export default class HttpClient {
                     req.open(method, this.computeURL(context, path));
                     req.setRequestHeader("Authorization", `Bearer ${token}`);
                     req.setRequestHeader("Content-Type", "application/json; charset=utf-8");
-                    if (!!this.projectId) req.setRequestHeader("Project", projectOverride ?? this.projectId);
+                    const projectId = projectOverride ?? this.projectId;
+                    if (projectId) req.setRequestHeader("Project", projectId);
                     req.responseType = "text"; // Explicitly set, otherwise issues with empty response
                     if (withCredentials) {
                         req.withCredentials = true;
@@ -212,18 +195,6 @@ export default class HttpClient {
 
     public computeURL(context: string, path: string): string {
         const absolutePath = context + path;
-        for (const override of this.overrides) {
-            if (absolutePath.indexOf(override.path) === 0) {
-                const scheme = override.destination.scheme ?
-                    override.destination.scheme : "http";
-                const host = override.destination.host ?
-                    override.destination.host : "localhost";
-                const port = override.destination.port;
-
-                return scheme + "://" + host + ":" + port + absolutePath;
-            }
-        }
-
         return this.context + absolutePath;
     }
 
@@ -336,16 +307,16 @@ export default class HttpClient {
         return `/home/${this.username}/`;
     }
 
-    public get projectFolder(): string {
-        return `${this.homeFolder}Projects`;
-    }
-
     public get currentProjectFolder(): string {
-        return `/projects/${this.projectId}/`;
+        return `/projects/${this.projectId}`;
     }
 
-    public get trashFolder(): string {
-        return `${this.homeFolder}Trash/`;
+    public get activeHomeFolder(): string {
+        if (!this.hasActiveProject) {
+            return this.homeFolder;
+        } else {
+            return this.currentProjectFolder;
+        }
     }
 
     public get sharesFolder(): string {
@@ -357,7 +328,7 @@ export default class HttpClient {
     }
 
     public get fakeFolders(): string[] {
-        return [this.sharesFolder, this.favoritesFolder].concat(this.hasActiveProject ? [this.projectFolder] : []);
+        return [this.sharesFolder, this.favoritesFolder];
     }
 
     public get isLoggedIn(): boolean {
@@ -452,16 +423,21 @@ export default class HttpClient {
         return HttpClient.storedAccessToken;
     }
 
+    private refreshPromise: Promise<string> | null = null;
     private async refresh(): Promise<string> {
+        const loadingPromise = this.refreshPromise;
+        if (loadingPromise !== null) return loadingPromise;
+
         const csrfToken = HttpClient.storedCsrfToken;
         if (!csrfToken) {
-            return new Promise((resolve, reject) => {
+            return this.refreshPromise = new Promise((resolve, reject) => {
+                this.refreshPromise = null;
                 reject(this.missingAuth());
             });
         }
 
         const refreshPath = this.computeURL(this.authContext, "/refresh/web");
-        return new Promise((resolve, reject) => {
+        return this.refreshPromise = new Promise((resolve, reject) => {
             const req = new XMLHttpRequest();
             req.open("POST", refreshPath);
             req.setRequestHeader("X-CSRFToken", csrfToken);
@@ -488,6 +464,7 @@ export default class HttpClient {
         }).then((data: any) => {
             return new Promise(resolve => {
                 this.setTokens(data.accessToken, data.csrfToken);
+                this.refreshPromise = null;
                 resolve(data.accessToken);
             });
         });
@@ -570,12 +547,13 @@ export default class HttpClient {
             if (!is5xxStatusCode(res.status)) {
                 window.localStorage.removeItem("accessToken");
                 window.localStorage.removeItem("csrfToken");
+                setStoredProject(null);
                 this.openBrowserLoginPage();
                 return;
             }
             throw Error("The server was unreachable, please try again later.");
         } catch (err) {
-            snackbarStore.addFailure(err.message);
+            snackbarStore.addFailure(err.message, false);
         }
     }
 

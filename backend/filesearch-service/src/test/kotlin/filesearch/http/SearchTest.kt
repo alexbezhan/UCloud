@@ -8,6 +8,7 @@ import dk.sdu.cloud.filesearch.api.AdvancedSearchRequest
 import dk.sdu.cloud.filesearch.api.SearchResult
 import dk.sdu.cloud.indexing.api.QueryDescriptions
 import dk.sdu.cloud.indexing.api.QueryResponse
+import dk.sdu.cloud.project.api.*
 import dk.sdu.cloud.service.Controller
 import dk.sdu.cloud.service.Page
 import dk.sdu.cloud.service.test.ClientMock
@@ -21,6 +22,7 @@ import dk.sdu.cloud.service.test.sendRequest
 import dk.sdu.cloud.service.test.withKtorTest
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import org.junit.Ignore
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -48,7 +50,8 @@ class SearchTest {
         0,
         listOf(file, file.copy(pathOrNull = "path2"))
     )
-
+    //No controller for simple search
+    @Ignore
     @Test
     fun `simple test`() {
         withKtorTest(
@@ -84,7 +87,8 @@ class SearchTest {
             }
         )
     }
-
+    //No controller for simple search
+    @Ignore
     @Test
     fun `simple test - verify returns a single false`() {
         withKtorTest(
@@ -119,7 +123,8 @@ class SearchTest {
             }
         )
     }
-
+    //No controller for simple search
+    @Ignore
     @Test
     fun `simple test - verify throws ex`() {
         withKtorTest(
@@ -234,6 +239,27 @@ class SearchTest {
                     )
                 )
 
+                ClientMock.mockCallSuccess(
+                    ProjectMembers.userStatus,
+                    UserStatusResponse(
+                        listOf(
+                            UserStatusInProject(
+                                "projectID",
+                                "title",
+                                ProjectMember(TestUsers.user.username, ProjectRole.ADMIN),
+                                null
+                            )
+                        ),
+                        listOf(
+                            UserGroupSummary(
+                                "projectID",
+                                "groupname",
+                                TestUsers.user.username
+                            )
+                        )
+                    )
+                )
+
                 val request = sendJson(
                     method = HttpMethod.Post,
                     path = "/api/file-search/advanced",
@@ -268,7 +294,26 @@ class SearchTest {
                         listOf(true, false)
                     )
                 )
-
+                ClientMock.mockCallSuccess(
+                    ProjectMembers.userStatus,
+                    UserStatusResponse(
+                        listOf(
+                            UserStatusInProject(
+                                "projectID",
+                                "title",
+                                ProjectMember(TestUsers.user.username, ProjectRole.ADMIN),
+                                null
+                            )
+                        ),
+                        listOf(
+                            UserGroupSummary(
+                                "projectID",
+                                "groupname",
+                                TestUsers.user.username
+                            )
+                        )
+                    )
+                )
                 val request = sendJson(
                     method = HttpMethod.Post,
                     path = "/api/file-search/advanced",
@@ -301,7 +346,26 @@ class SearchTest {
                     CommonErrorMessage("fail"),
                     HttpStatusCode.InternalServerError
                 )
-
+                ClientMock.mockCallSuccess(
+                    ProjectMembers.userStatus,
+                    UserStatusResponse(
+                        listOf(
+                            UserStatusInProject(
+                                "projectID",
+                                "title",
+                                ProjectMember(TestUsers.user.username, ProjectRole.ADMIN),
+                                null
+                            )
+                        ),
+                        listOf(
+                            UserGroupSummary(
+                                "projectID",
+                                "groupname",
+                                TestUsers.user.username
+                            )
+                        )
+                    )
+                )
                 val request = sendJson(
                     method = HttpMethod.Post,
                     path = "/api/file-search/advanced",

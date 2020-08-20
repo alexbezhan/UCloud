@@ -1,35 +1,34 @@
 import RFB from "@novnc/novnc/core/rfb";
 import {Client} from "Authentication/HttpClientInstance";
 import {MainContainer} from "MainContainer/MainContainer";
-import PromiseKeeper from "PromiseKeeper";
+import {usePromiseKeeper} from "PromiseKeeper";
 import * as React from "react";
-import {useHistory} from "react-router";
-import {SnackType} from "Snackbar/Snackbars";
+import {useHistory, useLocation} from "react-router";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import styled from "styled-components";
 import {Button, Heading, Icon, OutlineButton} from "ui-components";
 import {cancelJobDialog, cancelJobQuery} from "Utilities/ApplicationUtilities";
-import {getQueryParam, RouterLocationProps} from "Utilities/URIUtilities";
 import {errorMessageOrDefault, requestFullScreen} from "UtilityFunctions";
 
-function NoVNCClient(props: RouterLocationProps): JSX.Element {
+function NoVNCClient(): JSX.Element | null {
     const [isConnected, setConnected] = React.useState(false);
     const [isCancelled, setCancelled] = React.useState(false);
     const [rfb, setRFB] = React.useState<RFB | undefined>(undefined);
     const [password, setPassword] = React.useState("");
     const [path, setPath] = React.useState("");
-    const jobId = getQueryParam(props, "jobId");
-    const [promiseKeeper] = React.useState(new PromiseKeeper());
+    const promiseKeeper = usePromiseKeeper();
+    const jobId = new URLSearchParams(useLocation().search).get("jobId");
     const history = useHistory();
 
     React.useEffect(() => {
-        promiseKeeper.makeCancelable(Client.get(`/hpc/jobs/query-vnc/${jobId}`)).promise.then(it => {
-            setPassword(it.response.password);
-            setPath(it.response.path);
-        }).catch(() => undefined);
+        if (jobId != null) {
+            promiseKeeper.makeCancelable(Client.get(`/hpc/jobs/query-vnc/${jobId}`)).promise.then(it => {
+                setPassword(it.response.password);
+                setPath(it.response.path);
+            }).catch(() => undefined);
+        }
         return () => {
             if (isConnected) rfb!.disconnect();
-            promiseKeeper.cancelPromises();
         };
     }, []);
 
@@ -47,7 +46,7 @@ function NoVNCClient(props: RouterLocationProps): JSX.Element {
             setConnected(true);
         } catch (e) {
             console.warn(e);
-            snackbarStore.addFailure(errorMessageOrDefault(e, "An error ocurred connecting"));
+            snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred connecting"), false);
         }
     }
 
@@ -59,7 +58,7 @@ function NoVNCClient(props: RouterLocationProps): JSX.Element {
     function toFullScreen(): void {
         requestFullScreen(
             document.getElementsByClassName("noVNC")[0]!,
-            () => snackbarStore.addFailure("Fullscreen is not supported for this browser.")
+            () => snackbarStore.addFailure("Fullscreen is not supported for this browser.", false)
         );
     }
 
@@ -70,14 +69,11 @@ function NoVNCClient(props: RouterLocationProps): JSX.Element {
             onConfirm: async () => {
                 try {
                     await Client.delete(cancelJobQuery, {jobId});
-                    snackbarStore.addSnack({
-                        type: SnackType.Success,
-                        message: "Job has been terminated"
-                    });
+                    snackbarStore.addSuccess("Job has been terminated", false);
                     setCancelled(true);
                     history.push(`/applications/results/${jobId}`);
                 } catch (e) {
-                    snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred cancelling the job."));
+                    snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred cancelling the job."), false);
                 }
             }
         });
@@ -91,11 +87,11 @@ function NoVNCClient(props: RouterLocationProps): JSX.Element {
                     <div>
                         <Button disabled={isCancelled} ml="15px" onClick={onConnect}>
                             Connect
-                            </Button>
+                        </Button>
                         {isCancelled ? null : (
                             <Button ml="8px" color="red" onClick={cancelJob}>
                                 Cancel Job
-                                </Button>
+                            </Button>
                         )}
                     </div>
                 )}

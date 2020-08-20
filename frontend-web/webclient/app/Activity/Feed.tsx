@@ -8,6 +8,8 @@ import {Flex, Text} from "ui-components";
 import Icon, {IconName} from "ui-components/Icon";
 import Table, {TableCell, TableHeader, TableHeaderCell, TableRow} from "ui-components/Table";
 import {fileInfoPage, getFilenameFromPath, replaceHomeOrProjectFolder} from "Utilities/FileUtilities";
+import {useProjectStatus} from "Project/cache";
+import {getProjectNames} from "Utilities/ProjectUtilities";
 
 export const ActivityFeedFrame: React.FC<{containerRef?: React.RefObject<HTMLTableSectionElement>}> = props => {
     return (
@@ -27,43 +29,50 @@ export const ActivityFeedFrame: React.FC<{containerRef?: React.RefObject<HTMLTab
 
 export const ActivityFeed = ({activity}: {activity: Module.ActivityForFrontend[]}): JSX.Element => (
     <ActivityFeedFrame>
-        {activity.map((a,i) => <ActivityFeedItem key={i} activity={a} />)}
+        {activity.map((a, i) => <ActivityFeedItem key={i} activity={a} />)}
     </ActivityFeedFrame>
 );
 
 // Performance note: Don't use styled components here.
-const ActivityEvent: React.FunctionComponent<{event: Module.ActivityForFrontend}> = props => (
-    <div>
-        <b>
-            <ReactRouterLink to={fileInfoPage(props.event.activityEvent.filePath)}>
-                <div className="ellipsis">
-                    <Text color="black">{getFilenameFromPath(props.event.activityEvent.filePath)}</Text>
-                </div>
-            </ReactRouterLink>
-        </b>
-        {" "}
-        <OperationText event={props.event} />
-    </div>
-);
+const ActivityEvent: React.FunctionComponent<{event: Module.ActivityForFrontend}> = props => {
+    /* NOTE: This might be a major performance issue */
+    const projects = getProjectNames(useProjectStatus());
+    /* NOTEEND */
+    return (
+        <div>
+            <b>
+                <ReactRouterLink to={fileInfoPage(props.event.activityEvent.filePath)}>
+                    <div className="ellipsis">
+                        <Text color="black">{getFilenameFromPath(props.event.activityEvent.filePath, projects)}</Text>
+                    </div>
+                </ReactRouterLink>
+            </b>
+            {" "}
+            <OperationText event={props.event} />
+        </div>
+    );
+}
 
 // Performance note: Don't use styled components here.
 const OperationText: React.FunctionComponent<{event: Module.ActivityForFrontend}> = props => {
+    const projects = useProjectStatus();
+    const projectNames = getProjectNames(projects);
     switch (props.event.type) {
         case Module.ActivityType.MOVED: {
             let byUser = "";
             if (Client.hasActiveProject) {
                 const username = (props.event.activityEvent as Module.MovedActivity).username;
-                byUser = `by ${username}`
+                byUser = `by ${username}`;
             }
             return (
                 <span>
                     was moved to
-                {" "}
+                    {" "}
                     <b>
                         <ReactRouterLink to={fileInfoPage((props.event.activityEvent as Module.MovedActivity).newName)}>
                             <div className="ellipsis">
                                 <Text color="black">
-                                    {replaceHomeOrProjectFolder((props.event.activityEvent as Module.MovedActivity).newName, Client)}
+                                    {replaceHomeOrProjectFolder((props.event.activityEvent as Module.MovedActivity).newName, Client, projectNames)}
                                 </Text>
                             </div>
                         </ReactRouterLink>
@@ -99,7 +108,11 @@ const OperationText: React.FunctionComponent<{event: Module.ActivityForFrontend}
         case Module.ActivityType.UPDATEDACL: {
             const update = (props.event.activityEvent as Module.UpdateAcl);
             if ("project" in update) {
-                return <span> had ACL for {update.acl.map(it => it.group).join(", ")} updated to {update.acl.map(it => it.rights)} by {update.username}</span>;
+                const rightText = update.acl.map(it => {
+                    if (it.rights.length === 0) return "none";
+                    return `(${it.rights.map(r => r.toLowerCase()).join(", ")})`;
+                }).join(", ");
+                return <span> had ACL for {update.acl.map(it => it.group).join(", ")} updated to {rightText} by {update.username}</span>;
             } else {
                 if (Client.hasActiveProject) {
                     return <span> had ACL for {update.rightsAndUser[0].user} updated to {update.rightsAndUser[0].rights} by {update.username}</span>;
@@ -135,10 +148,10 @@ const OperationText: React.FunctionComponent<{event: Module.ActivityForFrontend}
                 }
             }
             else {
-                if(Client.hasActiveProject) {
+                if (Client.hasActiveProject) {
                     return <span> were used in {used.applicationName} v{used.applicationVersion} by {used.username}</span>;
                 } else {
-                    return <span> were used in {used.applicationName} v{used.applicationVersion} </span>
+                    return <span> were used in {used.applicationName} v{used.applicationVersion} </span>;
                 }
             }
         }
@@ -149,11 +162,11 @@ const OperationText: React.FunctionComponent<{event: Module.ActivityForFrontend}
 
         case Module.ActivityType.COPIED: {
             const copy = (props.event.activityEvent as Module.CopyActivity);
+            const replaced = replaceHomeOrProjectFolder(copy.copyFilePath, Client, projectNames);
             if (Client.hasActiveProject) {
-                return <span> was copied by {copy.username}. Copy name: {copy.copyFilePath}</span>;
+                return <span> was copied by {copy.username}. Copy name: {replaced}</span>;
             } else {
-                return <span> was copied. Copy name: {copy.copyFilePath}</span>;
-
+                return <span> was copied. Copy name: {replaced}</span>;
             }
         }
 

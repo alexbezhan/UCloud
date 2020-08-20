@@ -38,8 +38,16 @@ data class AuditEntry<E>(
     val requestJson: E
 )
 
-class ActivityEventElasticDao(private val client: RestHighLevelClient) : ActivityEventDao {
-    override fun findByFilePath(
+data class ActivityEventFilter(
+    val minTimestamp: Long? = null,
+    val maxTimestamp: Long? = null,
+    val type: ActivityEventType? = null,
+    val user: String? = null,
+    val offset: Int? = null
+)
+
+class ActivityEventElasticDao(private val client: RestHighLevelClient) {
+    fun findByFilePath(
         pagination: NormalizedPaginationRequest,
         filePath: String
     ): Page<ActivityForFrontend> {
@@ -51,7 +59,6 @@ class ActivityEventElasticDao(private val client: RestHighLevelClient) : Activit
             if (call.usesAllDescendants) {
                 // Drop /home and /projects
                 val allParents = normalizedFilePath.parents().drop(1)
-
                 allParents.forEach { parent ->
                     call.jsonPathToAffectedFiles.forEach { jsonPath ->
                         query.should(
@@ -126,7 +133,7 @@ class ActivityEventElasticDao(private val client: RestHighLevelClient) : Activit
         return query
     }
 
-    override fun findProjectEvents(
+    fun findProjectEvents(
         scrollSize: Int,
         filter: ActivityEventFilter,
         projectID: String,
@@ -181,7 +188,7 @@ class ActivityEventElasticDao(private val client: RestHighLevelClient) : Activit
 
     }
 
-    override fun findUserEvents(scrollSize: Int, filter: ActivityEventFilter): List<ActivityEvent> {
+    fun findUserEvents(scrollSize: Int, filter: ActivityEventFilter): List<ActivityEvent> {
         val query = applyTimeFilter(filter)
         val index = getIndexByType(filter.type).toTypedArray()
         val userHome = "/home/${filter.user}"
@@ -558,8 +565,14 @@ class ActivityEventElasticDao(private val client: RestHighLevelClient) : Activit
                         val startIndex = clearElement.indexOf("source=") + "source=".length
                         val sourceStartString = clearElement.substring(startIndex)
                         val path = sourceStartString.substring(0, sourceStartString.indexOf(", ")).normalize()
-                        if (path == normalizedFilePath || inUserSearch) {
+                        val allParents = normalizedFilePath.parents().drop(1)
+                        if (inUserSearch) {
                             return path
+                        }
+                        allParents.forEach { parentPath ->
+                            if (path == parentPath.normalize()) {
+                                return path
+                            }
                         }
                     }
                     return null

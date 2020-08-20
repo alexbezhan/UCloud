@@ -3,7 +3,9 @@ package dk.sdu.cloud.k8
 
 bundle { ctx ->
     name = "webdav"
-    version = "0.1.13"
+    version = "0.2.0"
+
+    val domain: String = config("domain", "The domain to run webdav from (e.g. 'dav.cloud.sdu.dk')")
 
     withAmbassador {}
 
@@ -14,12 +16,6 @@ bundle { ctx ->
     withPostgresMigration(deployment)
 
     withIngress {
-        val domain = when (ctx.environment) {
-            Environment.TEST -> "davs.dev.cloud.sdu.dk"
-            Environment.DEVELOPMENT -> "webdav.dev.cloud.sdu.dk"
-            Environment.PRODUCTION ->  "dav.cloud.sdu.dk"
-        }
-
         addRule(domain)
     }
 }

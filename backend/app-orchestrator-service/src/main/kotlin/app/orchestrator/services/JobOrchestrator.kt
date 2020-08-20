@@ -3,8 +3,8 @@ package dk.sdu.cloud.app.orchestrator.services
 import dk.sdu.cloud.SecurityPrincipal
 import dk.sdu.cloud.SecurityPrincipalToken
 import dk.sdu.cloud.app.orchestrator.api.*
+import dk.sdu.cloud.app.orchestrator.api.SortOrder
 import dk.sdu.cloud.app.orchestrator.rpc.JOB_MAX_TIME
-import dk.sdu.cloud.app.store.api.NameAndVersion
 import dk.sdu.cloud.app.store.api.SimpleDuration
 import dk.sdu.cloud.auth.api.AuthDescriptions
 import dk.sdu.cloud.calls.RPCException
@@ -15,18 +15,19 @@ import dk.sdu.cloud.calls.client.call
 import dk.sdu.cloud.calls.client.orThrow
 import dk.sdu.cloud.calls.client.throwIfInternal
 import dk.sdu.cloud.calls.client.withoutAuthentication
-import dk.sdu.cloud.events.EventProducer
 import dk.sdu.cloud.file.api.*
 import dk.sdu.cloud.micro.BackgroundScope
 import dk.sdu.cloud.service.Loggable
-import dk.sdu.cloud.service.db.DBSessionFactory
-import dk.sdu.cloud.service.db.withTransaction
+import dk.sdu.cloud.service.PaginationRequest
+import dk.sdu.cloud.service.Time
+import dk.sdu.cloud.service.db.async.DBContext
+import dk.sdu.cloud.service.db.async.withSession
 import dk.sdu.cloud.service.stackTraceToString
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.io.ByteReadChannel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /**
  * The job orchestrator is responsible for the orchestration of computation backends.
@@ -54,25 +55,20 @@ import kotlinx.coroutines.runBlocking
  *   - In this state we will accept output files via [ComputationCallbackDescriptions.submitFile]
  *
  * - Computation backend notifies us of final result ([JobState.FAILURE], [JobState.SUCCESS])
- *   - Accounting backends are notified (See [AccountingEvents])
  *   - Backends are asked to clean up temporary files via [ComputationDescriptions.cleanup]
  *
  */
-class JobOrchestrator<DBSession>(
+class JobOrchestrator(
     private val serviceClient: AuthenticatedClient,
-
-    private val accountingEventProducer: EventProducer<JobCompletedEvent>,
-
-    private val db: DBSessionFactory<DBSession>,
-    private val jobVerificationService: JobVerificationService<*>,
+    private val db: DBContext,
+    private val jobVerificationService: JobVerificationService,
     private val computationBackendService: ComputationBackendService,
     private val jobFileService: JobFileService,
-    private val jobDao: JobDao<DBSession>,
-    private val jobQueryService: JobQueryService<*>, // TODO This dependency should be removed
-
+    private val jobDao: JobDao,
+    private val jobQueryService: JobQueryService,
     private val defaultBackend: String,
-
-    private val scope: BackgroundScope
+    private val scope: BackgroundScope,
+    private val paymentService: PaymentService
 ) {
     /**
      * Shared error handling for methods that work with a live job.
@@ -94,9 +90,9 @@ class JobOrchestrator<DBSession>(
             }
 
             try {
-                val existingJob = db.withTransaction { session ->
+                val existingJob = db.withSession { session ->
                     jobDao.updateStatus(session, jobId, message ?: "Internal error")
-                    jobDao.findOrNull(session, jobId)
+                    jobQueryService.find(session, listOf(jobId), null).singleOrNull()
                 }
 
                 failJob(existingJob)
@@ -149,41 +145,52 @@ class JobOrchestrator<DBSession>(
         jobFileService.exportParameterFile(outputFolder, jobWithToken, req.parameters)
         val jobWithOutputFolder = jobWithToken.job.copy(outputFolder = outputFolder)
         val jobWithTokenAndFolder = jobWithToken.copy(job = jobWithOutputFolder)
+        paymentService.reserve(jobWithOutputFolder)
 
         log.debug("Notifying compute")
         val initialState = JobStateChange(jobWithToken.job.id, JobState.PREPARED)
         backend.jobVerified.call(jobWithOutputFolder, serviceClient).orThrow()
 
         log.debug("Saving job state")
-        db.withTransaction { session ->
-            jobDao.create(
-                session,
-                jobWithTokenAndFolder
-            )
-        }
+        jobDao.create(
+            db,
+            jobWithTokenAndFolder
+        )
         handleStateChange(jobWithTokenAndFolder, initialState)
 
         return initialState.systemId
     }
 
-    private fun checkForDuplicateJob(
+    private suspend fun checkForDuplicateJob(
         securityPrincipalToken: SecurityPrincipalToken,
         jobWithToken: VerifiedJobWithAccessToken
     ): Boolean {
-        val jobs = runBlocking {
-            findLast10JobsForUser(
-                securityPrincipalToken,
-                jobWithToken.job.application.metadata.name,
-                jobWithToken.job.application.metadata.version
-            )
-        }
+        val jobs = findLast10JobsForUser(
+            securityPrincipalToken,
+            jobWithToken.job.application.metadata.name,
+            jobWithToken.job.application.metadata.version
+        )
 
-        jobs.forEach { storedJob ->
-            if (storedJob.job == jobWithToken.job) {
-                return true
-            }
-        }
-        return false
+        return jobs.any { it.job == jobWithToken.job }
+    }
+
+    private suspend fun findLast10JobsForUser(
+        securityPrincipalToken: SecurityPrincipalToken,
+        application: String,
+        version: String
+    ): List<VerifiedJobWithAccessToken> {
+        return jobQueryService.list(
+            db,
+            securityPrincipalToken.principal.username,
+            PaginationRequest(10).normalize(),
+            ListRecentRequest(
+                sortBy = JobSortBy.CREATED_AT,
+                order = SortOrder.DESCENDING,
+                filter = JobState.RUNNING,
+                application = application,
+                version = version
+            )
+        ).items
     }
 
     suspend fun handleProposedStateChange(
@@ -233,9 +240,7 @@ class JobOrchestrator<DBSession>(
         val (job) = findJobForId(jobId)
         computationBackendService.getAndVerifyByName(job.backend, securityPrincipal)
 
-        db.withTransaction {
-            jobDao.updateStatus(it, jobId, newStatus)
-        }
+        jobDao.updateStatus(db, jobId, newStatus)
     }
 
     suspend fun handleJobComplete(
@@ -254,9 +259,9 @@ class JobOrchestrator<DBSession>(
             } else {
                 val startedAt = job.startedAt
                 if (startedAt == null) {
-                    SimpleDuration.fromMillis(0L)
+                    SimpleDuration.fromMillis(5000L)
                 } else {
-                    SimpleDuration.fromMillis(System.currentTimeMillis() - startedAt)
+                    SimpleDuration.fromMillis(Time.now() - startedAt)
                 }
             }
 
@@ -270,19 +275,7 @@ class JobOrchestrator<DBSession>(
                 securityPrincipal
             )
 
-            accountingEventProducer.produce(
-                JobCompletedEvent(
-                    jobId,
-                    job.owner,
-                    actualDuration,
-                    job.nodes,
-                    System.currentTimeMillis(),
-                    NameAndVersion(job.application.metadata.name, job.application.metadata.version),
-                    success,
-                    job.reservation,
-                    job.project
-                )
-            )
+            paymentService.charge(job, actualDuration.toMillis())
         }
     }
 
@@ -312,11 +305,16 @@ class JobOrchestrator<DBSession>(
     ): Job = scope.launch {
         withJobExceptionHandler(event.systemId, rethrow = false) {
             if (!isReplay) {
-                db.withTransaction(autoFlush = true) {
-                    val failedStateOrNull =
-                        if (event.newState == JobState.FAILURE) jobWithToken.job.currentState else null
-                    jobDao.updateStateAndStatus(it, event.systemId, event.newState, newStatus, failedStateOrNull)
-                }
+                val failedStateOrNull =
+                    if (event.newState == JobState.FAILURE) jobWithToken.job.currentState else null
+
+                jobDao.updateStatus(
+                    db,
+                    event.systemId,
+                    state = event.newState,
+                    status = newStatus,
+                    failedState = failedStateOrNull
+                )
             }
 
             val (job) = jobWithToken
@@ -324,14 +322,12 @@ class JobOrchestrator<DBSession>(
 
             when (event.newState) {
                 JobState.VALIDATED -> {
-                    db.withTransaction(autoFlush = true) {
-                        jobDao.updateStateAndStatus(
-                            it,
-                            event.systemId,
-                            JobState.PREPARED,
-                            "Your job is currently in the process of being scheduled."
-                        )
-                    }
+                    jobDao.updateStatus(
+                        db,
+                        event.systemId,
+                        state = JobState.PREPARED,
+                        status = "Your job is currently in the process of being scheduled."
+                    )
                 }
 
                 JobState.PREPARED -> {
@@ -348,14 +344,12 @@ class JobOrchestrator<DBSession>(
 
                 JobState.SUCCESS, JobState.FAILURE -> {
                     if (job.currentState == JobState.CANCELING) {
-                        db.withTransaction(autoFlush = true) {
-                            jobDao.updateStateAndStatus(
-                                it,
-                                event.systemId,
-                                event.newState,
-                                "Job cancelled successfully."
-                            )
-                        }
+                        jobDao.updateStatus(
+                            db,
+                            event.systemId,
+                            state = event.newState,
+                            status = "Job cancelled successfully."
+                        )
                     }
 
                     if (jobWithToken.refreshToken != null) {
@@ -384,20 +378,16 @@ class JobOrchestrator<DBSession>(
         }
     }
 
-    fun replayLostJobs() {
+    suspend fun replayLostJobs() {
         log.info("Replaying jobs lost from last session...")
         var count = 0
-        runBlocking {
-            db.withTransaction {
-                jobDao.findJobsCreatedBefore(it, System.currentTimeMillis()).forEach { jobWithToken ->
-                    count++
-                    handleStateChange(
-                        jobWithToken,
-                        JobStateChange(jobWithToken.job.id, jobWithToken.job.currentState),
-                        isReplay = true
-                    )
-                }
-            }
+        jobQueryService.findJobsCreatedBefore(db, Time.now()).collect { jobWithToken ->
+            count++
+            handleStateChange(
+                jobWithToken,
+                JobStateChange(jobWithToken.job.id, jobWithToken.job.currentState),
+                isReplay = true
+            )
         }
         log.info("No more lost jobs! We recovered $count jobs.")
     }
@@ -414,33 +404,17 @@ class JobOrchestrator<DBSession>(
         return jobWithToken.job
     }
 
-    private suspend fun findLast10JobsForUser(
-        securityPrincipalToken: SecurityPrincipalToken,
-        application: String,
-        version: String
-    ): List<VerifiedJobWithAccessToken> {
-        return db.withTransaction { session ->
-            jobDao.list10LatestActiveJobsOfApplication(
-                session,
-                securityPrincipalToken,
-                application,
-                version
-            )
-        }
-    }
-
     suspend fun removeExpiredJobs() {
-        val expired = System.currentTimeMillis() - JOB_MAX_TIME
-        db.withTransaction { session ->
-            jobDao.findJobsCreatedBefore(session, expired).forEach { job ->
-                failJob(job)
-            }
+        val expired = Time.now() - JOB_MAX_TIME
+        jobQueryService.findJobsCreatedBefore(db, expired).collect { job ->
+            failJob(job)
         }
     }
 
     private suspend fun findJobForId(id: String, jobOwner: SecurityPrincipalToken? = null): VerifiedJobWithAccessToken {
         return if (jobOwner == null) {
-            db.withTransaction { session -> jobDao.find(session, id, null) }
+            jobQueryService.find(db, listOf(id), null).singleOrNull()
+                ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
         } else {
             jobQueryService.findById(jobOwner, id)
         }
@@ -449,10 +423,10 @@ class JobOrchestrator<DBSession>(
     private suspend fun findJobForUrl(
         urlId: String,
         jobOwner: SecurityPrincipalToken? = null
-    ): VerifiedJobWithAccessToken =
-        db.withTransaction { session ->
-            jobDao.findFromUrlId(session, urlId, jobOwner) ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
-        }
+    ): VerifiedJobWithAccessToken {
+        return jobQueryService.findFromUrlId(db, urlId, jobOwner?.principal?.username)
+            ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
+    }
 
     companion object : Loggable {
         override val log = logger()
@@ -491,14 +465,14 @@ class JobOrchestrator<DBSession>(
             JobState.SUCCESS to emptySet()
         )
     }
-}
 
-suspend fun <DBSession> JobDao<DBSession>.find(
-    session: DBSession,
-    id: String,
-    jobOwner: SecurityPrincipalToken? = null
-): VerifiedJobWithAccessToken {
-    return findOrNull(session, id, jobOwner) ?: throw JobException.NotFound("Job: $id")
+    suspend fun deleteJobInformation(appName: String, appVersion: String) {
+        jobDao.deleteJobInformation(
+            db,
+            appName,
+            appVersion
+        )
+    }
 }
 
 fun resolveBackend(backend: String?, defaultBackend: String): String = backend ?: defaultBackend

@@ -74,7 +74,7 @@ data class FindByPath(val path: String)
 
 data class CreateDirectoryRequest(
     val path: String,
-    val owner: String?,
+    val owner: String? = null,
     val sensitivity: SensitivityLevel? = null
 )
 
@@ -163,10 +163,10 @@ enum class StorageFileAttribute {
 
 data class ListDirectoryRequest(
     val path: String,
-    override val itemsPerPage: Int?,
-    override val page: Int?,
-    val order: SortOrder?,
-    val sortBy: FileSortBy?,
+    override val itemsPerPage: Int? = null,
+    override val page: Int? = null,
+    val order: SortOrder? = null,
+    val sortBy: FileSortBy? = null,
     val attributes: String? = null,
     val type: FileType? = null
 ) : WithPaginationRequest
@@ -254,6 +254,30 @@ data class CreatePersonalRepositoryRequest(val project: String, val username: St
 
 typealias CreatePersonalRepositoryResponse = Unit
 
+data class RetrieveQuotaRequest(val path: String, val includeUsage: Boolean = false)
+typealias RetrieveQuotaResponse = Quota
+
+data class Quota(
+    val quotaInTotal: Long,
+    val quotaInBytes: Long,
+    val allocated: Long,
+    val quotaUsed: Long? = null
+)
+
+data class UpdateQuotaRequest(val path: String, val quotaInBytes: Long, val additive: Boolean = false)
+typealias UpdateQuotaResponse = Unit
+
+data class TransferQuotaRequest(val path: String, val quotaInBytes: Long)
+typealias TransferQuotaResponse = Unit
+
+const val NO_QUOTA = -1L
+
+val Int.KiB: Long get() = 1024L * this
+val Int.MiB: Long get() = 1024L * 1024 * this
+val Int.GiB: Long get() = 1024L * 1024 * 1024 * this
+val Int.TiB: Long get() = 1024L * 1024 * 1024 * 1024 * this
+val Int.PiB: Long get() = 1024L * 1024 * 1024 * 1024 * 1024 * this
+
 object FileDescriptions : CallDescriptionContainer("files") {
     val baseContext = "/api/files"
     val wsBaseContext = "$baseContext/ws"
@@ -278,10 +302,6 @@ object FileDescriptions : CallDescriptionContainer("files") {
                 +boundTo(ListDirectoryRequest::sortBy)
                 +boundTo(ListDirectoryRequest::attributes)
                 +boundTo(ListDirectoryRequest::type)
-            }
-
-            headers {
-                +"X-No-Load"
             }
         }
     }
@@ -309,10 +329,6 @@ object FileDescriptions : CallDescriptionContainer("files") {
                     +boundTo(LookupFileInDirectoryRequest::order)
                     +boundTo(LookupFileInDirectoryRequest::attributes)
                 }
-
-                headers {
-                    +"X-No-Load"
-                }
             }
         }
 
@@ -337,10 +353,6 @@ object FileDescriptions : CallDescriptionContainer("files") {
             params {
                 +boundTo(StatRequest::path)
                 +boundTo(StatRequest::attributes)
-            }
-
-            headers {
-                +"X-No-Load"
             }
         }
     }
@@ -466,7 +478,7 @@ object FileDescriptions : CallDescriptionContainer("files") {
             CommonErrorMessage>("verifyFileKnowledge")
     {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ
         }
 
@@ -592,6 +604,8 @@ object FileDescriptions : CallDescriptionContainer("files") {
                 roles = Roles.AUTHENTICATED
             }
 
+            websocket(wsBaseContext)
+
             http {
                 method = HttpMethod.Post
                 path {
@@ -610,8 +624,10 @@ object FileDescriptions : CallDescriptionContainer("files") {
         call<CreatePersonalRepositoryRequest, CreatePersonalRepositoryResponse, CommonErrorMessage>("createPersonalRepository") {
             auth {
                 access = AccessRight.READ_WRITE
-                roles = Roles.PRIVILEDGED
+                roles = Roles.PRIVILEGED
             }
+
+            websocket(wsBaseContext)
 
             http {
                 method = HttpMethod.Post
@@ -624,4 +640,70 @@ object FileDescriptions : CallDescriptionContainer("files") {
                 body { bindEntireRequestFromBody() }
             }
         }
+
+    val retrieveQuota = call<RetrieveQuotaRequest, RetrieveQuotaResponse, CommonErrorMessage>("retrieveQuota") {
+        auth {
+            access = AccessRight.READ
+            roles = Roles.AUTHENTICATED
+        }
+
+        websocket(wsBaseContext)
+
+        http {
+            method = HttpMethod.Get
+
+            path {
+                using(baseContext)
+                +"quota"
+            }
+
+            params {
+                +boundTo(RetrieveQuotaRequest::path)
+            }
+        }
+    }
+
+    /**
+     * Updates the quota of a subproject
+     */
+    val updateQuota = call<UpdateQuotaRequest, UpdateQuotaResponse, CommonErrorMessage>("updateQuota") {
+        auth {
+            access = AccessRight.READ_WRITE
+            roles = Roles.AUTHENTICATED
+        }
+
+        websocket(wsBaseContext)
+
+        http {
+            method = HttpMethod.Post
+
+            path {
+                using(baseContext)
+                +"quota"
+            }
+
+            body { bindEntireRequestFromBody() }
+        }
+    }
+
+    /**
+     * Transfers quota to a personal project
+     */
+    val transferQuota = call<TransferQuotaRequest, TransferQuotaResponse, CommonErrorMessage>("transferQuota") {
+        auth {
+            access = AccessRight.READ_WRITE
+            roles = Roles.AUTHENTICATED
+        }
+
+        http {
+            method = HttpMethod.Post
+
+            path {
+                using(baseContext)
+                +"transfer-quota"
+            }
+
+            body { bindEntireRequestFromBody() }
+        }
+    }
 }

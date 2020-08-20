@@ -1,6 +1,5 @@
 import {FullAppInfo, WithAppInvocation, WithAppMetadata} from "Applications";
 import {AppToolLogo} from "Applications/AppToolLogo";
-import {ReduxObject} from "DefaultObjects";
 import {LoadableContent, loadingEvent} from "LoadableContent";
 import {LoadableMainContainer} from "MainContainer/MainContainer";
 import {updatePageTitle, UpdatePageTitleAction} from "Navigation/Redux/StatusActions";
@@ -8,7 +7,6 @@ import * as React from "react";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
 import styled from "styled-components";
-import {Page} from "Types";
 import {
     ActionButton,
     Box,
@@ -143,9 +141,7 @@ export const AppHeader: React.FunctionComponent<MainContentProps & {slim?: boole
                             <Heading.h2>{props.application.metadata.title}</Heading.h2>
                             <Heading.h3>v{props.application.metadata.version}</Heading.h3>
                             <TextSpan>{props.application.metadata.authors.join(", ")}</TextSpan>
-                            <Heading.h6>
-                                <Tags tags={props.application.tags} />
-                            </Heading.h6>
+                            <Tags tags={props.application.tags} />
                         </>
                     )}
             </AppHeaderDetails>
@@ -164,14 +160,15 @@ const Sidebar: React.FunctionComponent<MainContentProps> = props => (
             {props.application.favorite ? "Remove from favorites" : "Add to favorites"}
         </ActionButton>
 
+        {!props.application.metadata.website ? null : (
+            <ExternalLink href={props.application.metadata.website}>
+                <OutlineButton fullWidth color={"blue"}>Documentation</OutlineButton>
+            </ExternalLink>
+        )}
+
         <Link to={Pages.runApplication(props.application.metadata)}>
             <OutlineButton fullWidth color={"blue"}>Run Application</OutlineButton>
         </Link>
-        {!props.application.metadata.website ? null : (
-            <ExternalLink href={props.application.metadata.website}>
-                <OutlineButton fullWidth color={"blue"}>Website</OutlineButton>
-            </ExternalLink>
-        )}
     </VerticalButtonGroup>
 );
 
@@ -321,8 +318,6 @@ const mapDispatchToProps = (dispatch: Dispatch<Actions.Type | UpdatePageTitleAct
     }
 });
 
-const mapStateToProps = (state: ReduxObject): StateProps => ({
-    ...state.applicationView
-});
+const mapStateToProps = (state: ReduxObject): StateProps => state.applicationView;
 
 export default connect(mapStateToProps, mapDispatchToProps)(View);

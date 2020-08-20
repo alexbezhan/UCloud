@@ -1,9 +1,8 @@
 import {Client} from "Authentication/HttpClientInstance";
 import {Avatar} from "AvataaarLib";
-import {ReduxObject} from "DefaultObjects";
 import Spinner from "LoadingIcon/LoadingIcon";
 import {MainContainer} from "MainContainer/MainContainer";
-import {setActivePage} from "Navigation/Redux/StatusActions";
+import {setActivePage, useTitle} from "Navigation/Redux/StatusActions";
 import PromiseKeeper from "PromiseKeeper";
 import * as React from "react";
 import {connect} from "react-redux";
@@ -26,6 +25,8 @@ interface AvataaarModificationOperations {
 function Modification(props: AvataaarModificationOperations): JSX.Element {
     const [avatar, setAvatar] = React.useState(defaultAvatar);
     const [loading, setLoading] = React.useState(true);
+
+    useTitle("Edit Avatar");
 
     React.useEffect(() => {
         const promises = new PromiseKeeper();
@@ -162,13 +163,13 @@ function Modification(props: AvataaarModificationOperations): JSX.Element {
         />
     );
 
-    async function fetchAvatar(promises: PromiseKeeper) {
+    async function fetchAvatar(promises: PromiseKeeper): Promise<void> {
         try {
             const r = await promises.makeCancelable(Client.get<AvatarType>(findAvatarQuery, undefined)).promise;
             setAvatar(r.response);
         } catch (e) {
             if (!e.isCanceled)
-                snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred fetching current Avatar"));
+                snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred fetching current Avatar"), false);
         } finally {
             setLoading(false);
         }

@@ -50,6 +50,14 @@ data class GetUserInfoResponse(
     val lastName: String?
 )
 
+data class WantsEmailsRequest(
+    val username: String?
+)
+typealias WantsEmailsResponse = Boolean
+
+typealias ToggleEmailSubscriptionRequest = Unit
+typealias ToggleEmailSubscriptionResponse = Unit
+
 class ChangePasswordAudit
 
 data class ChangePasswordRequest(val currentPassword: String, val newPassword: String) {
@@ -68,7 +76,7 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
         audit<CreateUserAudit>()
 
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 
@@ -156,7 +164,7 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
 
     val lookupUsers = call<LookupUsersRequest, LookupUsersResponse, CommonErrorMessage>("lookupUsers") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ
         }
 
@@ -173,7 +181,7 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
 
     val lookupEmail = call<LookupEmailRequest, LookupEmailResponse, CommonErrorMessage>("lookupEmail") {
         auth {
-            roles = setOf(Role.SERVICE)
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ
         }
 
@@ -183,6 +191,40 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
                 using(baseContext)
                 +"lookup"
                 +"email"
+            }
+
+            body { bindEntireRequestFromBody() }
+        }
+    }
+
+    val toggleEmailSubscription = call<ToggleEmailSubscriptionRequest, ToggleEmailSubscriptionResponse, CommonErrorMessage>("toggleEmailSubscription") {
+        auth {
+            roles = Roles.AUTHENTICATED
+            access = AccessRight.READ_WRITE
+        }
+
+        http {
+            method = HttpMethod.Post
+            path {
+                using(baseContext)
+                +"toggleEmailSubscription"
+            }
+
+            body { bindEntireRequestFromBody() }
+        }
+    }
+    //If expanded upon it should be moved out of AUTH
+    val wantsEmails = call<WantsEmailsRequest, WantsEmailsResponse, CommonErrorMessage>("wantsEmails") {
+        auth {
+            roles = Roles.AUTHENTICATED
+            access = AccessRight.READ
+        }
+
+        http {
+            method = HttpMethod.Post
+            path {
+                using(baseContext)
+                +"wantsEmails"
             }
 
             body { bindEntireRequestFromBody() }
@@ -209,7 +251,7 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
 
     val lookupUID = call<LookupUIDRequest, LookupUIDResponse, CommonErrorMessage>("lookupUID") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ
         }
 
@@ -227,7 +269,7 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
 
     val openUserIterator = call<Unit, FindByStringId, CommonErrorMessage>("openUserIterator") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 
@@ -248,7 +290,7 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
      */
     val fetchNextIterator = call<FindByStringId, List<Principal>, CommonErrorMessage>("fetchNextIterator") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 
@@ -266,7 +308,7 @@ object UserDescriptions : CallDescriptionContainer("auth.users") {
 
     val closeIterator = call<FindByStringId, Unit, CommonErrorMessage>("closeIterator") {
         auth {
-            roles = Roles.PRIVILEDGED
+            roles = Roles.PRIVILEGED
             access = AccessRight.READ_WRITE
         }
 

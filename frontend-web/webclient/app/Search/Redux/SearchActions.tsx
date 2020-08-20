@@ -2,7 +2,6 @@ import {AdvancedSearchRequest as AppSearchRequest, FullAppInfo} from "Applicatio
 import {Client} from "Authentication/HttpClientInstance";
 import {AdvancedSearchRequest, File} from "Files";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Page, PayloadAction} from "Types";
 import {advancedSearchQuery} from "Utilities/ApplicationUtilities";
 import {advancedFileSearch} from "Utilities/FileUtilities";
 import {errorMessageOrDefault} from "UtilityFunctions";
@@ -36,7 +35,7 @@ export async function searchFiles(request: AdvancedSearchRequest): Promise<any> 
         const {response} = await Client.post(advancedFileSearch, request);
         return receiveFiles(response);
     } catch (e) {
-        snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred searching for files\n"));
+        snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred searching for files\n"), false);
         return setErrorMessage({filesLoading: false});
     }
 }
@@ -46,7 +45,7 @@ export async function searchApplications(body: AppSearchRequest): Promise<any> {
         const {response} = await Client.post(advancedSearchQuery, body);
         return receiveApplications(response);
     } catch (e) {
-        snackbarStore.addFailure("An error occurred searching for applications");
+        snackbarStore.addFailure("An error occurred searching for applications", false);
         return setErrorMessage({applicationsLoading: false});
     }
 }
@@ -72,7 +71,7 @@ export const setSearch = (search: string): SetSearchType => ({
     payload: {search}
 });
 
-type SetErrorMessage = PayloadAction<typeof SSActionTypes.SET_SIMPLE_SEARCH_ERROR, {error?: string} & LoadingPanes>;
+export type SetErrorMessage = PayloadAction<typeof SSActionTypes.SET_SIMPLE_SEARCH_ERROR, {error?: string} & LoadingPanes>;
 export const setErrorMessage = (loading?: LoadingPanes): SetErrorMessage => ({
     type: SSActionTypes.SET_SIMPLE_SEARCH_ERROR,
     payload: {...loading}

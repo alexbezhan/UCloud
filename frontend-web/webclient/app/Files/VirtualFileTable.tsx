@@ -1,25 +1,35 @@
-import {useAsyncWork} from "Authentication/DataHook";
+import {callAPI, callAPIWithErrorHandler, useAsyncWork} from "Authentication/DataHook";
 import {Client} from "Authentication/HttpClientInstance";
 import {emptyPage} from "DefaultObjects";
 import {File} from "Files/index";
 import {LowLevelFileTable, LowLevelFileTableProps} from "Files/LowLevelFileTable";
 import * as React from "react";
 import {useEffect, useMemo, useState} from "react";
-import {Page} from "Types";
-import {favoritesQuery, getParentPath, MOCK_VIRTUAL, mockFile, resolvePath} from "Utilities/FileUtilities";
+import {
+    getParentPath,
+    isProjectHome,
+    MOCK_VIRTUAL,
+    mockFile, projectIdFromPath,
+    resolvePath
+} from "Utilities/FileUtilities";
 import {buildQueryString} from "Utilities/URIUtilities";
+import {listFavorites} from "Files/favorite";
+import {listRepositoryFiles} from "Project";
+import {usePromiseKeeper} from "PromiseKeeper";
 
 export type VirtualFileTableProps = LowLevelFileTableProps & VirtualFolderDefinition;
 
 export interface VirtualFolderDefinition {
     fakeFolders?: string[];
+    isFakeFolder?: (folder: string) => boolean;
     loadFolder?: (folder: string, page: number, itemsPerPage: number) => Promise<Page<File>>;
 }
 
 export const VirtualFileTable: React.FunctionComponent<VirtualFileTableProps> = props => {
     const [loadedFakeFolder, setLoadedFakeFolder] = useState<Page<File> | undefined>(undefined);
     const mergedProperties = {...props};
-    const asyncWorker = props.asyncWorker ? props.asyncWorker : useAsyncWork();
+    const promises = usePromiseKeeper();
+    const asyncWorker = props.asyncWorker ?? useAsyncWork();
     mergedProperties.asyncWorker = asyncWorker;
     const [, , submitPageLoaderJob] = asyncWorker;
 
@@ -28,15 +38,21 @@ export const VirtualFileTable: React.FunctionComponent<VirtualFileTableProps> = 
         if (props.path !== undefined) {
             const resolvedPath = resolvePath(props.path);
             fakeFolderToUse = props.fakeFolders.find(it => resolvePath(it) === resolvedPath);
+
+            if (!fakeFolderToUse && props.isFakeFolder && props.isFakeFolder(resolvedPath)) {
+                fakeFolderToUse = resolvedPath;
+            }
         }
 
         mergedProperties.page = loadedFakeFolder;
 
-        mergedProperties.onPageChanged = (page, itemsPerPage): void => {
+        mergedProperties.onPageChanged = async (page, itemsPerPage): Promise<void> => {
             if (fakeFolderToUse !== undefined) {
                 const capturedFolder = fakeFolderToUse;
                 submitPageLoaderJob(async () => {
-                    setLoadedFakeFolder(await props.loadFolder?.(capturedFolder, page, itemsPerPage));
+                    const result = await props.loadFolder?.(capturedFolder, page, itemsPerPage);
+                    if (promises.canceledKeeper) return;
+                    setLoadedFakeFolder(result);
                 });
             } else if (props.onPageChanged !== undefined) {
                 props.onPageChanged(page, itemsPerPage);
@@ -47,10 +63,10 @@ export const VirtualFileTable: React.FunctionComponent<VirtualFileTableProps> = 
             if (fakeFolderToUse !== undefined && loadedFakeFolder !== undefined) {
                 const capturedFolder = fakeFolderToUse;
                 submitPageLoaderJob(async () => {
-                    setLoadedFakeFolder(
-                        await props.loadFolder?.(capturedFolder, loadedFakeFolder.pageNumber,
-                            loadedFakeFolder.itemsPerPage)
-                    );
+                    const result = await props.loadFolder?.(capturedFolder, loadedFakeFolder.pageNumber,
+                        loadedFakeFolder.itemsPerPage);
+                    if (promises.canceledKeeper) return;
+                    setLoadedFakeFolder(result);
                 });
             } else if (props.onReloadRequested !== undefined) {
                 props.onReloadRequested();
@@ -62,7 +78,9 @@ export const VirtualFileTable: React.FunctionComponent<VirtualFileTableProps> = 
         if (fakeFolderToUse !== undefined && props.loadFolder !== undefined) {
             const capturedFolder = fakeFolderToUse;
             submitPageLoaderJob(async () => {
-                setLoadedFakeFolder(await props.loadFolder?.(capturedFolder, 0, 25));
+                const result = await props.loadFolder?.(capturedFolder, 0, 25);
+                if (promises.canceledKeeper) return;
+                setLoadedFakeFolder(result);
             });
         } else {
             setLoadedFakeFolder(undefined);
@@ -88,19 +106,26 @@ export const VirtualFileTable: React.FunctionComponent<VirtualFileTableProps> = 
     return <LowLevelFileTable {...mergedProperties} />;
 };
 
-export const defaultVirtualFolders: () => VirtualFolderDefinition = () => ({
+export const defaultVirtualFolders = (): VirtualFolderDefinition => ({
     fakeFolders: Client.fakeFolders,
+
+    isFakeFolder: folder => {
+        if (isProjectHome(folder)) return true;
+        return false;
+    },
 
     loadFolder: async (folder, page, itemsPerPage): Promise<Page<File>> => {
         if (folder === Client.favoritesFolder) {
-            return (await Client.get<Page<File>>(favoritesQuery(page, itemsPerPage))).response;
+            const favs = (await callAPIWithErrorHandler<Page<File>>(listFavorites({page, itemsPerPage})));
+            return favs ?? emptyPage;
         } else if (folder === Client.sharesFolder) {
             return (await Client.get<Page<File>>(
                 buildQueryString("/shares/list-files", {page, itemsPerPage}))
             ).response;
-        } else if (folder === Client.projectFolder) {
+        } else if (isProjectHome(folder)) {
             try {
-                const {response} = await Client.get<Page<File>>(buildQueryString("/projects/repositories/list-files", {page, itemsPerPage}));
+                const id = projectIdFromPath(folder)!;
+                const response = await callAPI<Page<File>>(listRepositoryFiles({page, itemsPerPage}, id));
                 response.items.forEach(f => f.isRepo = true);
                 return response;
             } catch (err) {

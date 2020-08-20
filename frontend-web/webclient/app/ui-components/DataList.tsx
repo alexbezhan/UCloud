@@ -1,9 +1,9 @@
-import * as Fuse from "fuse.js";
+import Fuse from "fuse.js";
 import * as React from "react";
 import {Box, FormField, Icon, Input} from "ui-components";
 import ClickableDropdown from "./ClickableDropdown";
 
-interface ContentValuePair {content: string; value: string;}
+interface ContentValuePair {content: string; value: string}
 
 interface DataListProps {
     options: ContentValuePair[];
@@ -14,7 +14,7 @@ interface DataListProps {
 }
 export class DataList extends React.PureComponent<DataListProps, {
     text: string;
-    fuse: Fuse<ContentValuePair, Fuse.FuseOptions<ContentValuePair>>;
+    fuse: Fuse<ContentValuePair>;
 }> {
     private readonly totalShown = 8;
 
@@ -26,13 +26,12 @@ export class DataList extends React.PureComponent<DataListProps, {
         };
     }
 
-    static get options(): Fuse.FuseOptions<ContentValuePair> {
+    static get options(): Fuse.IFuseOptions<ContentValuePair> {
         return {
             shouldSort: true,
             threshold: 0.2,
             location: 0,
             distance: 100,
-            maxPatternLength: 32,
             minMatchCharLength: 1,
             keys: [
                 "content"
@@ -42,7 +41,7 @@ export class DataList extends React.PureComponent<DataListProps, {
 
     public render(): JSX.Element {
         const results = this.state.text ?
-            this.state.fuse.search(this.state.text) : this.props.options.slice(0, this.totalShown);
+            this.state.fuse.search(this.state.text).map(it => it.item) : this.props.options.slice(0, this.totalShown);
         return (
             <ClickableDropdown
                 colorOnHover={results.length !== 0}
@@ -60,8 +59,7 @@ export class DataList extends React.PureComponent<DataListProps, {
                     </FormField>
                 )}
             >
-                {/* FIXME: Map is not allowed due to union types */}
-                {(results as any).map(({content, value}) => (
+                {results.map(({content, value}) => (
                     <Box key={content} onClick={() => this.onSelect(content, value)} mb="0.5em">
                         {content}
                     </Box>

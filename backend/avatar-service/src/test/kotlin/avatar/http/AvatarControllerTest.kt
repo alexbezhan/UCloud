@@ -11,7 +11,6 @@ import dk.sdu.cloud.avatar.services.AvatarService
 import dk.sdu.cloud.avatar.updateRequest
 import dk.sdu.cloud.defaultMapper
 import dk.sdu.cloud.service.Controller
-import dk.sdu.cloud.service.db.HibernateSession
 import dk.sdu.cloud.service.test.KtorApplicationTestSetupContext
 import dk.sdu.cloud.service.test.TestUsers
 import dk.sdu.cloud.service.test.assertStatus
@@ -29,10 +28,10 @@ import org.junit.Test
 import kotlin.test.assertEquals
 
 class AvatarControllerTest {
-    val service = mockk<AvatarService<HibernateSession>>()
+    val service = mockk<AvatarService>()
 
     private val setup: KtorApplicationTestSetupContext.() -> List<Controller> = {
-        listOf(AvatarController(service, serviceClient))
+        listOf(AvatarController(service))
     }
 
     @Test

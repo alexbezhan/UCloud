@@ -9,13 +9,15 @@ import {
 } from "Applications";
 import {RangeRef} from "Applications/Widgets/RangeParameters";
 import HttpClient from "Authentication/lib";
-import {SortOrder} from "Files";
+import {SortOrder, File} from "Files";
 import * as React from "react";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Page} from "Types";
 import {addStandardDialog} from "UtilityComponents";
 import {errorMessageOrDefault, removeTrailingSlash} from "UtilityFunctions";
 import {expandHomeOrProjectFolder} from "./FileUtilities";
+import {useEffect, useState} from "react";
+import {QuickLaunchApp} from "Files/QuickLaunch";
+import {usePromiseKeeper} from "PromiseKeeper";
 
 export const hpcJobQueryPost = "/hpc/jobs";
 
@@ -93,7 +95,7 @@ export async function favoriteApplicationFromPage<T>({
         await client.post(hpcFavoriteApp(name, version));
         a.favorite = !a.favorite;
     } catch (e) {
-        snackbarStore.addFailure(errorMessageOrDefault(e, `An error ocurred favoriting ${name}`));
+        snackbarStore.addFailure(errorMessageOrDefault(e, `An error occurred favoriting ${name}`), false);
     }
     return page;
 }
@@ -198,7 +200,7 @@ export function extractValuesFromWidgets({map, appParameters, client}: ExtractPa
             switch (parameter.type) {
                 case ParameterTypes.InputDirectory:
                 case ParameterTypes.InputFile:
-                    const expandedValue = expandHomeOrProjectFolder(r.current.value, client);
+                    const expandedValue = r.current.dataset.path as string;
                     extracted[key] = {
                         source: expandedValue,
                         destination: removeTrailingSlash(expandedValue).split("/").pop()!
@@ -275,6 +277,7 @@ export function validateOptionalFields(
         snackbarStore.addFailure(
             `Invalid values for ${optionalErrors.slice(0, 3).join(", ")}
                     ${optionalErrors.length > 3 ? `and ${optionalErrors.length - 3} others` : ""}`,
+            false,
             5000
         );
         return false;
@@ -308,9 +311,53 @@ export function checkForMissingParameters(
         snackbarStore.addFailure(
             `Missing values for ${missingParameters.slice(0, 3).join(", ")}
                 ${missingParameters.length > 3 ? `and ${missingParameters.length - 3} others.` : ``}`,
+            false,
             5000
         );
         return false;
     }
     return true;
+}
+
+export function useAppQuickLaunch(page: Page<File>, client: HttpClient): Map<string, QuickLaunchApp[]> {
+    const [applications, setApplications] = useState<Map<string, QuickLaunchApp[]>>(new Map());
+    const promises = usePromiseKeeper();
+
+    useEffect(() => {
+        const filesOnly = page.items.filter(f => f.fileType === "FILE");
+        if (filesOnly.length > 0) {
+            client.post<QuickLaunchApp[]>(
+                "/hpc/apps/bySupportedFileExtension",
+                {files: filesOnly.map(f => f.path)}
+            ).then(({response}) => {
+                const newApplications = new Map<string, QuickLaunchApp[]>();
+                filesOnly.forEach(f => {
+                    const fileApps: QuickLaunchApp[] = [];
+
+                    const [fileName] = f.path.split("/").slice(-1);
+                    let [fileExtension] = fileName.split(".").slice(-1);
+
+                    if (fileName !== fileExtension) {
+                        fileExtension = `.${fileExtension}`;
+                    }
+
+                    response.forEach(item => {
+                        item.extensions.forEach(ext => {
+                            if (fileExtension === ext) {
+                                fileApps.push(item);
+                            }
+                        });
+                    });
+
+                    newApplications.set(f.path, fileApps);
+                });
+                if (!promises.canceledKeeper) setApplications(newApplications);
+            }).catch(e =>
+                snackbarStore.addFailure(
+                    errorMessageOrDefault(e, "An error occurred fetching Quicklaunch Apps"), false
+                ));
+        }
+    }, [page]);
+
+    return applications;
 }

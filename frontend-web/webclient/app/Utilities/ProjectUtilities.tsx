@@ -1,47 +1,45 @@
 import * as React from "react";
+import {useCallback} from "react";
 import HttpClient from "Authentication/lib";
 import {addStandardDialog} from "UtilityComponents";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {SnackType} from "Snackbar/Snackbars";
 import {errorMessageOrDefault} from "UtilityFunctions";
 import {AccessRight} from "Types";
 import {dialogStore} from "Dialog/DialogStore";
-import {Box, Button, List} from "ui-components";
+import {Box, Button, Flex, List, RadioTile, RadioTilesContainer, Truncate} from "ui-components";
 import {useCloudAPI} from "Authentication/DataHook";
 import LoadingSpinner from "LoadingIcon/LoadingIcon";
-import {File, Acl, ProjectEntity} from "Files";
-import {ListRow} from "ui-components/List";
-import ClickableDropdown from "ui-components/ClickableDropdown";
+import {Acl, File, ProjectEntity} from "Files";
 import {Spacer} from "ui-components/Spacer";
-import {ProjectRole} from "Project";
+import {groupSummaryRequest, ProjectName, ProjectRole} from "Project";
+import {isPartOfSomePersonalFolder, isPersonalRootFolder, pathComponents} from "Utilities/FileUtilities";
+import styled from "styled-components";
+import {useHistory} from "react-router";
+import {GroupWithSummary} from "Project/GroupList";
+import {emptyPage} from "DefaultObjects";
+import * as Pagination from "Pagination";
+import {ProjectStatus} from "Project/cache";
+import * as Heading from "ui-components/Heading";
 
 export function repositoryName(path: string): string {
-    if (!path.startsWith("/projects/")) return "";
-    return path.split("/").filter(it => it)[2];
+    const components = pathComponents(path);
+    if (components.length < 3) return "";
+    if (components[0] !== "projects") return "";
+    return components[2];
 }
 
-export function repositoryTrashFolder(path: string, client: HttpClient): string {
-    const repo = repositoryName(path);
-    if (!repo) return "";
-    return `${client.currentProjectFolder}${repo}/Trash`;
-}
-
-export function repositoryJobsFolder(path: string, client: HttpClient): string {
-    const repo = repositoryName(path);
-    if (!repo) return "";
-    return `${client.currentProjectFolder}${repo}/Jobs`;
+export function isRepository(path: string): boolean {
+    const components = pathComponents(path);
+    return (components.length === 3 && components[0] === "projects");
 }
 
 export async function createRepository(client: HttpClient, name: string, reload: () => void): Promise<void> {
     try {
         await client.post("/projects/repositories", {name});
-        snackbarStore.addSnack({
-            type: SnackType.Success,
-            message: "Repository created"
-        });
+        snackbarStore.addSuccess(`Folder '${name}' created`, true);
         reload();
     } catch (err) {
-        snackbarStore.addFailure(errorMessageOrDefault(err, "An error ocurred creating."));
+        snackbarStore.addFailure(errorMessageOrDefault(err, "An error occurred creating."), false);
     }
 }
 
@@ -53,27 +51,10 @@ export function promptDeleteRepository(name: string, client: HttpClient, reload:
         onConfirm: async () => {
             try {
                 await client.delete("/projects/repositories", {name});
-                snackbarStore.addSuccess("Repository deleted");
+                snackbarStore.addSuccess(`Folder '${name}' deleted`, true);
                 reload();
             } catch (err) {
-                snackbarStore.addFailure(errorMessageOrDefault(err, "Failed to delete repository."));
-            }
-        }
-    });
-}
-
-export function promptDeleteProject(id: string, client: HttpClient, reload: () => void): void {
-    addStandardDialog({
-        title: "Delete?",
-        message: `Delete ${id} and EVERY associated job, repository and group? Cannot be undone.`,
-        confirmText: "Delete project",
-        onConfirm: async () => {
-            try {
-                await client.delete(`/projects`, {id});
-                snackbarStore.addSuccess("Project deleted");
-                reload();
-            } catch (err) {
-                snackbarStore.addFailure(errorMessageOrDefault(err, "Failed to delete project."));
+                snackbarStore.addFailure(errorMessageOrDefault(err, "Failed to delete repository."), false);
             }
         }
     });
@@ -87,13 +68,10 @@ export async function renameRepository(
 ): Promise<void> {
     try {
         await client.post("/projects/repositories/update", {oldName, newName});
-        snackbarStore.addSnack({
-            type: SnackType.Success,
-            message: "Repository renamed"
-        });
+        snackbarStore.addSuccess("Repository renamed", false);
         reload();
     } catch (err) {
-        snackbarStore.addFailure(errorMessageOrDefault(err, "An error ocurred renaming repository."));
+        snackbarStore.addFailure(errorMessageOrDefault(err, "An error occurred renaming repository."), false);
     }
 }
 
@@ -122,53 +100,126 @@ export function updatePermissionsPrompt(client: HttpClient, file: File, reload: 
     );
 }
 
-export function UpdatePermissionsDialog(props: {client: HttpClient; repository: string; rights: Acl[]; reload: () => void}): JSX.Element {
-    const [groups] = useCloudAPI<string[]>({path: "/projects/groups", method: "GET"}, []);
+const InnerProjectPermissionBox = styled.div`
+    height: 300px;
+    overflow-y: auto;
+`;
+
+export function explainPersonalRepo(): void {
+    dialogStore.addDialog(
+        <Box width="auto" minWidth="450px">
+            <Heading.h3>You cannot change this directory</Heading.h3>
+            <ul>
+                <li>The &#039;Personal&#039; directory is a special directory</li>
+                <li>It contains a folder for every member (current or previous) of the project</li>
+                <li>These folders act as the home for every member of the project</li>
+                <li>Only project administrators can access the &#039;Personal&#039; directory</li>
+            </ul>
+            <Button fullWidth onClick={() => dialogStore.failure()}>OK</Button>
+        </Box>,
+        () => undefined,
+        true
+    );
+}
+
+export function UpdatePermissionsDialog(props: {
+    client: HttpClient;
+    repository: string;
+    rights: Acl[];
+    reload: () => void;
+}): JSX.Element {
+    const [groups, fetchGroups, groupParams] = useCloudAPI<Page<GroupWithSummary>>(
+        groupSummaryRequest({itemsPerPage: 25, page: 0}),
+        emptyPage
+    );
+
     const [newRights, setNewRights] = React.useState<Map<string, AccessRight[]>>(new Map());
+    const history = useHistory();
+
+    const onCreateGroup = useCallback(() => {
+        history.push("/project/dashboard");
+        dialogStore.failure();
+    }, [history]);
 
     return (
-        <Box width="auto" minWidth="300px">
-            {groups.loading ? <LoadingSpinner size={24} /> : null}
-            <List>
-                {groups.data.map(g => {
-                    const acl = newRights.get(g) ?? props.rights.find(a => (a.entity as ProjectEntity).group === g)?.rights ?? [];
-                    let rights = "None";
-                    if (acl.includes("READ")) rights = "Read";
-                    if (acl.includes("WRITE")) rights = "Edit";
-                    return (
-                        <ListRow
-                            key={g}
-                            left={g}
-                            select={() => undefined}
-                            isSelected={false}
-                            right={
-                                <ClickableDropdown
-                                    chevron
-                                    onChange={value => {
-                                        if (value === "") newRights.set(g, []);
-                                        else if (value === "READ") newRights.set(g, [AccessRight.READ]);
-                                        else if (value === "WRITE") newRights.set(g, [AccessRight.READ, AccessRight.WRITE]);
-                                        setNewRights(new Map(newRights));
-                                    }}
-                                    minWidth="75px"
-                                    width="75px"
-                                    options={[
-                                        {text: "Read", value: "READ"},
-                                        {text: "Edit", value: "WRITE"},
-                                        {text: "None", value: ""}
-                                    ]} trigger={rights}
-                                />
-                            }
-                            navigate={() => undefined}
-                        />
-                    );
-                })}
-                <Spacer
-                    mt="50px"
-                    left={<Button color="red" onClick={() => dialogStore.failure()}>Cancel</Button>}
-                    right={<Button disabled={newRights.size === 0} onClick={update}>Update</Button>}
+        <Box width="auto" minWidth="450px">
+            {groups.loading ? <LoadingSpinner size={24}/> : null}
+            <InnerProjectPermissionBox>
+                <Pagination.List
+                    loading={groups.loading}
+                    page={groups.data}
+                    onPageChanged={(page) => fetchGroups(groupSummaryRequest({...groupParams.parameters, page}))}
+                    customEmptyPage={(
+                        <Flex width={"100%"} height={"100%"} alignItems={"center"} justifyContent={"center"}
+                              flexDirection={"column"}>
+                            <Box>
+                                No groups exist for this project.
+                            </Box>
+
+                            <Button onClick={onCreateGroup}>Create group</Button>
+                        </Flex>
+                    )}
+                    pageRenderer={() => (
+                        <>
+                            {groups.data.items.map(summary => {
+                                const g = summary.groupId;
+                                const acl = newRights.get(g) ??
+                                    props.rights.find(a => (a.entity as ProjectEntity).group === g)?.rights ??
+                                    [];
+
+                                const onRightsUpdated = (r: AccessRight[]): void => {
+                                    newRights.set(g, r);
+                                    setNewRights(new Map(newRights));
+                                };
+
+                                return (
+                                    <Flex key={g} alignItems={"center"} mb={16}>
+                                        <Truncate width={"300px"} mr={16} title={summary.groupTitle}>
+                                            {summary.groupTitle}
+                                        </Truncate>
+
+                                        <RadioTilesContainer>
+                                            <RadioTile
+                                                label={"None"}
+                                                onChange={() => onRightsUpdated([])}
+                                                icon={"close"}
+                                                name={summary.groupId}
+                                                checked={acl.length === 0}
+                                                height={40}
+                                                fontSize={"0.5em"}
+                                            />
+                                            <RadioTile
+                                                label={"Read"}
+                                                onChange={() => onRightsUpdated([AccessRight.READ])}
+                                                icon={"search"}
+                                                name={summary.groupId}
+                                                checked={acl.includes(AccessRight.READ) && acl.length === 1}
+                                                height={40}
+                                                fontSize={"0.5em"}
+                                            />
+                                            <RadioTile
+                                                label={"Edit"}
+                                                onChange={() => onRightsUpdated([AccessRight.READ, AccessRight.WRITE])}
+                                                icon={"edit"}
+                                                name={summary.groupId}
+                                                checked={acl.includes(AccessRight.WRITE)}
+                                                height={40}
+                                                fontSize={"0.5em"}
+                                            />
+                                        </RadioTilesContainer>
+                                    </Flex>
+                                );
+                            })}
+                        </>
+                    )}
                 />
-            </List>
+            </InnerProjectPermissionBox>
+
+            <Spacer
+                mt="25px"
+                left={<Button color="red" onClick={() => dialogStore.failure()}>Cancel</Button>}
+                right={<Button disabled={newRights.size === 0} onClick={update}>Update</Button>}
+            />
         </Box>
     );
 
@@ -190,10 +241,22 @@ export async function updatePermissions(
             repository,
             newAcl
         } as UpdatePermissionsRequest);
-        snackbarStore.addSuccess("Updated permissions.");
+        snackbarStore.addSuccess("Updated permissions.", false);
     } catch (err) {
-        snackbarStore.addFailure(errorMessageOrDefault(err, "Failed to update permissions"));
+        snackbarStore.addFailure(errorMessageOrDefault(err, "Failed to update permissions"), false);
     }
+}
+
+/**
+ * Extracts title and projectId from project status.
+ * Intended usage:
+ *  ```
+ *  const project = useProjectStatus();
+ *  const projectNames = getProjectNames(project);
+ *  ```
+ */
+export function getProjectNames(project: ProjectStatus): ProjectName[] {
+    return project.fetch().membership.map(it => ({title: it.title, projectId: it.projectId}));
 }
 
 export function isAdminOrPI(role: ProjectRole): boolean {

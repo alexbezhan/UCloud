@@ -1,9 +1,10 @@
 package dk.sdu.cloud.app.store.services
 
-import com.fasterxml.jackson.module.kotlin.readValue
 import dk.sdu.cloud.Role
 import dk.sdu.cloud.SecurityPrincipal
 import dk.sdu.cloud.app.store.api.*
+import dk.sdu.cloud.app.store.api.Project
+import dk.sdu.cloud.app.store.api.ProjectGroup
 import dk.sdu.cloud.app.store.services.acl.*
 import dk.sdu.cloud.auth.api.LookupUsersRequest
 import dk.sdu.cloud.auth.api.UserDescriptions
@@ -11,85 +12,45 @@ import dk.sdu.cloud.calls.RPCException
 import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.calls.client.call
 import dk.sdu.cloud.calls.client.orRethrowAs
-import dk.sdu.cloud.defaultMapper
+import dk.sdu.cloud.project.api.*
 import dk.sdu.cloud.service.Loggable
 import dk.sdu.cloud.service.NormalizedPaginationRequest
 import dk.sdu.cloud.service.Page
-import dk.sdu.cloud.service.PaginationRequest
-import dk.sdu.cloud.service.db.DBSessionFactory
+import dk.sdu.cloud.service.db.async.AsyncDBSessionFactory
+import dk.sdu.cloud.service.db.async.DBContext
+import dk.sdu.cloud.service.db.async.withSession
 import dk.sdu.cloud.service.db.withTransaction
-import dk.sdu.cloud.service.mapItems
-import dk.sdu.cloud.service.paginate
 import io.ktor.http.HttpStatusCode
-import org.elasticsearch.action.search.SearchResponse
 
-class AppStoreService<DBSession>(
-    private val db: DBSessionFactory<DBSession>,
+class AppStoreService(
+    private val db: AsyncDBSessionFactory,
     private val authenticatedClient: AuthenticatedClient,
-    private val applicationDAO: ApplicationDAO<DBSession>,
-    private val toolDao: ToolDAO<DBSession>,
-    private val aclDao: AclDao<DBSession>,
-    private val elasticDAO: ElasticDAO
+    private val applicationDao: AppStoreAsyncDao,
+    private val publicDAO: ApplicationPublicAsyncDao,
+    private val toolDao: ToolAsyncDao,
+    private val aclDao: AclAsyncDao,
+    private val elasticDao: ElasticDao,
+    private val appEventProducer: AppEventProducer
 ) {
-    suspend fun toggleFavorite(securityPrincipal: SecurityPrincipal, appName: String, appVersion: String) {
-        db.withTransaction { session ->
-            applicationDAO.toggleFavorite(
-                session,
-                securityPrincipal,
-                appName,
-                appVersion
-            )
-        }
-    }
-
-    suspend fun retrieveFavorites(
-        securityPrincipal: SecurityPrincipal,
-        request: PaginationRequest
-    ): Page<ApplicationSummaryWithFavorite> = db.withTransaction { session ->
-        applicationDAO.retrieveFavorites(
-            session,
-            securityPrincipal,
-            request.normalize()
-        )
-    }
-
-    suspend fun searchTags(
-        securityPrincipal: SecurityPrincipal,
-        tags: List<String>,
-        normalizedPaginationRequest: NormalizedPaginationRequest
-    ): Page<ApplicationSummaryWithFavorite> =
-        db.withTransaction { session ->
-            applicationDAO.searchTags(
-                session,
-                securityPrincipal,
-                tags,
-                normalizedPaginationRequest
-            )
-        }
-
-    suspend fun searchApps(
-        securityPrincipal: SecurityPrincipal,
-        query: String,
-        normalizedPaginationRequest: NormalizedPaginationRequest
-    ): Page<ApplicationSummaryWithFavorite> =
-        db.withTransaction { session ->
-            applicationDAO.search(
-                session,
-                securityPrincipal,
-                query,
-                normalizedPaginationRequest
-            )
-        }
 
     suspend fun findByNameAndVersion(
         securityPrincipal: SecurityPrincipal,
+        project: String?,
         appName: String,
         appVersion: String
     ): ApplicationWithFavoriteAndTags {
-        db.withTransaction { session ->
-            val result = applicationDAO.findByNameAndVersionForUser(
+        val projectGroups = if (project.isNullOrBlank()) {
+            emptyList()
+        } else {
+            retrieveUserProjectGroups(securityPrincipal, project, authenticatedClient)
+        }
+
+        return db.withSession { session ->
+            val result = applicationDao.findByNameAndVersionForUser(
                 session,
                 securityPrincipal,
+                project,
+                projectGroups,
                 appName,
                 appVersion
             )
@@ -97,7 +58,7 @@ class AppStoreService<DBSession>(
             val toolRef = result.invocation.tool
             val tool = toolDao.findByNameAndVersion(session, securityPrincipal, toolRef.name, toolRef.version)
 
-            return result.copy(
+            result.copy(
                 invocation = result.invocation.copy(
                     tool = ToolReference(
                         toolRef.name,
@@ -111,25 +72,34 @@ class AppStoreService<DBSession>(
 
     suspend fun hasPermission(
         securityPrincipal: SecurityPrincipal,
+        project: String?,
         appName: String,
         appVersion: String,
         permissions: Set<ApplicationAccessRight>
     ): Boolean {
-        return db.withTransaction { session ->
-            applicationDAO.isPublic(session, securityPrincipal, appName, appVersion) ||
-                    aclDao.hasPermission(
-                        session,
-                        UserEntity(securityPrincipal.username, EntityType.USER),
-                        appName,
-                        permissions
-                    )
+        val projectGroups = if (project.isNullOrBlank()) {
+            emptyList()
+        } else {
+            retrieveUserProjectGroups(securityPrincipal, project, authenticatedClient)
+        }
+
+        return db.withSession { session ->
+            publicDAO.isPublic(session, securityPrincipal, appName, appVersion) ||
+                aclDao.hasPermission(
+                    session,
+                    securityPrincipal,
+                    project,
+                    projectGroups,
+                    appName,
+                    permissions
+                )
         }
     }
 
     suspend fun listAcl(
         securityPrincipal: SecurityPrincipal,
         applicationName: String
-    ): List<EntityWithPermission> {
+    ): List<DetailedEntityWithPermission> {
         if (securityPrincipal.role != Role.ADMIN) throw RPCException(
             "Unable to access application permissions",
             HttpStatusCode.Unauthorized
@@ -138,7 +108,41 @@ class AppStoreService<DBSession>(
             aclDao.listAcl(
                 session,
                 applicationName
-            )
+            ).map { accessEntity ->
+                val projectAndGroupLookup = if (!accessEntity.entity.project.isNullOrBlank() && !accessEntity.entity.group.isNullOrBlank()) {
+                    ProjectGroups.lookupProjectAndGroup.call(
+                        LookupProjectAndGroupRequest(accessEntity.entity.project!!, accessEntity.entity.group!!),
+                        authenticatedClient
+                    ).orRethrowAs {
+                        throw RPCException.fromStatusCode(HttpStatusCode.InternalServerError)
+                    }
+                } else {
+                    null
+                }
+
+                DetailedEntityWithPermission(
+                    if (projectAndGroupLookup != null) {
+                        DetailedAccessEntity(
+                            null,
+                            Project(
+                                projectAndGroupLookup.project.id,
+                                projectAndGroupLookup.project.title
+                            ),
+                            ProjectGroup(
+                                projectAndGroupLookup.group.id,
+                                projectAndGroupLookup.group.title
+                            )
+                        )
+                    } else {
+                        DetailedAccessEntity(
+                            accessEntity.entity.user,
+                            null,
+                            null
+                        )
+                    },
+                    accessEntity.permission
+                )
+            }
         }
     }
 
@@ -163,43 +167,75 @@ class AppStoreService<DBSession>(
     }
 
     private suspend fun updatePermissionsWithSession(
-        session: DBSession,
+        session: DBContext,
         applicationName: String,
-        entity: UserEntity,
+        entity: AccessEntity,
         permissions: ApplicationAccessRight
     ) {
-        if (entity.type == EntityType.USER) {
+        if (!entity.user.isNullOrBlank()) {
             log.debug("Verifying that user exists")
 
             val lookup = UserDescriptions.lookupUsers.call(
-                LookupUsersRequest(listOf(entity.id)),
+                LookupUsersRequest(listOf(entity.user!!)),
                 authenticatedClient
             ).orRethrowAs {
                 throw RPCException.fromStatusCode(HttpStatusCode.InternalServerError)
             }
 
-            if (lookup.results[entity.id] == null) throw RPCException.fromStatusCode(
+            if (lookup.results[entity.user!!] == null) throw RPCException.fromStatusCode(
                 HttpStatusCode.BadRequest,
                 "The user does not exist"
             )
 
-            if (lookup.results[entity.id]?.role == Role.SERVICE) {
+            if (lookup.results[entity.user!!]?.role == Role.SERVICE) {
                 throw RPCException.fromStatusCode(HttpStatusCode.BadRequest, "The user does not exist")
             }
             aclDao.updatePermissions(session, entity, applicationName, permissions)
+        } else if (!entity.project.isNullOrBlank() && !entity.group.isNullOrBlank()) {
+            log.debug("Verifying that project exists")
+
+            val projectLookup = Projects.lookupByTitle.call(
+                LookupByTitleRequest(entity.project!!),
+                authenticatedClient
+            ).orRethrowAs {
+                throw RPCException.fromStatusCode(HttpStatusCode.NotFound)
+            }
+
+            log.debug("Verifying that project group exists")
+
+            val groupLookup = ProjectGroups.lookupByTitle.call(
+                LookupByGroupTitleRequest(projectLookup.id, entity.group!!),
+                authenticatedClient
+            ).orRethrowAs {
+                throw RPCException.fromStatusCode(
+                    HttpStatusCode.BadRequest,
+                    "The project group does not exist"
+                )
+            }
+
+            val entityWithProjectId = AccessEntity(
+                null,
+                projectLookup.id,
+                groupLookup.groupId
+            )
+
+            aclDao.updatePermissions(session, entityWithProjectId, applicationName, permissions)
+        } else {
+            throw RPCException.fromStatusCode(HttpStatusCode.BadRequest, "Neither user or project group defined")
         }
     }
 
-    private fun revokePermissionWithSession(
-        session: DBSession,
+    private suspend fun revokePermissionWithSession(
+        session: DBContext,
         applicationName: String,
-        entity: UserEntity
+        entity: AccessEntity
     ) {
         aclDao.revokePermission(session, entity, applicationName)
     }
 
     suspend fun findBySupportedFileExtension(
         securityPrincipal: SecurityPrincipal,
+        project: String?,
         files: List<String>
     ): List<ApplicationWithExtension> {
         val extensions = files.map { file ->
@@ -210,10 +246,18 @@ class AppStoreService<DBSession>(
             }
         }.toSet()
 
+        val projectGroups = if (project.isNullOrBlank()) {
+            emptyList()
+        } else {
+            retrieveUserProjectGroups(securityPrincipal, project, authenticatedClient)
+        }
+
         return db.withTransaction {
-            applicationDAO.findBySupportedFileExtension(
+            applicationDao.findBySupportedFileExtension(
                 it,
                 securityPrincipal,
+                project,
+                projectGroups,
                 extensions
             )
         }
@@ -221,72 +265,55 @@ class AppStoreService<DBSession>(
 
     suspend fun findByName(
         securityPrincipal: SecurityPrincipal,
+        project: String?,
         appName: String,
         normalizedPaginationRequest: NormalizedPaginationRequest
-    ): Page<ApplicationSummaryWithFavorite> =
-        db.withTransaction {
-            applicationDAO.findAllByName(
+    ): Page<ApplicationSummaryWithFavorite> {
+        val projectGroups = if (project.isNullOrBlank()) {
+            emptyList()
+        } else {
+            retrieveUserProjectGroups(securityPrincipal, project, authenticatedClient)
+        }
+
+        return db.withTransaction {
+            applicationDao.findAllByName(
                 it,
                 securityPrincipal,
+                project,
+                projectGroups,
                 appName,
                 normalizedPaginationRequest
-            )
-        }
-
-    suspend fun isPublic(
-        securityPrincipal: SecurityPrincipal,
-        applications: List<NameAndVersion>
-    ): Map<NameAndVersion, Boolean> {
-        return db.withTransaction {session ->
-            applications.map { app ->
-                Pair<NameAndVersion, Boolean>(
-                    NameAndVersion(app.name, app.version),
-                    applicationDAO.isPublic(
-                        session,
-                        securityPrincipal,
-                        app.name,
-                        app.version
-                    )
-                )
-            }.toMap()
-        }
-    }
-
-    suspend fun setPublic(
-        securityPrincipal: SecurityPrincipal,
-        appName: String,
-        appVersion: String,
-        public: Boolean
-    ) {
-        db.withTransaction {
-            applicationDAO.setPublic(
-                it,
-                securityPrincipal,
-                appName,
-                appVersion,
-                public
             )
         }
     }
 
     suspend fun listAll(
         securityPrincipal: SecurityPrincipal,
+        project: String?,
         normalizedPaginationRequest: NormalizedPaginationRequest
-    ): Page<ApplicationSummaryWithFavorite> =
-        db.withTransaction { session ->
-            applicationDAO.listLatestVersion(
+    ): Page<ApplicationSummaryWithFavorite> {
+        val projectGroups = if (project.isNullOrBlank()) {
+            emptyList()
+        } else {
+            retrieveUserProjectGroups(securityPrincipal, project, authenticatedClient)
+        }
+
+        return db.withTransaction { session ->
+            applicationDao.listLatestVersion(
                 session,
                 securityPrincipal,
+                project,
+                projectGroups,
                 normalizedPaginationRequest
             )
-
         }
+    }
 
     suspend fun create(securityPrincipal: SecurityPrincipal, application: Application, content: String) {
         db.withTransaction { session ->
-            applicationDAO.create(session, securityPrincipal, application, content)
+            applicationDao.create(session, securityPrincipal, application, content)
         }
-        elasticDAO.createApplicationInElastic(
+        elasticDao.createApplicationInElastic(
             application.metadata.name,
             application.metadata.version,
             application.metadata.description,
@@ -294,132 +321,39 @@ class AppStoreService<DBSession>(
         )
     }
 
-    suspend fun delete(securityPrincipal: SecurityPrincipal, appName: String, appVersion: String) {
-        db.withTransaction { session ->
-            applicationDAO.delete(session, securityPrincipal, appName, appVersion)
+    suspend fun delete(securityPrincipal: SecurityPrincipal, project: String?, appName: String, appVersion: String) {
+        val projectGroups = if (project.isNullOrBlank()) {
+            emptyList()
+        } else {
+            retrieveUserProjectGroups(securityPrincipal, project, authenticatedClient)
         }
 
-        elasticDAO.deleteApplicationInElastic(appName, appVersion)
-    }
-
-    suspend fun createTags(tags: List<String>, applicationName: String, user: SecurityPrincipal) {
         db.withTransaction { session ->
-            applicationDAO.createTags(session, user, applicationName, tags)
+            applicationDao.delete(session, securityPrincipal, project, projectGroups, appName, appVersion)
         }
-        elasticDAO.addTagToElastic(applicationName, tags)
 
-    }
+        appEventProducer.produce(AppEvent.Deleted(
+            appName,
+            appVersion
+        ))
 
-    suspend fun deleteTags(tags: List<String>, applicationName: String, user: SecurityPrincipal) {
-        db.withTransaction { session ->
-            applicationDAO.deleteTags(session, user, applicationName, tags)
-        }
-        elasticDAO.removeTagFromElastic(applicationName, tags)
+        elasticDao.deleteApplicationInElastic(appName, appVersion)
     }
 
     suspend fun findLatestByTool(
         user: SecurityPrincipal,
+        project: String?,
         tool: String,
         paging: NormalizedPaginationRequest
     ): Page<Application> {
-        return db.withTransaction { session ->
-            applicationDAO.findLatestByTool(session, user, tool, paging)
-        }
-    }
-
-    suspend fun advancedSearch(
-        user: SecurityPrincipal,
-        query: String?,
-        tagFilter: List<String>?,
-        showAllVersions: Boolean,
-        paging: NormalizedPaginationRequest
-    ): Page<ApplicationSummaryWithFavorite> {
-        if (query.isNullOrBlank() && tagFilter == null) {
-            return Page(
-                0,
-                paging.itemsPerPage,
-                0,
-                emptyList()
-            )
-        }
-
-        val normalizedQuery = query?.toLowerCase() ?: ""
-
-        val normalizedTags = mutableListOf<String>()
-        tagFilter?.forEach { tag ->
-            if (tag.contains(" ")) {
-                val splittedTag = tag.split(" ")
-                normalizedTags.addAll(splittedTag)
-            } else {
-                normalizedTags.add(tag)
-            }
-        }
-
-        val queryTerms = normalizedQuery.split(" ").filter { it.isNotBlank() }
-
-        val results = elasticDAO.search(queryTerms, normalizedTags)
-
-        if (results.hits.hits.isEmpty()) {
-            return Page(
-                0,
-                paging.itemsPerPage,
-                0,
-                emptyList()
-            )
-        }
-
-        if (showAllVersions) {
-            val embeddedNameAndVersionList = results.hits.map {
-                val result = defaultMapper.readValue<ElasticIndexedApplication>(it.sourceAsString)
-                EmbeddedNameAndVersion(result.name, result.version)
-            }
-
-            val applications = db.withTransaction { session ->
-                applicationDAO.findAllByID(session, user, embeddedNameAndVersionList, paging)
-            }
-
-            return sortAndCreatePageByScore(applications, results, user, paging)
-
+        val projectGroups = if (project.isNullOrBlank()) {
+            emptyList()
         } else {
-            val titles = results.hits.map {
-                val result = defaultMapper.readValue<ElasticIndexedApplication>(it.sourceAsString)
-                result.title
-            }
-
-            val applications = db.withTransaction { session ->
-                applicationDAO.multiKeywordsearch(session, user, titles.toList(), paging)
-            }
-
-            return sortAndCreatePageByScore(applications, results, user, paging)
+            retrieveUserProjectGroups(user, project, authenticatedClient)
         }
-    }
-
-
-    private suspend fun sortAndCreatePageByScore(
-        applications: List<ApplicationEntity>,
-        results: SearchResponse,
-        user: SecurityPrincipal,
-        paging: NormalizedPaginationRequest
-    ): Page<ApplicationSummaryWithFavorite> {
-        val map = applications.associateBy(
-            { EmbeddedNameAndVersion(it.id.name.toLowerCase(), it.id.version.toLowerCase()) }, { it }
-        )
-
-        val sortedList = mutableListOf<ApplicationEntity>()
-
-        results.hits.hits.forEach {
-            val foundEntity =
-                map[EmbeddedNameAndVersion(it.sourceAsMap["name"].toString(), it.sourceAsMap["version"].toString())]
-            if (foundEntity != null) {
-                sortedList.add(foundEntity)
-            }
-        }
-
-        val sortedResultsPage = sortedList.map { it.toModelWithInvocation() }.paginate(paging)
 
         return db.withTransaction { session ->
-            applicationDAO.preparePageForUser(session, user.username, sortedResultsPage)
-                .mapItems { it.withoutInvocation() }
+            applicationDao.findLatestByTool(session, user, project, projectGroups, tool, paging)
         }
     }
 

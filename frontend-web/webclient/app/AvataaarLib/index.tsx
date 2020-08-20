@@ -40,6 +40,7 @@ import {
     Top,
     TopAccessory
 } from "UserSettings/AvatarOptions";
+import {AvatarType} from "UserSettings/Avataaar";
 export {default as Avatar, AvatarStyle} from "./avatar";
 
 export interface AvatarComponentProps {
@@ -63,3 +64,20 @@ export interface AvatarComponentProps {
     viewBox?: string;
 }
 
+export interface FetchBulkAvatarsRequest {
+    usernames: string[];
+}
+
+export interface FetchBulkAvatarsResponse {
+    avatars: Record<string, AvatarType>;
+}
+
+export function fetchBulkAvatars(request: FetchBulkAvatarsRequest): APICallParameters<FetchBulkAvatarsRequest> {
+    return {
+        reloadId: Math.random(),
+        path: "/avatar/bulk",
+        method: "POST",
+        payload: request,
+        parameters: request
+    };
+}

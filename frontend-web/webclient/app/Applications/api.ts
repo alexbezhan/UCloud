@@ -1,11 +1,11 @@
 import {JobState, RunsSortBy} from "Applications/index";
-import {APICallParameters} from "Authentication/DataHook";
 import {Client} from "Authentication/HttpClientInstance";
 import {SortOrder} from "Files";
 import {snackbarStore} from "Snackbar/SnackbarStore";
 import {buildQueryString} from "Utilities/URIUtilities";
 import {b64EncodeUnicode} from "Utilities/XHRUtils";
 import {inSuccessRange} from "UtilityFunctions";
+import { Project, ProjectGroup } from "Project";
 
 export interface ListByNameProps {
     itemsPerPage: number;
@@ -95,6 +95,11 @@ export enum LicenseServerAccessRight {
     READ_WRITE = "READ_WRITE"
 }
 
+export enum AccessEntityType {
+    USER = "USER",
+    PROJECT_GROUP = "PROJECT_GROUP"
+}
+
 export enum UserEntityType {
     USER = "USER",
     PROJECT_GROUP = "PROJECT_GROUP"
@@ -106,18 +111,19 @@ export interface AccessEntity {
     group: string | null;
 }
 
-export interface UserEntity {
-    id: string;
-    type: UserEntityType;
+export interface DetailedAccessEntity {
+    user: string | null;
+    project: Project | null;
+    group: ProjectGroup | null;
 }
 
 export interface ApplicationPermissionEntry {
-    entity: UserEntity;
+    entity: DetailedAccessEntity;
     permission: ApplicationAccessRight;
 }
 
 export interface UpdateApplicationPermissionEntry {
-    entity: UserEntity;
+    entity: AccessEntity;
     rights: ApplicationAccessRight;
     revoke: boolean;
 }
@@ -231,13 +237,6 @@ export function licenseServers(props: ListLicenseServersProps): APICallParameter
     };
 }
 
-export interface MachineReservation {
-    name: string;
-    cpu: number | null;
-    memoryInGigs: number | null;
-    gpu: number | null;
-}
-
 export type AppOrTool = "APPLICATION" | "TOOL";
 
 export interface UploadLogoProps {
@@ -268,7 +267,7 @@ export async function uploadLogo(props: UploadLogoProps): Promise<boolean> {
                         // Do nothing
                     }
 
-                    snackbarStore.addFailure(message);
+                    snackbarStore.addFailure(message, false);
                     resolve(false);
                 } else {
                     resolve(true);
@@ -320,7 +319,7 @@ export async function uploadDocument(props: UploadDocumentProps): Promise<boolea
                         console.log(request.responseText);
                         // Do nothing
                     }
-                    snackbarStore.addFailure(message);
+                    snackbarStore.addFailure(message, false);
                     resolve(false);
                 } else {
                     resolve(true);

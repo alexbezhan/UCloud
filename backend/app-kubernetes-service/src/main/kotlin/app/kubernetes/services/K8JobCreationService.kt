@@ -12,17 +12,12 @@ import io.fabric8.kubernetes.api.model.*
 import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.dsl.PodResource
 import kotlinx.coroutines.launch
-import java.io.InputStreamReader
-import java.io.BufferedReader
-
 
 const val WORKING_DIRECTORY = "/work"
 const val MULTI_NODE_DIRECTORY = "/etc/ucloud"
 const val MULTI_NODE_STORAGE = "multi-node-config"
 const val MULTI_NODE_CONTAINER = "init"
 const val USER_CONTAINER = "user-job"
-
-private const val disableKataContainers = true
 
 /**
  * Creates user jobs in Kubernetes.
@@ -34,7 +29,8 @@ class K8JobCreationService(
     private val broadcastingStream: BroadcastingStream,
     private val hostAliasesService: HostAliasesService,
     private val workspaceService: WorkspaceService,
-    private val toleration: TolerationKeyAndValue? = null
+    private val toleration: TolerationKeyAndValue? = null,
+    private val devMode: Boolean = false
 ) {
     fun create(verifiedJob: VerifiedJob) {
         log.info("Creating new job with name: ${verifiedJob.id}")
@@ -72,10 +68,23 @@ class K8JobCreationService(
                 log.warn(ex.stackTraceToString())
             }
         }
+
+        try {
+            k8.nameAllocator.findServices(requestId).delete()
+        } catch (ex: Throwable) {
+            val isExceptionExpected = ex is KubernetesClientException && ex.status?.code in setOf(400, 404)
+            if (!isExceptionExpected) {
+                log.warn("Caught exception while deleting jobs")
+                log.warn(ex.stackTraceToString())
+            }
+        }
     }
 
     @Suppress("LongMethod", "ComplexMethod") // Just a DSL
     private fun createJobs(verifiedJob: VerifiedJob) {
+        val enableKataContainers = verifiedJob.application.invocation.container?.runAsRoot == true &&
+                (verifiedJob.reservation.gpu ?: 0) <= 0
+
         // We need to create and prepare some other resources as well
         networkPolicyService.createPolicy(verifiedJob.id, verifiedJob.peers.map { it.jobId })
         val hostAliases = hostAliasesService.findAliasesForPeers(verifiedJob.peers)
@@ -104,11 +113,11 @@ class K8JobCreationService(
                         val reservation = verifiedJob.reservation
                         val limits = HashMap<String, Quantity>()
                         if (reservation.cpu != null) {
-                            limits += "cpu" to Quantity("${reservation.cpu!! * 1000}m")
+                            limits += "cpu" to Quantity("${(reservation.cpu!! * 1000) - if (enableKataContainers) 1000 else 0}m")
                         }
 
                         if (reservation.memoryInGigs != null) {
-                            limits += "memory" to Quantity("${reservation.memoryInGigs}Gi")
+                            limits += "memory" to Quantity("${reservation.memoryInGigs!! - if (enableKataContainers) 6 else 0}Gi")
                         }
 
                         if (reservation.gpu != null) {
@@ -142,14 +151,12 @@ class K8JobCreationService(
                                     )
                                 )
 
-                                if (!disableKataContainers) {
-                                    if (containerConfig.runAsRoot) {
-                                        withAnnotations(
-                                            mapOf(
-                                                "io.kubernetes.cri.untrusted-workload" to "true"
-                                            )
+                                if (enableKataContainers) {
+                                    withAnnotations(
+                                        mapOf(
+                                            "io.kubernetes.cri.untrusted-workload" to "true"
                                         )
-                                    }
+                                    )
                                 }
                             }
 
@@ -419,8 +426,8 @@ class K8JobCreationService(
             log.debug("Multi node configuration written to all nodes for ${verifiedJob.id}")
         }
 
-        if (verifiedJob.peers.isNotEmpty()) {
-            // Find peers and inject hostname of new application.
+        run {
+            // Create DNS entries for all our pods
             //
             // This is done to aid applications which assume that their hostnames are routable and are as such
             // advertised to other services as being routable. Without this networking will fail in certain cases.
@@ -430,39 +437,57 @@ class K8JobCreationService(
 
             log.debug("Found the following pods: $ourPods")
 
-            // Collect ips and hostnames from the new job
-            val ipsToHostName = ourPods.map { pod ->
-                val ip = pod.status.podIP
-                val hostname = pod.metadata.name
-
-                Pair(ip, hostname)
-            }
-
-            // Find peering pods that we will need to inject our hostname into
-            val peeringPods = verifiedJob.peers.flatMap { peer ->
-                log.debug("Looking for peers with ID: ${peer.jobId}")
-                k8.client.pods()
+            ourPods.forEach { pod ->
+                k8.client
+                    .services()
                     .inNamespace(k8.nameAllocator.namespace)
-                    .withLabel(K8NameAllocator.JOB_ID_LABEL, peer.jobId)
-                    .list()
-                    .items
-            }
+                    .create(Service().apply {
+                        metadata = ObjectMeta().apply {
+                            name = pod.metadata.name
+                            namespace = k8.nameAllocator.namespace
+                            labels = mapOf(
+                                K8NameAllocator.ROLE_LABEL to k8.nameAllocator.appRole,
+                                K8NameAllocator.JOB_ID_LABEL to verifiedJob.id
+                            )
+                        }
 
-            log.debug("Found the following peers: $peeringPods")
+                        spec = ServiceSpec().apply {
+                            if (!devMode) {
+                                type = "ClusterIP"
+                                clusterIP = "None"
 
-            peeringPods.forEach { peer ->
-                log.debug("Injecting hostnames into ${peer.metadata.name}")
-                val pod = k8.client.pods().inNamespace(k8.nameAllocator.namespace).withName(peer.metadata.name)
+                                ports = listOf(
+                                    ServicePort().apply {
+                                        name = "placeholder"
+                                        port = 80
+                                        targetPort = IntOrString(80)
+                                        protocol = "TCP"
+                                    }
+                                )
+                            } else {
+                                // Dev mode is made to work well with minikube and allows us to expose it quite easily
+                                type = "LoadBalancer"
 
-                // Defensive new-lines to avoid missing new-lines on either side
-                val newEntriesAsString = "\n" + ipsToHostName.joinToString("\n") { (ip, hostname) ->
-                    "$ip\t$hostname"
-                } + "\n"
+                                val target = verifiedJob.application.invocation.web?.port
+                                    ?: verifiedJob.application.invocation.vnc?.port ?: 80
 
-                log.debug("Injected config: $newEntriesAsString")
+                                ports = listOf(
+                                    ServicePort().apply {
+                                        name = "web"
+                                        port = 80
+                                        targetPort = IntOrString(target)
+                                        protocol = "TCP"
+                                    }
+                                )
+                            }
 
-                val container = if (verifiedJob.nodes > 1) MULTI_NODE_CONTAINER else USER_CONTAINER
-                writeToFile(pod, "/etc/hosts", newEntriesAsString, container = container, append = true)
+                            selector = mapOf(
+                                K8NameAllocator.ROLE_LABEL to k8.nameAllocator.appRole,
+                                K8NameAllocator.JOB_ID_LABEL to verifiedJob.id,
+                                K8NameAllocator.RANK_LABEL to pod.metadata.labels[K8NameAllocator.RANK_LABEL]
+                            )
+                        }
+                    })
             }
         }
 

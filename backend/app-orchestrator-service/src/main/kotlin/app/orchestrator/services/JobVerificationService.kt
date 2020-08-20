@@ -5,10 +5,7 @@ import dk.sdu.cloud.app.license.api.AppLicenseDescriptions
 import dk.sdu.cloud.app.license.api.LicenseServerRequest
 import dk.sdu.cloud.app.orchestrator.api.*
 import dk.sdu.cloud.app.orchestrator.util.orThrowOnError
-import dk.sdu.cloud.app.store.api.Application
-import dk.sdu.cloud.app.store.api.ApplicationParameter
-import dk.sdu.cloud.app.store.api.FileTransferDescription
-import dk.sdu.cloud.app.store.api.ToolReference
+import dk.sdu.cloud.app.store.api.*
 import dk.sdu.cloud.calls.RPCException
 import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.calls.client.call
@@ -18,8 +15,7 @@ import dk.sdu.cloud.file.api.*
 import dk.sdu.cloud.project.api.Projects
 import dk.sdu.cloud.project.api.ViewMemberInProjectRequest
 import dk.sdu.cloud.service.Loggable
-import dk.sdu.cloud.service.db.DBSessionFactory
-import dk.sdu.cloud.service.db.withTransaction
+import dk.sdu.cloud.service.db.async.DBContext
 import dk.sdu.cloud.service.stackTraceToString
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.async
@@ -42,14 +38,13 @@ data class VerifiedJobWithAccessToken(
 
 private typealias ParameterWithTransfer = Pair<ApplicationParameter<FileTransferDescription>, FileTransferDescription>
 
-class JobVerificationService<Session>(
-    private val appStore: AppStoreService,
-    private val toolStore: ToolStoreService,
+class JobVerificationService(
+    private val appService: ApplicationService,
     private val defaultBackend: String,
-    private val db: DBSessionFactory<Session>,
-    private val dao: JobDao<Session>,
+    private val db: DBContext,
+    private val jobs: JobQueryService,
     private val serviceClient: AuthenticatedClient,
-    private val machines: List<MachineReservation> = listOf(MachineReservation.BURST)
+    private val machineCache: MachineTypeCache
 ) {
     suspend fun verifyOrThrow(
         unverifiedJob: UnverifiedJob,
@@ -91,15 +86,12 @@ class JobVerificationService<Session>(
         // Check URL
         val url = unverifiedJob.request.url
         if (url != null) {
-            val validChars = Regex("([-_a-z0-9]){5,255}")
-            if (!url.toLowerCase().matches(validChars)) {
-                throw RPCException("Provided url not allowed", HttpStatusCode.BadRequest)
+            if (jobs.isUrlOccupied(db, url)) {
+                throw RPCException("Provided url not available", HttpStatusCode.BadRequest)
             }
 
-            db.withTransaction { session ->
-                if(dao.isUrlOccupied(session, url)) {
-                    throw RPCException("Provided url not available", HttpStatusCode.BadRequest)
-                }
+            if (!jobs.canUseUrl(db, unverifiedJob.decodedToken.principal.username, url)) {
+                throw RPCException("Not allowed to use selected URL", HttpStatusCode.BadRequest)
             }
         }
 
@@ -113,7 +105,9 @@ class JobVerificationService<Session>(
                     ApplicationPeer(parameter.name, peerApplicationParameter.peerJobId)
                 }
 
-            val allPeers = unverifiedJob.request.peers + parameterPeers
+            val allPeers = (unverifiedJob.request.peers + parameterPeers)
+                .map { ApplicationPeer(it.name.toLowerCase(), it.jobId) }
+
             val duplicatePeers = allPeers
                 .map { it.name }
                 .groupBy { it }
@@ -125,9 +119,11 @@ class JobVerificationService<Session>(
                 )
             }
 
-            val resolvedPeers = db.withTransaction { session ->
-                dao.find(session, allPeers.map { it.jobId }, unverifiedJob.decodedToken)
-            }
+            val resolvedPeers = jobs.find(
+                db,
+                allPeers.map { it.jobId },
+                unverifiedJob.decodedToken.principal.username
+            )
 
             val resolvedPeerIds = resolvedPeers.map { it.job.id }
 
@@ -140,10 +136,14 @@ class JobVerificationService<Session>(
         }
 
         // Check machine reservation
-        val reservation =
-            if (unverifiedJob.request.reservation == null) MachineReservation.BURST
-            else (machines.find { it.name == unverifiedJob.request.reservation }
-                ?: throw JobException.VerificationError("Bad machine reservation"))
+        val reservation = run {
+            val machineName = unverifiedJob.request.reservation
+            val reservation =
+                if (machineName != null) machineCache.find(machineName)
+                else machineCache.findDefault()
+
+            reservation ?: throw JobException.VerificationError("Invalid machine type")
+        }
 
         // Verify membership of project
         if (unverifiedJob.project != null) {
@@ -186,12 +186,12 @@ class JobVerificationService<Session>(
 
     private suspend fun findApplication(job: UnverifiedJob): Application {
         val result = with(job.request.application) {
-            appStore.findByNameAndVersion(name, version)
+            appService.apps.get(NameAndVersion(name, version))
         } ?: throw JobException.VerificationError("Application '${job.request.application}' does not exist")
 
         val toolName = result.invocation.tool.name
         val toolVersion = result.invocation.tool.version
-        val loadedTool = toolStore.findByNameAndVersion(toolName, toolVersion)
+        val loadedTool = appService.tools.get(NameAndVersion(toolName, toolVersion))
 
         return result.copy(invocation = result.invocation.copy(tool = ToolReference(toolName, toolVersion, loadedTool)))
     }
@@ -241,7 +241,8 @@ class JobVerificationService<Session>(
                     if (param is ApplicationParameter.InputFile && value != null) {
                         value as FileTransferDescription
                         param to value.copy(
-                            invocationParameter = "/work/${value.source.parent().removeSuffix("/").fileName()}/${value.source.fileName()}"
+                            invocationParameter = "/work/${value.source.parent().removeSuffix("/")
+                                .fileName()}/${value.source.fileName()}"
                         )
                     } else {
                         paramWithValue
@@ -336,7 +337,7 @@ class JobVerificationService<Session>(
         if (stat.fileType != desiredFileType) {
             throw JobException.VerificationError(
                 "Expected type of ${fileAppParameter.name} to be " +
-                        "$desiredFileType, but instead got a ${stat.fileType}"
+                    "$desiredFileType, but instead got a ${stat.fileType}"
             )
         }
 

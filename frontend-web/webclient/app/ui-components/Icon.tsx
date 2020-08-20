@@ -4,14 +4,11 @@ import styled from "styled-components";
 import {color, ResponsiveValue, space, SpaceProps, style} from "styled-system";
 import Bug from "./Bug";
 import * as icons from "./icons";
-import theme, {Theme} from "./theme";
+import theme, {Theme, ThemeColor} from "./theme";
 import {Cursor} from "./Types";
+import {getCssVar} from "Utilities/StyledComponentsUtilities";
 
-export function getCssVar(name: string): string {
-    return getComputedStyle(document.documentElement).getPropertyValue(`--${name}`);
-}
-
-const IconBase = ({name, size, theme, color2, spin, hoverColor, ...props}: IconBaseProps): JSX.Element => {
+const IconBase = ({name, size, squared, theme, color2, spin, hoverColor, ...props}: IconBaseProps): JSX.Element => {
     const key = 0;
     let Component = icons[name];
     if (!Component) {
@@ -26,8 +23,8 @@ const IconBase = ({name, size, theme, color2, spin, hoverColor, ...props}: IconB
         <Component
             key={key.toString()}
             width={size}
-            height={size}
-            color2={color2 ? getCssVar(color2) : undefined}
+            height={squared ? size : undefined }
+            color2={color2 ? getCssVar(color2 as ThemeColor) : undefined}
             {...props}
         />
     );
@@ -47,6 +44,7 @@ export interface IconBaseProps extends SpaceProps, React.SVGAttributes<HTMLDivEl
     theme: Theme;
     cursor?: Cursor;
     size?: string | number;
+    squared?: boolean;
     spin?: boolean;
     hoverColor?: ResponsiveValue<CSS.ColorProperty>;
     title?: string;
@@ -80,7 +78,8 @@ Icon.defaultProps = {
     theme,
     cursor: "inherit",
     name: "notification",
-    size: 24
+    size: 24,
+    squared: true
 };
 
 // Use to see every available icon in debugging.

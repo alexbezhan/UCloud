@@ -31,7 +31,8 @@ class UploadTest : WithBackgroundScope() {
             fs,
             ClientMock.authenticatedClient,
             backgroundScope,
-            mockedMetadataService
+            mockedMetadataService,
+            mockk(relaxed = true)
         )
     }
 
@@ -44,6 +45,7 @@ class UploadTest : WithBackgroundScope() {
         }
     }
 
+    @Ignore
     @Test(expected = FSException.IsDirectoryConflict::class)
     fun `test uploading file to file`() {
         runner.withBlockingContext(TestUsers.user.username) { ctx ->

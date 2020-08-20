@@ -16,7 +16,6 @@ import {useEffect} from "react";
 import {connect} from "react-redux";
 import {Dispatch} from "redux";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Page} from "Types";
 import Box from "ui-components/Box";
 import Button from "ui-components/Button";
 import Flex from "ui-components/Flex";
@@ -69,7 +68,7 @@ const Studio: React.FunctionComponent<StudioOperations> = props => {
                                     const file = target.files[0];
                                     target.value = "";
                                     if (file.size > 1024 * 512) {
-                                        snackbarStore.addFailure("File exceeds 512KB. Not allowed.");
+                                        snackbarStore.addFailure("File exceeds 512KB. Not allowed.", false);
                                     } else {
                                         await uploadDocument({document: file, type: "APPLICATION"});
                                         setToolParameters(listTools({...toolParameters.parameters}));
@@ -89,7 +88,7 @@ const Studio: React.FunctionComponent<StudioOperations> = props => {
                                     const file = target.files[0];
                                     target.value = "";
                                     if (file.size > 1024 * 512) {
-                                        snackbarStore.addFailure("File exceeds 512KB. Not allowed.");
+                                        snackbarStore.addFailure("File exceeds 512KB. Not allowed.", false);
                                     } else {
                                         await uploadDocument({document: file, type: "TOOL"});
                                         setToolParameters(listTools({...toolParameters.parameters}));

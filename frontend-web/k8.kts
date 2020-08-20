@@ -3,7 +3,7 @@ package dk.sdu.cloud.k8
 
 bundle {
     name = "webclient"
-    version = "0.37.4"
+    version = "0.38.3"
 
     withAmbassador(null) {
         services.add(
@@ -72,7 +72,7 @@ bundle {
         deployment.spec.replicas = 2
         injectDefaults(tokenValidation = true, refreshToken = true, psql = false)
 
-        serviceContainer.image = "registry.cloud.sdu.dk/sdu-cloud/webclient:${this@bundle.version}"
+        serviceContainer.image = "dreg.cloud.sdu.dk/ucloud/webclient:${this@bundle.version}"
     }
 
     withPostgresMigration(deployment)

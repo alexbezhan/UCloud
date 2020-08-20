@@ -46,7 +46,7 @@ describe("FileIcon", () => {
 
     test("FileIcon, not shared", () => {
         const mFile = mockFile({path: "path", type: "DIRECTORY"});
-        const iconType = iconFromFilePath(mFile.path, mFile.fileType, Client);
+        const iconType = iconFromFilePath(mFile.path, mFile.fileType);
         expect(create(
             <ThemeProvider theme={theme}>
                 <FileIcon fileIcon={iconType} />
@@ -55,7 +55,7 @@ describe("FileIcon", () => {
     });
     test("FileIcon, shared", () => {
         const mFile = mockFile({path: "path", type: "DIRECTORY"});
-        const iconType = iconFromFilePath(mFile.path, mFile.fileType, Client);
+        const iconType = iconFromFilePath(mFile.path, mFile.fileType);
         expect(create(
             <ThemeProvider theme={theme}>
                 <FileIcon
@@ -136,7 +136,8 @@ describe("Dialogs", () => {
             allowOverwrite: false,
             filesRemaining: 0,
             client: Client,
-            path: "path"
+            path: "path",
+            projects: []
         });
         expect(dialogCount).toBe(1);
         dialogStore.failure();
@@ -150,7 +151,8 @@ describe("Dialogs", () => {
             allowOverwrite: true,
             filesRemaining: 0,
             client: Client,
-            path: "path"
+            path: "path",
+            projects: []
         });
         expect(dialogCount).toBe(1);
         dialogStore.failure();

@@ -81,7 +81,7 @@ class JobFileService(
      * @param jobWithToken The job with access token
      * @param rawParameters The raw input parameters before parsing
      */
-    @UseExperimental(ExperimentalIoApi::class)
+    @OptIn(ExperimentalIoApi::class)
     suspend fun exportParameterFile(
         jobFolder: String,
         jobWithToken: VerifiedJobWithAccessToken,
@@ -104,7 +104,7 @@ class JobFileService(
                 policy = WriteConflictPolicy.RENAME
             ),
             userClient
-        )
+        ).orThrow()
     }
 
     suspend fun acceptFile(
@@ -253,8 +253,6 @@ class JobFileService(
 
         val mounts = job.mounts.map { it.toMountName() } + job.files.map { it.toMountName() }
         val userClient = userClientFactory(jobWithToken.accessToken, jobWithToken.refreshToken)
-        log.debug("access" + jobWithToken.accessToken)
-        log.debug("refresh" + jobWithToken.refreshToken)
 
         mounts.forEach { mountName ->
             FileDescriptions.deleteFile.call(

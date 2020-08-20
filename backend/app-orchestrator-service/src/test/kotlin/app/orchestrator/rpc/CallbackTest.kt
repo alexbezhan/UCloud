@@ -21,13 +21,12 @@ import io.mockk.coEvery
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
-import org.hibernate.Session
 import org.junit.Test
 import java.util.*
 import kotlin.test.assertEquals
 
 private fun KtorApplicationTestSetupContext.configureCallbackServer(
-    orchestrator: JobOrchestrator<Session>
+    orchestrator: JobOrchestrator
 ): List<Controller> {
     return listOf(CallbackController(orchestrator))
 }
@@ -39,7 +38,7 @@ class CallbackTest{
     fun `addStatus test`() {
         withKtorTest(
             setup = {
-                val orchestrator = mockk<JobOrchestrator<Session>>()
+                val orchestrator = mockk<JobOrchestrator>()
 
                 coEvery { orchestrator.handleAddStatus(any(), any(), any()) } just runs
 
@@ -62,7 +61,7 @@ class CallbackTest{
     fun `change state test`() {
         withKtorTest(
             setup = {
-                val orchestrator = mockk<JobOrchestrator<Session>>()
+                val orchestrator = mockk<JobOrchestrator>()
 
                 coEvery { orchestrator.handleProposedStateChange(any(), any(), any()) } just runs
 
@@ -85,7 +84,7 @@ class CallbackTest{
     fun `submit file test`() {
         withKtorTest(
             setup = {
-                val orchestrator = mockk<JobOrchestrator<Session>>()
+                val orchestrator = mockk<JobOrchestrator>()
 
                 coEvery { orchestrator.handleIncomingFile(any(), any(), any(), any(), any()) } just runs
 
@@ -115,7 +114,7 @@ class CallbackTest{
     fun `submit file test - no length`() {
         withKtorTest(
             setup = {
-                val orchestrator = mockk<JobOrchestrator<Session>>()
+                val orchestrator = mockk<JobOrchestrator>()
                 configureCallbackServer(orchestrator)
             },
             test = {
@@ -139,7 +138,7 @@ class CallbackTest{
     fun `lookup test`() {
         withKtorTest(
             setup = {
-                val orchestrator = mockk<JobOrchestrator<Session>>()
+                val orchestrator = mockk<JobOrchestrator>()
 
                 coEvery { orchestrator.lookupOwnJob(any(), any()) } answers {
                     verifiedJob
@@ -168,7 +167,7 @@ class CallbackTest{
     fun `completed test`() {
         withKtorTest(
             setup = {
-                val orchestrator = mockk<JobOrchestrator<Session>>()
+                val orchestrator = mockk<JobOrchestrator>()
 
                 coEvery { orchestrator.handleJobComplete(any(), any(), any(), any()) } just runs
 

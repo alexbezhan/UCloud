@@ -4,8 +4,6 @@ import {AdvancedSearchRequest, DetailedFileSearchReduxState, File} from "Files";
 import {AdvancedSearchRequest as AppSearchRequest} from "Applications";
 import {History} from "history";
 import {match} from "react-router-dom";
-import {Page} from "Types";
-import {RouterLocationProps} from "Utilities/URIUtilities";
 
 export interface SearchProps extends SimpleSearchOperations, SimpleSearchStateProps {
     match: match<{priority: string}>;

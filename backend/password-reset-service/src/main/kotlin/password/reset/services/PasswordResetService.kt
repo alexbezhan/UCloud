@@ -11,10 +11,15 @@ import dk.sdu.cloud.calls.client.orThrow
 import dk.sdu.cloud.mail.api.MailDescriptions
 import dk.sdu.cloud.mail.api.SendRequest
 import dk.sdu.cloud.service.Loggable
+import dk.sdu.cloud.service.Time
 import dk.sdu.cloud.service.db.DBSessionFactory
+import dk.sdu.cloud.service.db.async.DBContext
 import dk.sdu.cloud.service.db.withTransaction
 import io.ktor.http.HttpStatusCode
+import io.ktor.util.toLocalDateTime
 import kotlinx.coroutines.delay
+import org.joda.time.DateTimeZone
+import org.joda.time.LocalDateTime
 import org.slf4j.Logger
 import java.security.SecureRandom
 import java.util.*
@@ -26,10 +31,10 @@ data class ResetRequest(
     val expiresAt: Date
 )
 
-class PasswordResetService<Session>(
-    private val db: DBSessionFactory<Session>,
+class PasswordResetService(
+    private val db: DBContext,
     private val authenticatedClient: AuthenticatedClient,
-    private val resetRequestsDao: ResetRequestsDao<Session>,
+    private val resetRequestsDao: ResetRequestsAsyncDao,
     private val secureRandom: SecureRandom
 ) {
     suspend fun createResetRequest(email: String) {
@@ -51,9 +56,8 @@ class PasswordResetService<Session>(
         val token = Base64.getUrlEncoder().encodeToString(ByteArray(64).also { secureRandom.nextBytes(it) })
 
         // Save in request
-        db.withTransaction { session ->
-            resetRequestsDao.create(session, token, lookup.userId)
-        }
+        resetRequestsDao.create(db, token, lookup.userId)
+
 
         MailDescriptions.send.call(
             SendRequest(
@@ -66,17 +70,17 @@ class PasswordResetService<Session>(
                 |<p><a href="https://cloud.sdu.dk/app/login?password-reset=true&token=${token}">https://cloud.sdu.dk/app/login?password-reset=true&token=${token}</a></p>
                 |
                 |<p>If you did not initiate this request, feel free to disregard this email, or reply to this email for support.</p>
-                """.trimMargin()
+                """.trimMargin(),
+                true
             ), authenticatedClient
         ).orThrow()
     }
 
     suspend fun newPassword(token: String, newPassword: String) {
-        val resetRequest = db.withTransaction { session ->
-            resetRequestsDao.get(session, token)
-        } ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound, "Unable to reset password")
+        val resetRequest = resetRequestsDao.get(db, token)
+            ?: throw RPCException.fromStatusCode(HttpStatusCode.NotFound, "Unable to reset password")
 
-        if (resetRequest.expiresAt.time < System.currentTimeMillis()) {
+        if (LocalDateTime(resetRequest.expiresAt.time) < LocalDateTime(Time.now(), DateTimeZone.UTC)) {
             throw RPCException.fromStatusCode(HttpStatusCode.Forbidden, "Unable to reset password (token expired)")
         }
 

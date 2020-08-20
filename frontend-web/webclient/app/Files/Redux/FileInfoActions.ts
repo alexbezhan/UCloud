@@ -1,7 +1,7 @@
 import {Activity} from "Activity";
 import {Client} from "Authentication/HttpClientInstance";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Page, PayloadAction, SetLoadingAction} from "Types";
+import {SetLoadingAction} from "Types";
 import {activityStreamByPath} from "Utilities/ActivityUtilities";
 import {errorMessageOrDefault} from "UtilityFunctions";
 import {FILE_INFO_ERROR, RECEIVE_FILE_ACTIVITY, SET_FILE_INFO_LOADING} from "./FileInfoReducer";
@@ -13,7 +13,7 @@ export async function fetchFileActivity(path: string): Promise<ReceiveFileActivi
         const {response} = await Client.get(activityStreamByPath(path));
         return receiveFileActivity(response);
     } catch (e) {
-        snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred fetching activity."));
+        snackbarStore.addFailure(errorMessageOrDefault(e, "An error occurred fetching activity."), false);
         return fileInfoError();
     }
 }

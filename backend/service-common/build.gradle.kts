@@ -1,7 +1,9 @@
 dependencies {
     val ktorVersion = "1.2.3"
     val jacksonVersion = "2.10.0.pr3"
-    val jasyncVersion = "1.0.12"
+    val jasyncVersion = "1.1.3"
+
+    api("org.jetbrains:annotations:16.0.2")
 
     // Redis
     api("io.lettuce:lettuce-core:5.1.6.RELEASE")
@@ -26,8 +28,6 @@ dependencies {
 
     // db
     api(group = "org.postgresql", name = "postgresql", version = "42.2.5")
-    api(group = "org.hibernate", name = "hibernate-core", version = "5.4.1.Final")
-    api(group = "org.hibernate", name = "hibernate-hikaricp", version = "5.4.1.Final")
     api("org.flywaydb:flyway-core:5.2.4")
 
     api("com.github.jasync-sql:jasync-common:$jasyncVersion")
@@ -59,7 +59,6 @@ dependencies {
     api("net.java.dev.jna:jna:5.2.0")
 
     // Testing
-    testImplementation(group = "com.h2database", name = "h2", version = "1.4.197")
     testImplementation(group = "junit", name = "junit", version = "4.12")
 
     testImplementation("io.ktor:ktor-server-test-host:$ktorVersion") {

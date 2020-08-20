@@ -1,5 +1,5 @@
 import {Client} from "Authentication/HttpClientInstance";
-import {emptyPage, ReduxObject} from "DefaultObjects";
+import {emptyPage} from "DefaultObjects";
 import {loadingEvent} from "LoadableContent";
 import {MainContainer} from "MainContainer/MainContainer";
 import {HeaderActions, setPrioritizedSearch, setRefreshFunction} from "Navigation/Redux/HeaderActions";
@@ -7,10 +7,9 @@ import {setActivePage, StatusActions, updatePageTitle} from "Navigation/Redux/St
 import * as Pagination from "Pagination";
 import {useEffect, useState} from "react";
 import * as React from "react";
-import {connect} from "react-redux";
+import {connect, useSelector} from "react-redux";
 import {Dispatch} from "redux";
 import styled from "styled-components";
-import {Page} from "Types";
 import {Box, Flex, Link} from "ui-components";
 import Grid from "ui-components/Grid";
 import * as Heading from "ui-components/Heading";
@@ -19,8 +18,8 @@ import {Spacer} from "ui-components/Spacer";
 import {EllipsedText} from "ui-components/Text";
 import theme from "ui-components/theme";
 import {favoriteApplicationFromPage, toolImageQuery} from "Utilities/ApplicationUtilities";
-import {getQueryParam, getQueryParamOrElse, RouterLocationProps, } from "Utilities/URIUtilities";
-import {FullAppInfo, WithAppMetadata} from ".";
+import {RouterLocationProps} from "Utilities/URIUtilities";
+import {FullAppInfo} from ".";
 import {ApplicationCard, CardToolContainer, hashF, SmallCard, Tag} from "./Card";
 import Installed from "./Installed";
 import * as Pages from "./Pages";
@@ -152,46 +151,27 @@ class Applications extends React.Component<ApplicationsProps, ApplicationState> 
                         </>
                     )}
                     page={featured}
-                    onPageChanged={pageNumber => this.props.history.push(this.updatePage(pageNumber))}
+                    onPageChanged={pageNumber => this.fetchFeatured(featured.itemsPerPage, pageNumber)}
                 />
                 {this.state.defaultTags.map(tag => <ToolGroup key={tag} tag={tag} />)}
             </>
         );
         return (
-            <MainContainer
-                main={main}
-            />
+            <MainContainer main={main} />
         );
     }
 
-    private fetchFeatured(): void {
-        const featured = this.props.applications.get("Featured") ?? emptyPage;
-        this.props.receiveAppsByKey(featured.itemsPerPage, featured.pageNumber, "Featured");
+    private fetchFeatured(itemsPerPage: number, page: number): void {
+        this.props.receiveAppsByKey(itemsPerPage, page, "Featured");
     }
 
     private fetch(): void {
-        this.fetchFeatured();
+        const featured = this.props.applications.get("Featured") ?? emptyPage;
+        this.fetchFeatured(featured.itemsPerPage, featured.pageNumber);
         this.state.defaultTags.forEach(tag => {
             const page = this.props.applications.get(tag) ?? emptyPage;
             this.props.receiveAppsByKey(page.itemsPerPage, page.pageNumber, tag);
         });
-    }
-
-    private itemsPerPage(props: ApplicationsProps = this.props): number {
-        return parseInt(getQueryParamOrElse(props, "itemsPerPage", "25"), 10);
-    }
-
-    private tag(props: ApplicationsProps = this.props): string | null {
-        return getQueryParam(props, "tag");
-    }
-
-    private updatePage(newPage: number): string {
-        const tag = this.tag();
-        if (tag === null) {
-            return Pages.browse(this.itemsPerPage(), newPage);
-        } else {
-            return Pages.browseByTag(tag, this.itemsPerPage(), newPage);
-        }
     }
 }
 
@@ -232,9 +212,11 @@ const ToolImage = styled.img`
 `;
 
 
-// eslint-disable-next-line no-underscore-dangle
-const ToolGroup_ = (props: {tag: string; page: Page<FullAppInfo>; cacheBust?: string}): JSX.Element => {
-    const allTags = props.page.items.map(it => it.tags);
+const ToolGroup = (props: {tag: string; cacheBust?: string}): JSX.Element => {
+    const page = useSelector<ReduxObject, Page<FullAppInfo>>(redux =>
+        redux.applicationsBrowse.applications.get(props.tag) ?? emptyPage
+    );
+    const allTags = page.items.map(it => it.tags);
     const tags = new Set<string>();
     allTags.forEach(list => list.forEach(tag => tags.add(tag)));
     const url = Client.computeURL("/api", toolImageQuery(props.tag.toLowerCase().replace(/\s+/g, ""), props.cacheBust));
@@ -266,7 +248,7 @@ const ToolGroup_ = (props: {tag: string; page: Page<FullAppInfo>; cacheBust?: st
                         gridGap="8px"
                         gridAutoFlow="column"
                     >
-                        {props.page.items.map(application => {
+                        {page.items.map(application => {
                             const [first, second, third] = getColorFromName(application.metadata.name);
                             const withoutTag = removeTagFromTitle(props.tag, application.metadata.title);
                             return (
@@ -310,17 +292,6 @@ function removeTagFromTitle(tag: string, title: string): string {
         return title;
     }
 }
-
-const mapToolGroupStateToProps = (
-    {applicationsBrowse}: ReduxObject,
-    ownProps: {tag: string}
-): {page: Page<WithAppMetadata>} => {
-    const {applications} = applicationsBrowse;
-    const page = applications.get(ownProps.tag) ?? emptyPage;
-    return {page};
-};
-
-const ToolGroup = connect(mapToolGroupStateToProps)(ToolGroup_);
 
 const mapDispatchToProps = (
     dispatch: Dispatch<Actions.Type | HeaderActions | StatusActions | Favorites.Type>

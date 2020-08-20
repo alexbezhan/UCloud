@@ -9,26 +9,24 @@ import dk.sdu.cloud.notification.api.CreateNotification
 import dk.sdu.cloud.notification.api.Notification
 import dk.sdu.cloud.notification.api.NotificationDescriptions
 import dk.sdu.cloud.project.api.ProjectRole
-import dk.sdu.cloud.service.DistributedStateFactory
 import dk.sdu.cloud.service.Loggable
-import dk.sdu.cloud.service.create
 import dk.sdu.cloud.service.db.async.*
 import dk.sdu.cloud.service.db.withTransaction
 import kotlinx.coroutines.flow.collect
 import org.joda.time.DateTimeConstants
 import org.joda.time.LocalDateTime
-import org.joda.time.Period
-import java.net.URLEncoder
+import dk.sdu.cloud.project.services.QueryService.Companion.VERIFICATION_REQUIRED_EVERY_X_DAYS
+import dk.sdu.cloud.service.Time
 
 class VerificationReminder(
     private val db: AsyncDBSessionFactory,
-    private val projects: ProjectDao,
+    private val queries: QueryService,
     private val mailCooldown: MailCooldownDao,
     private val serviceClient: AuthenticatedClient
 ) {
     suspend fun sendReminders() {
         db.withTransaction { session ->
-            projects.findProjectsInNeedOfVerification(session).collect { (project, user, role) ->
+            queries.findProjectsInNeedOfVerification(session).collect { (project, user, role, title) ->
                 if (mailCooldown.hasCooldown(session, user, project)) {
                     log.debug("Cooldown: $user in $project")
                     return@collect
@@ -41,7 +39,7 @@ class VerificationReminder(
                         user,
                         Notification(
                             "REVIEW_PROJECT",
-                            "Time to review your project ($project)",
+                            "Time to review your project ($title)",
                             meta = mapOf(
                                 "project" to project
                             )
@@ -58,13 +56,13 @@ class VerificationReminder(
                 val mailStatus = MailDescriptions.send.call(
                     SendRequest(
                         user,
-                        "[UCloud] Time to review your project ($project)",
+                        "[UCloud] Time to review your project ($title)",
                         //language=html
                         """
                             <p>Hello ${user},</p> 
                             
                             <p>
-                                It is time for a review of your project $project in which you are 
+                                It is time for a review of your project $title in which you are 
                                 ${if (role == ProjectRole.ADMIN) " an admin" else " a PI"}.
                             </p>
                             
@@ -77,9 +75,7 @@ class VerificationReminder(
                                 </li>
                                 <li>
                                     You can begin the review by clicking 
-                                    <a href="https://cloud.sdu.dk/app/projects/view/${URLEncoder.encode(project, "utf-8")}">
-                                        here 
-                                    </a>.
+                                    <a href="https://cloud.sdu.dk/app/projects}">here</a>.
                                 </li>
                             </ul>
  
@@ -106,10 +102,6 @@ class VerificationReminder(
     }
 }
 
-fun main() {
-    println(URLEncoder.encode("Test#9224", "utf-8"))
-}
-
 class MailCooldownDao {
     suspend fun hasCooldown(session: AsyncDBConnection, username: String, project: String): Boolean {
         val lastEntry = session
@@ -122,8 +114,8 @@ class MailCooldownDao {
                     select max(timestamp) as timestamp
                     from cooldowns
                     where
-                        username = ?username and
-                        project = ?project
+                        username = :username and
+                        project = :project
                 """
             )
             .rows
@@ -131,15 +123,15 @@ class MailCooldownDao {
             ?.getField(CooldownTable.timestamp)
             ?: return false
 
-        return (System.currentTimeMillis() - lastEntry.toTimestamp()) <=
-                ProjectDao.VERIFICATION_REQUIRED_EVERY_X_DAYS * DateTimeConstants.MILLIS_PER_DAY
+        return (Time.now() - lastEntry.toTimestamp()) <=
+                VERIFICATION_REQUIRED_EVERY_X_DAYS * DateTimeConstants.MILLIS_PER_DAY
     }
 
     suspend fun writeCooldown(session: AsyncDBConnection, username: String, project: String) {
         session.insert(CooldownTable)  {
             set(CooldownTable.project, project)
             set(CooldownTable.username, username)
-            set(CooldownTable.timestamp, LocalDateTime.now())
+            set(CooldownTable.timestamp, LocalDateTime(Time.now()))
         }
     }
 

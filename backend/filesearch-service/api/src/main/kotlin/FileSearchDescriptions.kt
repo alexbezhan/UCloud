@@ -8,20 +8,10 @@ import dk.sdu.cloud.calls.bindEntireRequestFromBody
 import dk.sdu.cloud.calls.call
 import dk.sdu.cloud.calls.http
 import dk.sdu.cloud.file.api.FileType
-import dk.sdu.cloud.file.api.SensitivityLevel
 import dk.sdu.cloud.file.api.StorageFile
 import dk.sdu.cloud.service.Page
 import dk.sdu.cloud.service.WithPaginationRequest
 import io.ktor.http.HttpMethod
-
-/**
- * @see FileSearchDescriptions.simpleSearch
- */
-data class SimpleSearchRequest(
-    val query: String,
-    override val itemsPerPage: Int?,
-    override val page: Int?
-) : WithPaginationRequest
 
 /**
  * @see FileSearchDescriptions.advancedSearch
@@ -45,30 +35,6 @@ typealias SearchResult = StorageFile
 object FileSearchDescriptions : CallDescriptionContainer("fileSearch") {
     const val baseContext: String = "/api/file-search"
 
-    val simpleSearch = call<SimpleSearchRequest, Page<SearchResult>, CommonErrorMessage>("simpleSearch") {
-        auth {
-            access = AccessRight.READ
-        }
-
-        http {
-            method = HttpMethod.Get
-
-            path {
-                using(baseContext)
-            }
-
-            params {
-                +boundTo(SimpleSearchRequest::query)
-                +boundTo(SimpleSearchRequest::itemsPerPage)
-                +boundTo(SimpleSearchRequest::page)
-            }
-
-            headers {
-                +"X-No-Load"
-            }
-        }
-    }
-
     val advancedSearch = call<AdvancedSearchRequest, Page<SearchResult>, CommonErrorMessage>("advancedSearch") {
         auth {
             access = AccessRight.READ
@@ -83,10 +49,6 @@ object FileSearchDescriptions : CallDescriptionContainer("fileSearch") {
             }
 
             body { bindEntireRequestFromBody() }
-
-            headers {
-                +"X-No-Load"
-            }
         }
     }
 }

@@ -1,9 +1,11 @@
 package dk.sdu.cloud.file.services
 
+import dk.sdu.cloud.calls.RPCException
 import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.file.api.*
 import dk.sdu.cloud.file.services.acl.AclService
 import dk.sdu.cloud.file.services.acl.MetadataService
+import dk.sdu.cloud.file.services.linuxfs.LinuxFSRunner
 import dk.sdu.cloud.file.util.FSException
 import dk.sdu.cloud.file.util.retryWithCatch
 import dk.sdu.cloud.micro.BackgroundScope
@@ -13,6 +15,7 @@ import dk.sdu.cloud.service.Page
 import dk.sdu.cloud.task.api.MeasuredSpeedInteger
 import dk.sdu.cloud.task.api.Progress
 import dk.sdu.cloud.task.api.runTask
+import io.ktor.http.HttpStatusCode
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -20,7 +23,8 @@ class CoreFileSystemService<Ctx : FSUserContext>(
     private val fs: LowLevelFileSystemInterface<Ctx>,
     private val wsServiceClient: AuthenticatedClient,
     private val backgroundScope: BackgroundScope,
-    private val metadataService: MetadataService
+    private val metadataService: MetadataService,
+    private val limitChecker: LimitChecker<*>
 ) {
     suspend fun write(
         ctx: Ctx,
@@ -33,6 +37,7 @@ class CoreFileSystemService<Ctx : FSUserContext>(
             renameAccordingToPolicy(ctx, normalizedPath, conflictPolicy)
 
         fs.openForWriting(ctx, targetPath, conflictPolicy.allowsOverwrite())
+        limitChecker.checkLimitAndQuota(path)
         fs.write(ctx, writer)
         return targetPath
     }
@@ -56,6 +61,11 @@ class CoreFileSystemService<Ctx : FSUserContext>(
     ): String {
         val normalizedFrom = from.normalize()
         val fromStat = stat(ctx, from, setOf(StorageFileAttribute.fileType, StorageFileAttribute.size))
+
+        // The to stat makes sure that we have checked permissions against the target before we continue
+        stat(ctx, to.parent(), setOf(StorageFileAttribute.fileType, StorageFileAttribute.size))
+        limitChecker.checkLimitAndQuota(to)
+
         if (fromStat.fileType != FileType.DIRECTORY) {
             runTask(wsServiceClient, backgroundScope, "File copy", ctx.user) {
                 status = "Copying file from '$from' to '$to'"
@@ -180,6 +190,8 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         ctx: Ctx,
         path: String
     ) {
+        // You are allowed to create new directories in case of limit has been reached. This is needed partially for
+        // trash to function.
         fs.makeDirectory(ctx, path)
     }
 
@@ -196,6 +208,11 @@ class CoreFileSystemService<Ctx : FSUserContext>(
         if (from.normalize().startsWith("/home/") && to.normalize().startsWith("/projects/")) {
             // We must remove all shares here
             // TODO This probably isn't the best place for this code
+            metadataService.removeAllMetadataOfType(
+                from.normalize(),
+                "share"
+            )
+
             metadataService.removeAllMetadataOfType(
                 from.normalize(),
                 AclService.USER_METADATA_TYPE
@@ -249,8 +266,6 @@ class CoreFileSystemService<Ctx : FSUserContext>(
     ): String {
         if (conflictPolicy == WriteConflictPolicy.OVERWRITE) return desiredTargetPath
 
-        // Performance: This will cause a lot of stats, on items in the same folder, for the most part we could
-        // simply ls a common root and cache it. This should be a lot more efficient.
         val targetExists = exists(ctx, desiredTargetPath)
         return when (conflictPolicy) {
             WriteConflictPolicy.OVERWRITE -> desiredTargetPath
@@ -318,6 +333,10 @@ class CoreFileSystemService<Ctx : FSUserContext>(
                 "$parentPath/$desiredWithoutExtension(${currentMax + 1})$extension"
             }
         }
+    }
+
+    suspend fun estimateRecursiveStorageUsedMakeItFast(ctx: Ctx, path: String): Long {
+        return fs.estimateRecursiveStorageUsedMakeItFast(ctx, path)
     }
 
     companion object : Loggable {

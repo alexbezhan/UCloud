@@ -8,16 +8,31 @@ import com.github.jasync.sql.db.postgresql.PostgreSQLConnectionBuilder
 import dk.sdu.cloud.micro.DatabaseConfig
 import dk.sdu.cloud.service.Loggable
 import dk.sdu.cloud.service.db.DBSessionFactory
-import dk.sdu.cloud.service.db.POSTGRES_9_5_DIALECT
-import dk.sdu.cloud.service.db.POSTGRES_DRIVER
+import dk.sdu.cloud.service.db.withTransaction
 import kotlinx.coroutines.future.await
 
-typealias AsyncDBConnection = SuspendingConnection
+sealed class DBContext
+
+suspend fun <R> DBContext.withSession(block: suspend (session: AsyncDBConnection) -> R): R {
+    return when (this) {
+        is AsyncDBSessionFactory -> {
+            withTransaction<R, AsyncDBConnection> { session ->
+                block(session)
+            }
+        }
+
+        is AsyncDBConnection -> {
+            block(this)
+        }
+    }
+}
+
+data class AsyncDBConnection(val conn: SuspendingConnectionImpl) : DBContext(), SuspendingConnection by conn
 
 /**
  * A [DBSessionFactory] for the jasync library.
  */
-class AsyncDBSessionFactory(config: DatabaseConfig) : DBSessionFactory<AsyncDBConnection> {
+class AsyncDBSessionFactory(config: DatabaseConfig) : DBSessionFactory<AsyncDBConnection>, DBContext() {
     private val schema = config.defaultSchema
 
     init {
@@ -25,11 +40,6 @@ class AsyncDBSessionFactory(config: DatabaseConfig) : DBSessionFactory<AsyncDBCo
     }
 
     private val pool = run {
-        if (config.dialect != POSTGRES_9_5_DIALECT && config.driver != POSTGRES_DRIVER) {
-            log.warn("Bad configuration: $config")
-            throw IllegalArgumentException("Cannot create an AsyncDBSessionFactory for non postgres databases!")
-        }
-
         val username = config.username ?: throw IllegalArgumentException("Missing credentials")
         val password = config.password ?: throw IllegalArgumentException("Missing credentials")
         val jdbcUrl = config.jdbcUrl ?: throw IllegalArgumentException("Missing connection string")
@@ -47,7 +57,7 @@ class AsyncDBSessionFactory(config: DatabaseConfig) : DBSessionFactory<AsyncDBCo
     }
 
     override suspend fun closeSession(session: AsyncDBConnection) {
-        pool.giveBack((session as SuspendingConnectionImpl).connection as PostgreSQLConnection)
+        pool.giveBack((session.conn).connection as PostgreSQLConnection)
     }
 
     override suspend fun commit(session: AsyncDBConnection) {
@@ -59,7 +69,7 @@ class AsyncDBSessionFactory(config: DatabaseConfig) : DBSessionFactory<AsyncDBCo
     }
 
     override suspend fun openSession(): AsyncDBConnection {
-        return pool.take().await().asSuspending
+        return AsyncDBConnection(pool.take().await().asSuspending as SuspendingConnectionImpl)
     }
 
     override suspend fun rollback(session: AsyncDBConnection) {
@@ -69,7 +79,7 @@ class AsyncDBSessionFactory(config: DatabaseConfig) : DBSessionFactory<AsyncDBCo
     override suspend fun openTransaction(session: AsyncDBConnection) {
         // We always begin by setting the search_path to our schema. The schema is checked in the init block to make
         // this safe.
-        session.sendQuery("set search_path to $schema")
+        session.sendQuery("set search_path to \"$schema\"")
         session.sendQuery("begin")
     }
 

@@ -1,96 +1,140 @@
 package dk.sdu.cloud.project.services
 
 import com.github.jasync.sql.db.postgresql.exceptions.GenericDatabaseException
-import dk.sdu.cloud.SecurityPrincipal
+import dk.sdu.cloud.Roles
 import dk.sdu.cloud.calls.RPCException
-import dk.sdu.cloud.calls.client.AuthenticatedClient
 import dk.sdu.cloud.events.EventProducer
-import dk.sdu.cloud.project.api.*
+import dk.sdu.cloud.project.api.ProjectEvent
+import dk.sdu.cloud.project.api.ProjectRole
+import dk.sdu.cloud.service.Actor
 import dk.sdu.cloud.service.Loggable
-import dk.sdu.cloud.service.NormalizedPaginationRequest
-import dk.sdu.cloud.service.Page
-import dk.sdu.cloud.service.db.DBSessionFactory
-import dk.sdu.cloud.service.db.async.AsyncDBConnection
-import dk.sdu.cloud.service.db.withTransaction
+import dk.sdu.cloud.service.db.async.*
 import dk.sdu.cloud.service.stackTraceToString
 import io.ktor.http.HttpStatusCode
+import java.util.*
+
+object GroupTable : SQLTable("groups") {
+    val id = text("id")
+    val project = text("project")
+    val title = text("title")
+}
+
+object GroupMembershipTable : SQLTable("group_members") {
+    val group = text("group_id")
+    val username = text("username")
+}
 
 class GroupService(
-    private val db: DBSessionFactory<AsyncDBConnection>,
-    private val groups: GroupDao,
-    private val projects: ProjectDao,
-    private val eventProducer: EventProducer<ProjectEvent>,
-    private val serviceClient: AuthenticatedClient
+    private val projects: ProjectService,
+    private val eventProducer: EventProducer<ProjectEvent>
 ) {
-    suspend fun createGroup(principal: SecurityPrincipal, projectId: String, group: String) {
+    suspend fun createGroup(
+        ctx: DBContext,
+        createdBy: String,
+        projectId: String,
+        group: String
+    ): String {
+        val id = UUID.randomUUID().toString()
         try {
-            val project = db.withTransaction { session ->
-                val role =
-                    projects.findRoleOfMember(session, projectId, principal.username) ?: return@withTransaction null
-                if (!role.isAdmin()) return@withTransaction null
-                val project = projects.findById(session, projectId)
-                groups.createGroup(session, projectId, group)
-                project
-            } ?: throw ProjectException.CantAddGroup()
+            ctx.withSession { session ->
+                projects.requireRole(session, createdBy, projectId, ProjectRole.ADMINS)
 
-            eventProducer.produce(ProjectEvent.GroupCreated(project, group))
+                session.insert(GroupTable) {
+                    set(GroupTable.project, projectId) // TODO This needs to be a foreign key
+                    set(GroupTable.title, group)
+                    set(GroupTable.id, id)
+                }
+
+                eventProducer.produce(ProjectEvent.GroupCreated(projectId, group))
+            }
         } catch (ex: GenericDatabaseException) {
-            if (ex.errorMessage.fields['C'] == ALREADY_EXISTS_PSQL) {
+            if (ex.errorMessage.fields['C'] == PostgresErrorCodes.UNIQUE_VIOLATION) {
                 throw RPCException("Group already exists", HttpStatusCode.Conflict)
             }
 
             log.warn(ex.stackTraceToString())
             throw RPCException.fromStatusCode(HttpStatusCode.InternalServerError)
         }
+        return id
     }
 
-    suspend fun deleteGroups(principal: SecurityPrincipal, projectId: String, groupNames: Set<String>) {
-        val project = db.withTransaction { session ->
-            val role = projects.findRoleOfMember(session, projectId, principal.username) ?: return@withTransaction null
-            if (!role.isAdmin()) return@withTransaction null
-            val project = projects.findById(session, projectId)
-            groups.deleteGroups(session, projectId, groupNames)
-            project
-        } ?: throw ProjectException.CantDeleteGroup()
+    suspend fun deleteGroups(
+        ctx: DBContext,
+        deletedBy: String,
+        projectId: String,
+        groups: Set<String>
+    ) {
+        ctx.withSession { session ->
+            projects.requireRole(session, deletedBy, projectId, ProjectRole.ADMINS)
 
-        eventProducer.produce(groupNames.map { groupName -> ProjectEvent.GroupDeleted(project, groupName) })
+            val block: EnhancedPreparedStatement.() -> Unit = {
+                setParameter("project", projectId)
+                setParameter("groups", groups.toList())
+            }
+
+            session
+                .sendPreparedStatement(
+                    block,
+                    """
+                        with allowed_groups as (
+                            select id 
+                            from groups g
+                            where
+                                g.id in (select * from unnest(:groups::text[])) and
+                                g.project = :project
+                        )
+                        
+                        delete from group_members
+                        where group_id in (select * from allowed_groups)
+                    """
+                )
+
+            session.sendPreparedStatement(
+                block,
+
+                """
+                    delete from groups
+                    where 
+                        id in (select * from unnest(?groups::text[])) and
+                        project = :project
+                """
+            )
+        }
+
+        eventProducer.produce(groups.map { groupId ->
+            ProjectEvent.GroupDeleted(
+                projectId,
+                groupId
+            )
+        })
     }
 
-    suspend fun listGroups(
-        principal: SecurityPrincipal,
-        project: String
-    ): List<String> {
-        return db.withTransaction { session ->
-            projects.findRoleOfMember(session, project, principal.username) ?: return@withTransaction null
-            groups.listGroups(session, project)
-        } ?: throw RPCException("Not found", HttpStatusCode.NotFound)
-    }
-
-    suspend fun listGroupsWithSummary(
-        principal: SecurityPrincipal,
-        project: String,
-        pagination: NormalizedPaginationRequest
-    ): Page<GroupWithSummary> {
-        return db.withTransaction { session ->
-            projects.findRoleOfMember(session, project, principal.username) ?: return@withTransaction null
-            groups.listGroupsWithSummary(session, project, pagination)
-        } ?: throw RPCException("Not found", HttpStatusCode.NotFound)
-    }
-
-    suspend fun addMember(principal: SecurityPrincipal, projectId: String, group: String, member: String) {
+    suspend fun addMember(
+        ctx: DBContext,
+        addedBy: String,
+        projectId: String,
+        groupId: String,
+        newMember: String
+    ) {
         try {
-            val project: Project = db.withTransaction { session ->
-                val role =
-                    projects.findRoleOfMember(session, projectId, principal.username) ?: return@withTransaction null
-                if (!role.isAdmin()) return@withTransaction null
-                val project = projects.findById(session, projectId)
-                groups.addMemberToGroup(session, projectId, member, group)
-                project
-            } ?: throw ProjectException.CantChangeGroupMember()
+            ctx.withSession { session ->
+                projects.requireRole(session, addedBy, projectId, ProjectRole.ADMINS)
 
-            eventProducer.produce(ProjectEvent.MemberAddedToGroup(project, member, group))
+                session.insert(GroupMembershipTable) {
+                    set(GroupMembershipTable.group, groupId)
+                    set(GroupMembershipTable.username, newMember)
+                }
+
+                eventProducer.produce(
+                    ProjectEvent.MemberAddedToGroup(
+                        projectId,
+                        newMember,
+                        groupId
+                    )
+                )
+            }
         } catch (ex: GenericDatabaseException) {
-            if (ex.errorMessage.fields['C'] == ALREADY_EXISTS_PSQL) {
+            if (ex.errorMessage.fields['C'] == PostgresErrorCodes.UNIQUE_VIOLATION) {
                 throw RPCException("Member is already in group", HttpStatusCode.Conflict)
             }
 
@@ -99,62 +143,83 @@ class GroupService(
         }
     }
 
-    suspend fun removeMember(principal: SecurityPrincipal, projectId: String, group: String, member: String) {
-        val project: Project = db.withTransaction { session ->
-            val role = projects.findRoleOfMember(session, projectId, principal.username) ?: return@withTransaction null
-            if (!role.isAdmin()) return@withTransaction null
-            val project = projects.findById(session, projectId)
-            groups.removeMemberFromGroup(session, projectId, member, group)
-            project
-        } ?: throw ProjectException.CantChangeGroupMember()
-
-        eventProducer.produce(ProjectEvent.MemberRemovedFromGroup(project, member, group))
-    }
-
-    suspend fun listGroupMembers(
-        principal: SecurityPrincipal,
+    suspend fun removeMember(
+        ctx: DBContext,
+        removedBy: String,
         projectId: String,
-        group: String,
-        pagination: NormalizedPaginationRequest
-    ): Page<UserGroupSummary> {
-        db.withTransaction { session ->
-            val isAdmin = projects.findRoleOfMember(session, projectId, principal.username)?.isAdmin() == true
-            if (!isAdmin) throw ProjectException.Unauthorized()
-            return groups.listGroupMembers(session, pagination, projectId, group)
-        }
-    }
-
-    suspend fun updateGroupName(
-        principal: SecurityPrincipal,
-        projectId: String,
-        oldGroupName: String,
-        newGroupName: String
+        groupId: String,
+        memberToRemove: String
     ) {
-        val project: Project = db.withTransaction { session ->
-            val role = projects.findRoleOfMember(session, projectId, principal.username) ?: return@withTransaction null
-            if (!role.isAdmin()) return@withTransaction null
-            val project = projects.findById(session, projectId)
-            groups.renameGroup(session, projectId, oldGroupName, newGroupName)
-            project
-        } ?: throw ProjectException.CantChangeGroupMember()
+        ctx.withSession { session ->
+            projects.requireRole(session, removedBy, projectId, ProjectRole.ADMINS)
 
-        eventProducer.produce(ProjectEvent.GroupRenamed(project, oldGroupName, newGroupName))
-    }
+            session
+                .sendPreparedStatement(
+                    {
+                        setParameter("username", memberToRemove)
+                        setParameter("group", groupId)
+                    },
+                    """
+                        delete from group_members
+                        where
+                            username = :username and
+                            group_id = :group
+                    """
+                )
 
-    suspend fun isMemberQuery(
-        queries: List<IsMemberQuery>
-    ): List<Boolean> {
-        return db.withTransaction { session ->
-            groups.isMemberQuery(session, queries)
+            eventProducer.produce(
+                ProjectEvent.MemberRemovedFromGroup(
+                    projectId,
+                    memberToRemove,
+                    groupId
+                )
+            )
         }
     }
 
-    suspend fun exists(
-        project: String,
-        group: String
-    ): Boolean {
-        return db.withTransaction { session ->
-            groups.exists(session, project, group)
+
+    suspend fun rename(
+        ctx: DBContext,
+        actor: Actor,
+        groupId: String,
+        newName: String
+    ) {
+        ctx.withSession { session ->
+
+            val project = session.sendPreparedStatement(
+                {
+                    setParameter("group", groupId)
+                },
+                """select project from groups where id = :group"""
+            ).rows
+
+            val projectId = if (project.isNotEmpty()) {
+                project[0]["project"].toString()
+            } else {
+                throw RPCException.fromStatusCode(HttpStatusCode.NotFound, "Project group not found")
+            }
+
+            val isAdmin = when (actor) {
+                Actor.System -> true
+
+                is Actor.User, is Actor.SystemOnBehalfOfUser -> {
+                    if (actor is Actor.User && actor.principal.role in Roles.PRIVILEGED) {
+                        true
+                    } else {
+                        projects.findRoleOfMember(ctx, projectId, actor.username) in ProjectRole.ADMINS
+                    }
+                }
+            }
+
+            if (!isAdmin) throw RPCException.fromStatusCode(HttpStatusCode.Unauthorized)
+
+            session.sendPreparedStatement(
+                {
+                    setParameter("group", groupId)
+                    setParameter("newTitle", newName)
+                },
+                """update groups set title = :newTitle where id = :group"""
+            )
         }
     }
 
@@ -162,4 +227,3 @@ class GroupService(
         override val log = logger()
     }
 }
-

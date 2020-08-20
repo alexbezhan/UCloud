@@ -18,12 +18,9 @@ import dk.sdu.cloud.auth.http.UserController
 import dk.sdu.cloud.auth.services.*
 import dk.sdu.cloud.auth.services.saml.SamlRequestProcessor
 import dk.sdu.cloud.micro.*
-import dk.sdu.cloud.service.CommonServer
-import dk.sdu.cloud.service.TokenValidationJWT
-import dk.sdu.cloud.service.configureControllers
-import dk.sdu.cloud.service.db.HibernateSession
+import dk.sdu.cloud.service.*
+import dk.sdu.cloud.service.db.async.AsyncDBSessionFactory
 import dk.sdu.cloud.service.db.withTransaction
-import dk.sdu.cloud.service.startServices
 import io.ktor.routing.route
 import io.ktor.routing.routing
 import kotlinx.coroutines.runBlocking
@@ -48,17 +45,17 @@ class Server(
 
     override fun start() {
         log.info("Creating core services...")
-        val db = micro.hibernateDatabase
+        val db = AsyncDBSessionFactory(micro.databaseConfig)
         val tokenValidation = micro.tokenValidation as TokenValidationJWT
         val streams = micro.eventStreamService
 
         val passwordHashingService = PasswordHashingService()
-        val twoFactorDao = TwoFactorHibernateDAO()
-        val userDao = UserHibernateDAO(passwordHashingService, twoFactorDao)
-        val refreshTokenDao = RefreshTokenHibernateDAO()
+        val twoFactorDao = TwoFactorAsyncDAO()
+        val userDao = UserAsyncDAO(passwordHashingService, twoFactorDao)
+        val refreshTokenDao = RefreshTokenAsyncDAO()
         val usernameGenerator = UniqueUsernameService(db, userDao)
         val personService = PersonService(passwordHashingService, usernameGenerator)
-        val ottDao = OneTimeTokenHibernateDAO()
+        val ottDao = OneTimeTokenAsyncDAO()
         val userCreationService = UserCreationService(
             db,
             userDao,
@@ -67,7 +64,7 @@ class Server(
 
         val totpService = WSTOTPService()
         val qrService = ZXingQRService()
-        val cursorStateDao = CursorStateHibernateDao()
+        val cursorStateDao = CursorStateAsyncDao()
         userIterator = UserIterationService(
             micro.serviceInstance.ipAddress ?: "localhost",
             micro.serviceInstance.port,
@@ -99,7 +96,7 @@ class Server(
             personService,
             userDao,
             refreshTokenDao,
-            JWTFactory(jwtAlg, config.serviceLicenseAgreement),
+            JWTFactory(jwtAlg, config.serviceLicenseAgreement, disable2faCheck = micro.developmentModeEnabled),
             userCreationService,
             tokenValidation,
             mergedExtensions,
@@ -160,19 +157,19 @@ class Server(
 
             log.info("Creating HTTP controllers")
 
-            val samlController = SAMLController(
-                authSettings,
-                { settings, call, params -> SamlRequestProcessor(settings, call, params) },
-                tokenService,
-                loginResponder
-            )
-
             val loginService =
-                LoginService(db, passwordHashingService, userDao, LoginAttemptHibernateDao(), loginResponder)
+                LoginService(db, passwordHashingService, userDao, LoginAttemptAsyncDao(), loginResponder)
             val passwordController = PasswordController(loginService)
             log.info("HTTP controllers configured!")
 
             if (config.enableWayf) {
+                val samlController = SAMLController(
+                    authSettings,
+                    { settings, call, params -> SamlRequestProcessor(settings, call, params) },
+                    tokenService,
+                    loginResponder
+                )
+
                 routing {
                     route("/auth/saml") {
                         samlController.configure(this)
@@ -222,8 +219,8 @@ class Server(
 
     private suspend fun createTestAccount(
         personService: PersonService,
-        userCreationService: UserCreationService<HibernateSession>,
-        tokenService: TokenService<HibernateSession>,
+        userCreationService: UserCreationService,
+        tokenService: TokenService,
 
         username: String,
         role: Role
@@ -248,8 +245,8 @@ class Server(
             user, AccessTokenContents(
                 user,
                 listOf(SecurityScope.ALL_WRITE),
-                createdAt = System.currentTimeMillis(),
-                expiresAt = System.currentTimeMillis() + ONE_YEAR_IN_MILLS
+                createdAt = Time.now(),
+                expiresAt = Time.now() + ONE_YEAR_IN_MILLS
             ),
             userAgent = null,
             ip = null

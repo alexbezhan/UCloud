@@ -2,7 +2,7 @@ import {FullAppInfo} from "Applications";
 import {Client} from "Authentication/HttpClientInstance";
 import {LoadableEvent, LoadableEventTag, unwrapCall} from "LoadableContent";
 import {snackbarStore} from "Snackbar/SnackbarStore";
-import {Error, Page, PayloadAction} from "Types";
+import {Error} from "Types";
 import {buildQueryString} from "Utilities/URIUtilities";
 import {errorMessageOrDefault} from "UtilityFunctions";
 
@@ -74,7 +74,7 @@ export async function receiveAppsByKey(
             }
         });
     } catch (err) {
-        snackbarStore.addFailure(errorMessageOrDefault(err, `Could not fetch apps by tag ${tag}`));
+        snackbarStore.addFailure(errorMessageOrDefault(err, `Could not fetch apps by tag ${tag}`), false);
         return {
             type: Tag.RECEIVE_APPS_BY_KEY_ERROR,
             payload: {}

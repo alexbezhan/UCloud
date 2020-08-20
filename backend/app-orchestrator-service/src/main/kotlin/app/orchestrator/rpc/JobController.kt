@@ -3,11 +3,7 @@ package dk.sdu.cloud.app.orchestrator.rpc
 import dk.sdu.cloud.CommonErrorMessage
 import dk.sdu.cloud.Role
 import dk.sdu.cloud.Roles
-import dk.sdu.cloud.app.orchestrator.api.JobDescriptions
-import dk.sdu.cloud.app.orchestrator.api.JobStartedResponse
-import dk.sdu.cloud.app.orchestrator.api.JobState
-import dk.sdu.cloud.app.orchestrator.api.JobStateChange
-import dk.sdu.cloud.app.orchestrator.api.MachineReservation
+import dk.sdu.cloud.app.orchestrator.api.*
 import dk.sdu.cloud.app.orchestrator.services.*
 import dk.sdu.cloud.auth.api.AuthDescriptions
 import dk.sdu.cloud.auth.api.TokenExtensionRequest
@@ -28,15 +24,14 @@ import io.ktor.http.HttpStatusCode
 internal const val JOB_MAX_TIME = 1000 * 60 * 60 * 200L
 
 class JobController(
-    private val jobQueryService: JobQueryService<*>,
-    private val jobOrchestrator: JobOrchestrator<*>,
+    private val jobQueryService: JobQueryService,
+    private val jobOrchestrator: JobOrchestrator,
     private val streamFollowService: StreamFollowService,
     private val userClientFactory: (String?, String?) -> AuthenticatedClient,
     private val serviceClient: AuthenticatedClient,
-    private val vncService: VncService<*>,
-    private val webService: WebService<*>,
-    private val machineTypes: List<MachineReservation> = listOf(MachineReservation.BURST),
-    private val gpuWhitelist: List<String> = emptyList()
+    private val vncService: VncService,
+    private val webService: WebService,
+    private val machineCache: MachineTypeCache
 ) : Controller {
     override fun configure(rpcServer: RpcServer) = with(rpcServer) {
         implement(JobDescriptions.findById) {
@@ -72,13 +67,6 @@ class JobController(
 
         implement(JobDescriptions.start) {
             verifySlaFromPrincipal()
-            val canAccessGpu =
-                ctx.securityPrincipal.email in gpuWhitelist || ctx.securityPrincipal.role in Roles.PRIVILEDGED
-            val reservation = machineTypes.find { it.name == request.reservation }
-            if (reservation?.gpu != null && reservation.gpu != 0 && !canAccessGpu) {
-                throw RPCException("You do not have GPU access!", HttpStatusCode.Forbidden)
-            }
-
             log.debug("Extending token")
             val maxTime = request.maxTime
             if (maxTime != null && maxTime.toMillis() > JOB_MAX_TIME) {
@@ -150,9 +138,10 @@ class JobController(
 
         implement(JobDescriptions.machineTypes) {
             verifySlaFromPrincipal()
-            val canAccessGpu =
-                ctx.securityPrincipal.email in gpuWhitelist || ctx.securityPrincipal.role in Roles.PRIVILEDGED
-            ok(if (canAccessGpu) machineTypes else machineTypes.filter { it.gpu == null })
+
+            val machines = machineCache.machines.get(Unit)
+                ?: throw RPCException("Internal server error", HttpStatusCode.InternalServerError)
+            ok(machines)
         }
     }
 

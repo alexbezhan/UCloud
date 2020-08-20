@@ -1,7 +1,7 @@
 import * as jwt from "jsonwebtoken";
 import {Store} from "redux";
 import HttpClient, {MissingAuthError, Override} from "../../app/Authentication/lib";
-import {emptyPage, ReduxObject} from "../../app/DefaultObjects";
+import {emptyPage} from "../../app/DefaultObjects";
 
 interface JWT {
     sub: string;
@@ -77,6 +77,26 @@ class MockHttpClient {
         window.localStorage.setItem("csrfToken", value);
     }
 
+    public get currentProjectFolder(): string {
+        return `/projects/${this.projectId}`;
+    }
+
+    public get sharesFolder(): string {
+        return `${this.homeFolder}Shares`;
+    }
+
+    public get favoritesFolder(): string {
+        return `${this.homeFolder}Favorites`;
+    }
+
+    public get fakeFolders(): string[] {
+        return [this.sharesFolder, this.favoritesFolder].concat(this.hasActiveProject ? [this.currentProjectFolder] : []);
+    }
+
+    public get hasActiveProject(): boolean {
+        return this.projectId !== undefined;
+    }
+
     public get activeUsername(): string | undefined {
         if (this.useProjectToken(false) && !!this.projectDecodedToken) {
             return this.projectDecodedToken.payload.sub;
@@ -116,55 +136,55 @@ class MockHttpClient {
         body,
         context = this.apiContext,
         maxRetries = 5,
-        disallowProjects = false,
         withCredentials = false
     }): Promise<any> =>
-        new Promise((resolve, reject) => {
+        new Promise(resolve => {
             switch (path) {
                 case "/accounting/storage/bytesUsed/usage":
-                    resolve({usage: 14690218167, quota: null, dataType: "bytes", title: "Storage Used"});
+                    resolve({request: {} as XMLHttpRequest, response: {usage: 14690218167, quota: null, dataType: "bytes", title: "Storage Used"}});
                     return;
                 case "/accounting/compute/timeUsed/usage":
-                    resolve({usage: 36945000, quota: null, dataType: "duration", title: "Compute Time Used"});
+                    resolve({request: {} as XMLHttpRequest, response: {usage: 36945000, quota: null, dataType: "duration", title: "Compute Time Used"}});
                     return;
             }
-            resolve(emptyPage);
+            resolve({request: {} as XMLHttpRequest, response: emptyPage});
         })
 
     public get = (path: string, context = this.apiContext) =>
-        this.call({method: "GET", path, body: undefined, context})
+        this.call({method: "GET", path, body: undefined, context});
 
     public post = (path: string, body?: object, context = this.apiContext) =>
-        this.call({method: "POST", path, body, context})
+        this.call({method: "POST", path, body, context});
 
     public put = (path: string, body: object, context = this.apiContext) =>
-        this.call({method: "PUT", path, body, context})
+        this.call({method: "PUT", path, body, context});
 
     public delete = (path: string, body: object, context = this.apiContext) =>
-        this.call({method: "DELETE", path, body, context})
+        this.call({method: "DELETE", path, body, context});
 
     public patch = (path: string, body: object, context = this.apiContext) =>
-        this.call({method: "PATCH", path, body, context})
+        this.call({method: "PATCH", path, body, context});
 
     public options = (path: string, body: object, context = this.apiContext) =>
-        this.call({method: "OPTIONS", path, body, context})
+        this.call({method: "OPTIONS", path, body, context});
 
     public head = (path: string, context = this.apiContext) =>
-        this.call({method: "HEAD", path, body: undefined, context})
+        this.call({method: "HEAD", path, body: undefined, context});
 
-    public openBrowserLoginPage() {
-        window.location.href = `${this.context}${this.authContext}/login?service=${encodeURIComponent(this.serviceName)}`;
+    public openBrowserLoginPage(): void {
+        window.location.href =
+            `${this.context}${this.authContext}/login?service=${encodeURIComponent(this.serviceName)}`;
     }
 
     public receiveAccessTokenOrRefreshIt = (): Promise<any> => {
         return new Promise(resolve => resolve("1"));
-    }
+    };
 
     public createOneTimeTokenWithPermission(permission: string) {return new Promise(resolve => resolve(1));}
 
-    public setTokens(csrfToken: string) {/*  */}
+    public setTokens(csrfToken: string): void {/*  */}
 
-    public logout() {
+    public logout(): Promise<void> {
         return new Promise<void>(() => undefined);
     }
 
@@ -231,11 +251,7 @@ class MockHttpClient {
     }
 
     private retrieveToken(disallowProjects: boolean): string {
-        if (this.useProjectToken(disallowProjects)) {
-            return this.projectAccessToken!;
-        } else {
-            return HttpClient.storedAccessToken;
-        }
+        return HttpClient.storedAccessToken;
     }
 
     private useProjectToken(disallowProjects: boolean): boolean {
