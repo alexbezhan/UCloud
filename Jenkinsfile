@@ -64,15 +64,7 @@ volumes: [
 
 String runBuild(String item) {
     def loaded = load(item)
-    withCredentials(
-        [usernamePassword(
-            credentialsId: "archiva",
-            usernameVariable: "ESCIENCE_MVN_USER",
-            passwordVariable: "ESCIENCE_MVN_PASSWORD"
-        )]
-    ) {
-        return loaded.initialize()
-    }
+    return loaded.initialize()
 }
 
 def sendAlert(String alertMessage) {
