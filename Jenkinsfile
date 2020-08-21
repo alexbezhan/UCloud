@@ -13,7 +13,7 @@ volumes: [
   hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')
 ]) {
     node (label) {
-        if (env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'JenkinsSetup') {
+        if (env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'JenkinsSetup' || env.BRANCH_NAME == 'accounting') {
             stage('Checkout') {
                 checkout(
                     [
@@ -34,14 +34,14 @@ volumes: [
                 )
             }
 
-            //String frontendResult = runBuild("frontend-web/Jenkinsfile")
+            String frontendResult = runBuild("frontend-web/Jenkinsfile")
             String backendResult = runBuild("backend/Jenkinsfile")
             boolean hasError = false
 
-            /*if (frontendResult.startsWith("FAILURE")) {
+            if (frontendResult.startsWith("FAILURE")) {
                 sendAlert(frontendResult)
                 hasError = true
-            }*/
+            }
 
             if (backendResult.startsWith("FAILURE")) {
                 sendAlert(backendResult)
