@@ -71,6 +71,6 @@ def sendAlert(String alertMessage) {
     withCredentials(
         [string(credentialsId: "slackToken", variable: "slackToken")]
     ) {
-        slackSend(channel: "#devalerts", message: alertMessage, tokenCredentialId: 'slackToken')
+        slackSend(channel: "devalerts", message: alertMessage, tokenCredentialId: 'slackToken')
     }
 }
