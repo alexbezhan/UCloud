@@ -4,7 +4,7 @@ def initialize() {
       sh '''cd backend
       ./gradlew clean
       ./gradlew generateBuildConfig
-      ./gradlew build'''
+      ./gradlew build -PexcludeTests=**/integration*'''
     }
   } catch (e) {
     echo "Build Failed"

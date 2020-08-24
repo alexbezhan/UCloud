@@ -286,8 +286,6 @@ object UCloudLauncher : Loggable {
     private fun createConfiguration(): File {
         val dir = Files.createTempDirectory("c").toFile()
 
-        initializeDatabases()
-
         File(dir, "token.yml").writeText(
             """
                 ---
@@ -440,6 +438,9 @@ object UCloudLauncher : Loggable {
 
             val serviceRefreshToken = UUID.randomUUID().toString()
             refreshToken = serviceRefreshToken
+
+            initializeDatabases()
+
             val reg = ServiceRegistry(
                 arrayOf(
                     "--dev",
