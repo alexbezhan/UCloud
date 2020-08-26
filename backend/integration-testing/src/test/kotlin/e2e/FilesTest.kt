@@ -6,7 +6,7 @@ import dk.sdu.cloud.integration.backend.*
 import org.junit.Ignore
 import org.junit.Test
 import org.openqa.selenium.By
-@Ignore
+
 class FilesTest : EndToEndTest() {
 
     @Test

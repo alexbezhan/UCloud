@@ -90,7 +90,7 @@ suspend fun reserveCredits(
     ).orThrow()
     return id
 }
-@Ignore
+
 class AccountingTest : IntegrationTest() {
     @Test
     fun `test simple case accounting`() = t {

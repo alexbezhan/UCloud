@@ -2,7 +2,7 @@ def initialize() {
   container('dind') {
     try {
       stage('build and backend') {
-        sh '''bash
+        sh '''
         cd backend
         ./gradlew clean
         ./gradlew generateBuildConfig

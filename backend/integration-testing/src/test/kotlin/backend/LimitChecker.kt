@@ -55,7 +55,7 @@ suspend fun setProjectQuota(
         serviceClient
     ).orThrow()
 }
-@Ignore
+
 class LimitCheckerTest : IntegrationTest() {
     @Test
     fun `test normal upload with quota and credits`() = t {
