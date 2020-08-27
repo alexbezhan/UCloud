@@ -233,7 +233,7 @@ object UCloudLauncher : Loggable {
                 launch {
                     // ElasticSearch
                     elasticSearch = ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:7.6.0")
-                        .waitingFor(Wait.forHttp("/").forStatusCode(200))
+                        .withCopyFileToContainer("/var/run/docker.sock", "/var/run/docker.sock")
                     elasticSearch.start()
                 }
 
