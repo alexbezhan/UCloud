@@ -68,6 +68,7 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.Wait
 import org.testcontainers.elasticsearch.ElasticsearchContainer
 import org.testcontainers.utility.Base58
+import org.testcontainers.utility.MountableFile
 import redis.embedded.RedisExecProvider
 import redis.embedded.RedisServer
 import redis.embedded.util.OS
@@ -233,7 +234,7 @@ object UCloudLauncher : Loggable {
                 launch {
                     // ElasticSearch
                     elasticSearch = ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:7.6.0")
-                        .withCopyFileToContainer("/var/run/docker.sock", "/var/run/docker.sock")
+                        .withCopyFileToContainer(MountableFile.forHostPath("/var/run/docker.sock"), "/var/run/docker.sock")
                     elasticSearch.start()
                 }
 
