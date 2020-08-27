@@ -65,6 +65,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.core.config.ConfigurationFactory
 import org.testcontainers.containers.GenericContainer
+import org.testcontainers.containers.wait.Wait
 import org.testcontainers.elasticsearch.ElasticsearchContainer
 import org.testcontainers.utility.Base58
 import redis.embedded.RedisExecProvider
@@ -232,6 +233,7 @@ object UCloudLauncher : Loggable {
                 launch {
                     // ElasticSearch
                     elasticSearch = ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:7.6.0")
+                        .waitingFor(Wait.forHttp("/").forStatusCode(200))
                     elasticSearch.start()
                 }
 
