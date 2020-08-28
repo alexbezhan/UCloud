@@ -7,7 +7,7 @@ def label = "worker-${UUID.randomUUID().toString()}"
 podTemplate(label: label, containers: [
 containerTemplate(name: 'jnlp', image: 'jenkins/jnlp-slave:latest-jdk11', args: '${computer.jnlpmac} ${computer.name}'),
 containerTemplate(name: 'node', image: 'node:11-alpine', command: 'cat', ttyEnabled: true),
-containerTemplate(name: 'dind', image: 'dreg.cloud.sdu.dk/ucloud/dindfedora:latest', command: 'cat', ttyEnabled: true, privileged: true)
+containerTemplate(name: 'dind', image: 'dreg.cloud.sdu.dk/ucloud/dindfedora:latest', command: 'cat', ttyEnabled: true)
 ],
 volumes: [
   hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')

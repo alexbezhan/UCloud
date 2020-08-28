@@ -65,9 +65,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.apache.logging.log4j.core.config.ConfigurationFactory
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.wait.Wait
 import org.testcontainers.elasticsearch.ElasticsearchContainer
 import org.testcontainers.utility.Base58
+import org.testcontainers.utility.DockerImageName
 import org.testcontainers.utility.MountableFile
 import redis.embedded.RedisExecProvider
 import redis.embedded.RedisServer
@@ -89,7 +89,7 @@ fun findPreferredOutgoingIp(): String {
     }
 }
 
-class CephContainer : GenericContainer<CephContainer?>("ceph/daemon") {
+class CephContainer : GenericContainer<CephContainer?>(DockerImageName.parse("ceph/daemon")) {
     val hostIp: String
 
     init {
@@ -113,7 +113,7 @@ class CephContainer : GenericContainer<CephContainer?>("ceph/daemon") {
     }
 }
 
-class K3sContainer : GenericContainer<K3sContainer?>("rancher/k3s:v1.16.13-rc3-k3s1-amd64") {
+class K3sContainer : GenericContainer<K3sContainer?>(DockerImageName.parse("rancher/k3s:v1.16.13-rc3-k3s1-amd64")) {
     init {
         withPrivilegedMode(true)
         addExposedPort(6443)
@@ -233,8 +233,10 @@ object UCloudLauncher : Loggable {
 
                 launch {
                     // ElasticSearch
-                    elasticSearch = ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:7.6.0")
-                        .withCopyFileToContainer(MountableFile.forHostPath("/var/run/docker.sock"), "/var/run/docker.sock")
+                    elasticSearch = ElasticsearchContainer(
+                        DockerImageName.parse(
+                        "docker.elastic.co/elasticsearch/elasticsearch:7.6.0")
+                    ).withCopyFileToContainer(MountableFile.forHostPath("/var/run/docker.sock"), "/var/run/docker.sock")
                     elasticSearch.start()
                 }
 
