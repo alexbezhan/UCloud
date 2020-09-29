@@ -82,8 +82,7 @@ class K8JobCreationService(
 
     @Suppress("LongMethod", "ComplexMethod") // Just a DSL
     private fun createJobs(verifiedJob: VerifiedJob) {
-        val enableKataContainers = verifiedJob.application.invocation.container?.runAsRoot == true &&
-                (verifiedJob.reservation.gpu ?: 0) <= 0
+        val enableKataContainers = false
 
         // We need to create and prepare some other resources as well
         networkPolicyService.createPolicy(verifiedJob.id, verifiedJob.peers.map { it.jobId })
@@ -112,20 +111,22 @@ class K8JobCreationService(
                     val resourceRequirements = run {
                         val reservation = verifiedJob.reservation
                         val limits = HashMap<String, Quantity>()
+                        val requests = HashMap<String, Quantity>()
                         if (reservation.cpu != null) {
-                            limits += "cpu" to Quantity("${(reservation.cpu!! * 1000) - if (enableKataContainers) 1000 else 0}m")
+                            requests += "cpu" to Quantity("${(reservation.cpu!! * 1000) - if (enableKataContainers) 1000 else 0}m")
                         }
 
                         if (reservation.memoryInGigs != null) {
-                            limits += "memory" to Quantity("${reservation.memoryInGigs!! - if (enableKataContainers) 6 else 0}Gi")
+                            requests += "memory" to Quantity("${reservation.memoryInGigs!! - if (enableKataContainers) 6 else 0}Gi")
                         }
 
                         if (reservation.gpu != null) {
+                            requests += "nvidia.com/gpu" to Quantity("${reservation.gpu}")
                             limits += "nvidia.com/gpu" to Quantity("${reservation.gpu}")
                         }
 
-                        if (limits.isNotEmpty()) {
-                            ResourceRequirements(limits, limits)
+                        if (requests.isNotEmpty()) {
+                            ResourceRequirements(limits, requests)
                         } else {
                             null
                         }
