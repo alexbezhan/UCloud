@@ -18,7 +18,7 @@ import {Spacer} from "ui-components/Spacer";
 import {favoriteApplicationFromPage, toolImageQuery} from "Utilities/ApplicationUtilities";
 import {RouterLocationProps} from "Utilities/URIUtilities";
 import {FullAppInfo} from ".";
-import {ApplicationCard} from "./Card";
+import {ApplicationCard, ToolCard} from "./Card";
 import Installed from "./Installed";
 import * as Pages from "./Pages";
 import * as Actions from "./Redux/BrowseActions";
@@ -159,6 +159,18 @@ function Applications(props: ApplicationsProps): JSX.Element {
             )}
 
             <Heading.h2>Tools</Heading.h2>
+            <Grid
+                pt="20px"
+                gridTemplateRows="repeat(3, 1fr)"
+                gridTemplateColumns="repeat(7, 1fr)"
+                gridGap="15px"
+                style={{gridAutoFlow: "column"}}
+            >
+                {defaultTools.map(tag => {
+                    const url = Client.computeURL("/api", toolImageQuery(tag.toLowerCase().replace(/\s+/g, "")));
+                    return <ToolCard key={tag} url={url} tag={tag} />;
+                })}
+            </Grid>
             <div style={{overflowX: "scroll", paddingLeft: "8px", paddingTop: "8px"}}>
                 <GridCardGroup minmax={220} gridGap={16}>
                     {defaultTools.map(tag => <ToolGroup key={tag} tag={tag} />)}
@@ -190,7 +202,7 @@ const ToolImageWrapper = styled(Flex)`
     width: 250px;
 `;
 
-const ToolImage = styled.img`
+export const ToolImage = styled.img`
     max-width: 200px;
     max-height: 200px;
 `;
@@ -216,7 +228,7 @@ function FeaturedTag({tag, setFavorite, columns, rows, omit}: FeaturedTagProps):
                     left={<Heading.h2>{tag}</Heading.h2>}
                     right={(
                         <ShowAllTagItem tag={tag}>
-                            <Heading.h4 pt="15px" ><strong>Show All</strong></Heading.h4>
+                            <Heading.h4 pt="15px"><strong>Show All</strong></Heading.h4>
                         </ShowAllTagItem>
                     )}
                 />

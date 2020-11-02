@@ -9,6 +9,7 @@ import Markdown from "ui-components/Markdown";
 import {EllipsedText} from "ui-components/Text";
 import theme from "ui-components/theme";
 import {WithAllAppTags, WithAppMetadata} from ".";
+import {ToolImage} from "./Overview";
 import * as Pages from "./Pages";
 
 interface ApplicationCardProps {
@@ -182,7 +183,7 @@ const appColors = theme.appColors;
 
 const nColors = appColors.length;
 
-const bgGradients = appColors.map(x => (`linear-gradient(0deg, ${x[0]}, ${x[2]})`));
+export const bgGradients = appColors.map(x => (`linear-gradient(0deg, ${x[0]}, ${x[2]})`));
 
 interface AppLogoRawProps {
     color1Offset: number;
@@ -235,6 +236,25 @@ export const AppLogoRaw = ({rot, color1Offset, color2Offset, appC, size}: AppLog
     );
 };
 
+export const ToolCard: React.FunctionComponent<{tag: string; url: string;}> = ({tag, url}) => (
+    <AppCard to={Pages.browseByTag(tag)}>
+        <Absolute
+            right={0}
+            top={0}
+            cursor="inherit"
+            height="100%"
+            width="10px"
+            background={bgGradients[appColor(hashF(tag))]}
+        />
+        <Flex flexDirection="row" alignItems="flex-start" zIndex={1}>
+            <ToolImage src={url} style={{width: "96px", height: "96px", objectFit: "contain"}} />
+            <Flex my="auto" ml="10px">
+                <Heading.h2>{tag}</Heading.h2>
+            </Flex>
+        </Flex>
+    </AppCard>
+);
+
 export const AppLogo = ({size, hash}: {size: string, hash: number}): JSX.Element => {
     const i1 = (hash >>> 30) & 3;
     const i2 = (hash >>> 20) & 3;
@@ -265,7 +285,7 @@ export function hashF(str: string): number {
         hash = (hash * 33) ^ str.charCodeAt(--i);
     }
 
-    /* JavaScript does bitwise operations (like XOR, above) on 32-bit signed
+    /** JavaScript does bitwise operations (like XOR, above) on 32-bit signed
      * integers. Since we want the results to be always positive, convert the
      * signed int to an unsigned by doing an unsigned bitshift. */
 
@@ -277,7 +297,7 @@ export function appColor(hash: number): number {
     return (hash >>> 22) % (nColors - 1); // last color not used
 }
 
-const AbsoluteNoPointerEvents = styled(Absolute)`
+export const AbsoluteNoPointerEvents = styled(Absolute)`
     pointer-events: none;
 `;
 
