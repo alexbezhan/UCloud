@@ -164,7 +164,7 @@ function Applications(props: ApplicationsProps): JSX.Element {
                 gridTemplateRows="repeat(3, 1fr)"
                 gridTemplateColumns="repeat(7, 1fr)"
                 gridGap="15px"
-                style={{gridAutoFlow: "column"}}
+                style={{gridAutoFlow: "column", overflowX: "scroll"}}
             >
                 {defaultTools.map(tag => {
                     const url = Client.computeURL("/api", toolImageQuery(tag.toLowerCase().replace(/\s+/g, "")));
